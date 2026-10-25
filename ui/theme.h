@@ -57,6 +57,8 @@ int theme_ring_light(void);
 int theme_auto_supported(void);
 #define THEME_PRESET_BRAUN 9
 #define THEME_PRESET_DISCO 10   /* fork: Ring-family theme on the album cover (disco.c) */
+int theme_disco_kopi(void);   /* Disco with the Kopi Ungu palette */
+int theme_backdrop_keep(int light);   /* Disco backdrop: of 256, how much cover shows (thread-safe after theme_init) */
 int th_disco(void);        /* the Disco theme is active */
 int th_ringlike(void);     /* Ring or Disco: the Ring interface (buttons, Now Playing ring, accent rules) */
 extern const char *const theme_preset_names[THEME_PRESET_COUNT];

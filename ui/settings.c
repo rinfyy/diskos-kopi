@@ -410,6 +410,17 @@ void disco_sheen_apply(void);
 static void apply_disco_sheen(int v){ (void)v; disco_sheen_apply(); }
 static const char *OPT_DPROG[] = { "Disco", "Accent", "Off" };
 static const char *OPT_DEQ[] = { "Disco", "Accent" };
+static const char *OPT_DISCOPAL[] = { "Original", "Kopi Ungu" };
+static const char *OPT_DLOCK[] = { "Full", "Clock only" };
+static const char *OPT_DLOCKSRC[] = { "Album", "My picture", "Black" };
+#include "lockcover.h"
+static void apply_lock_next(int v){
+    (void)v; char msg[128];
+    if(lockcover_next(msg, sizeof msg) > 0 && cfg_get_int("dlock_src", 0) != 1){ cfg_set_int("dlock_src", 1); setlist_refresh(); }
+    ui_toast(msg);
+}
+static void apply_lock_src(int v){ if(v == 1) lockcover_request(); }
+static void apply_disco_palette(int v){ (void)v; theme_reload_or_revert("disco_palette"); }
 static const char *OPT_DSHAPE[] = { "Linear", "Arc" };
 static const char *OPT_DTAL[] = { "Centred", "Left" };
 static const char *OPT_SIMPLE_BG[]={"Plain","Blur","Cover"};
@@ -886,6 +897,12 @@ static const setting_t TABLE[] = {
       "Choose Cover, Analog, Minimal, Digital, Vinyl or Ring screensaver.", NULL },
     { "Standby",  "Screen Off",  ST_CYCLER, "screenoff_idx", 0,0,0, OPT_POWER, 5, NULL, NULL, 3,
       "How long after the screensaver the screen turns fully off.", NULL },
+    { "Standby",  "Lock Style", ST_CYCLER, "dlock_style", 0,0,0, OPT_DLOCK, 2, NULL, NULL, 0,
+      "Full shows the clock, weather, track and progress. Clock only shows nothing but a large clock.", NULL },
+    { "Standby",  "Lock Cover", ST_CYCLER, "dlock_src", 0,0,0, OPT_DLOCKSRC, 3, NULL, apply_lock_src, 0,
+      "Behind the lock clock: the album cover, your own picture from the CustomCover folder on the SD card, or black.", NULL },
+    { "Standby",  "Change Picture", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_lock_next, 0,
+      "Steps through the JPG/PNG pictures in CustomCover on the SD card and uses the next one.", NULL },
     { "Standby",  "Lock Screen", ST_CYCLER, "zlock_src", 0,0,0, OPT_ZLOCK, 2, NULL, NULL, 0,
       "What the lock screen shows while music plays.", OPT_ZLOCK_D },
     { "Standby",  "Clock Accent", ST_CYCLER, "zlock_tint", 0,0,0, OPT_ZTINT, 5, NULL, NULL, 4,
@@ -941,6 +958,8 @@ static const setting_t TABLE[] = {
       "Hold the title for Immersive, favourite/unfavourite, or nothing. Tap still opens track actions.", NULL },
     { "Music Screen", "Controls", ST_CYCLER, "disco_controls", 0,0,0, OPT_DCTRL, 3, NULL, apply_disco_controls, 0,
       "Buttons, Auto-fade after 5 s (tap to reveal), or Gestures: double-tap play/pause; swipe right next, left previous.", NULL },
+    { "Disco Colours", "Palette", ST_CYCLER, "disco_palette", 0,0,1, OPT_DISCOPAL, 2, NULL, apply_disco_palette, 0,
+      "Original cyan, or Kopi Ungu: espresso brown, dark plum and an amethyst accent. Restarts the UI; music continues.", NULL },
     { "Disco Colours", "Rim Sheen", ST_TOGGLE, "disco_sheen", 0,1,1, NULL,0, NULL, apply_disco_sheen, 1,
       "The faint CD rainbow around the edge of Music and playlists.", NULL },
     { "Disco Colours", "Equalizer", ST_CYCLER, "disco_eq", 0,0,0, OPT_DEQ, 2, NULL, apply_disco_eq, 0,

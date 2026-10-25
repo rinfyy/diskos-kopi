@@ -273,7 +273,7 @@ static void backdrop_bake(void){
     uint32_t c = theme_rgb(THEME_CLR_CANVAS);
     int cb = (int)(c & 0xFF), cg = (int)((c >> 8) & 0xFF), cr = (int)((c >> 16) & 0xFF);
     int light = theme_variant() == 1;
-    int keep = light ? 84 : 112;                                      /* of 256: how much of the cover shows */
+    int keep = theme_backdrop_keep(light);                            /* of 256: how much of the cover shows */
     const uint8_t *s = src->data;
     for(int i = 0; i < BDW * BDW; i++){
         const uint8_t *p = s + (size_t)i * 4; uint8_t *o = g_bd + (size_t)i * 4;

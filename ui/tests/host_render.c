@@ -775,6 +775,7 @@ int main(int argc, char **argv){
     if(getenv("SIMPLE_BG"))cfg_set_int_deferred("simple_background",atoi(getenv("SIMPLE_BG")));
     if(getenv("NP_FONT"))cfg_set_int_deferred(atoi(argv[1])==THEME_PRESET_SIMPLE?"simple_track_font":"np_font",atoi(getenv("NP_FONT")));
     if(getenv("NULL_PALETTE"))cfg_set_int_deferred("null_palette",atoi(getenv("NULL_PALETTE")));
+    if(getenv("DISCO_PALETTE"))cfg_set_int_deferred("disco_palette",atoi(getenv("DISCO_PALETTE")));
     if(getenv("NULL_BG"))cfg_set_int_deferred("null_music_background",atoi(getenv("NULL_BG")));
     if(getenv("NULL_SIDE"))cfg_set_int_deferred("null_side",atoi(getenv("NULL_SIDE")));
     if(getenv("NULL_TEXT"))cfg_set_int_deferred("null_text_align",atoi(getenv("NULL_TEXT")));
@@ -1399,6 +1400,7 @@ int main(int argc, char **argv){
         if(th_null()&&!strcmp(page,"scr43"))appshelf_open();
         screen_show(scr);
         if(th_zune())zune_status_refresh();
+        if(getenv("SAVER_WAIT_MS")){for(int w=0;w<atoi(getenv("SAVER_WAIT_MS"));w+=50){nav_wait(50);usleep(50000);}}   /* let background decodes (lock cover) land */
         if(getenv("FB_FIXTURE")){folderbrowser_open();nav_wait(500);if(getenv("FB_SCROLL")){lv_obj_t *list=NULL;lv_obj_t*r=screen_get_root(SCR_FOLDER);for(uint32_t i=0;i<lv_obj_get_child_count(r);i++){lv_obj_t*c=lv_obj_get_child(r,i);if(lv_obj_get_scroll_dir(c)==LV_DIR_VER&&lv_obj_get_y(c)==124){list=c;break;}}assert(list);lv_obj_scroll_to_y(list,atoi(getenv("FB_SCROLL")),LV_ANIM_OFF);nav_wait(500);}}
         if(getenv("ZUNE_CONFIRM")){void system_preview_confirmation(int);system_preview_confirmation(atoi(getenv("ZUNE_CONFIRM")));nav_wait(150);}
         if(getenv("REVIEW_ZUNE_USB")){
@@ -1640,7 +1642,7 @@ int main(int argc, char **argv){
             assert(th_null());
             null_home_weather("18\xC2\xB0" "C");
             assert(find_text(screen_get_root(SCR_HOME),"18C"));
-            if(scr==SCR_SAVER && !getenv("ZSAVER_IDLE")){
+            if(scr==SCR_SAVER && !getenv("ZSAVER_IDLE") && !(th_disco() && cfg_get_int("dlock_style",0)==1)){   /* Clock only shows no track */
                 lv_obj_t *sb=lv_obj_get_child(screen_get_root(SCR_SAVER),0);
                 assert(lv_obj_check_type(sb,&lv_image_class));
                 assert(lv_obj_has_flag(sb,LV_OBJ_FLAG_HIDDEN)==(cfg_get_int("null_music_background",0)==0));
@@ -2418,7 +2420,7 @@ int main(int argc, char **argv){
             int extra=atoi(page+9);
             for(int i=0;i<extra/10;i++){lv_tick_inc(10);lv_timer_handler();}
         }
-        if(scr==SCR_SAVER && !getenv("ZSAVER_IDLE")){
+        if(scr==SCR_SAVER && !getenv("ZSAVER_IDLE") && !(th_disco() && cfg_get_int("dlock_style",0)==1)){   /* Clock only shows no track */
             if(th_null()){assert_visible_icon_glyphs(screen_get_root(scr));assert(lv_font_get_line_height(lv_obj_get_style_text_font(find_text(screen_get_root(scr),"10:09"),0))>=70);}
             char saver_title[192];theme_upper(saver_title,sizeof saver_title,st.title);
             lv_obj_t *title=find_text(screen_get_root(scr),th_null()?saver_title:st.title), *artist=find_text(screen_get_root(scr),st.artist);

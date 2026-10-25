@@ -1531,9 +1531,9 @@ static void np_accent_from_track(const char *path){
 int ui_accent_is_static(void);   /* fork: a colour picked in Accent wins over the album colour everywhere */
 static _Atomic int g_zart;       /* Zune: now playing takes its accent from the album art (cfg zune_accent_art) */
 void ui_zune_art_sync(void){ g_zart = cfg_get_int("zune_accent_art", 0) ? 1 : 0; }
-static lv_color_t np_col(void){ if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY);
+static lv_color_t np_col(void){ if(theme_disco_kopi() && !ui_accent_is_static()) return TC(ACCENT_PRIMARY); if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY);
                                 if(th_braun()) return TC(ACCENT_PRIMARY); return ((g_np_poster || g_np_ring) && np_acc_set && !ui_accent_is_static()) ? np_acc : accent; }
-lv_color_t ui_media_accent(void){ if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY); if(th_simple())return TC(ACCENT_PRIMARY); if(th_braun()) return TC(ACCENT_PRIMARY); return (np_acc_set && !ui_accent_is_static()) ? np_acc : accent; }   /* theme.h: media surfaces (Braun: orange) */
+lv_color_t ui_media_accent(void){ if(theme_disco_kopi() && !ui_accent_is_static()) return TC(ACCENT_PRIMARY); if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY); if(th_simple())return TC(ACCENT_PRIMARY); if(th_braun()) return TC(ACCENT_PRIMARY); return (np_acc_set && !ui_accent_is_static()) ? np_acc : accent; }   /* theme.h: media surfaces (Braun: orange) */
 static void apply_accent(void)
 {
     if(th_zune()){                                    /* Zune media follows the selected/album accent. */
@@ -1585,6 +1585,7 @@ static void apply_accent(void)
  * light theme (hue kept; only the brightness moves, in a few small steps toward white / black) */
 lv_color_t ui_disco_fit_accent(lv_color_t c){
     if(th_simple())return TC(ACCENT_PRIMARY);
+    if(theme_disco_kopi() && !ui_accent_is_static()) return TC(ACCENT_PRIMARY);   /* Kopi Ungu: amethyst unless a colour was picked */
     if(!th_disco_family()) return c;
     int light = theme_variant();
     for(int k = 0; k < 12; k++){
@@ -2819,7 +2820,7 @@ static void *art_worker(void *arg)
                     job.pixels->sharp_ok=art_pixels_sharp(job.sharp,job.pixels->sharp)==0;
                     if(job.disco){
                         job.pixels->tinted=malloc(BDW*BDW*4);
-                        if(job.pixels->tinted)art_pixels_tint(job.pixels->backdrop,job.pixels->tinted,job.canvas,job.variant);
+                        if(job.pixels->tinted)art_pixels_tint_keep(job.pixels->backdrop,job.pixels->tinted,job.canvas,theme_backdrop_keep(job.variant));
                     }
                 }
             }

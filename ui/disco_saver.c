@@ -4,18 +4,27 @@
 /* The standby screen in the Disco theme: the Music screen at rest. The sharp cover stays, dimmed under a dark veil;
  * the status icons, a large clock and the weather sit in the middle, the track below, and the progress runs round
  * the rim as a thin arc (rainbow, accent or none, like Settings > Display > Progress Bar). Nothing moves between
- * minutes: it redraws once a minute. saver.c forwards here when th_disco_family(). */
+ * minutes: it redraws once a minute. saver.c forwards here when th_disco_family().
+ * Disco only (Settings > Display > Disco settings > Standby):
+ *   - Lock screen "Clock only" (cfg dlock_style 1): nothing but a large thin clock over the picture.
+ *   - Lock cover (cfg dlock_src): 0 the album, 1 a picture of the user's own from <SD>/CustomCover (lockcover.c),
+ *     2 plain black. The screen is built once; saver_show_sync() rebuilds it when either choice changed. */
 #include "screens.h"
 #include "theme.h"
 #include "config.h"
 #include "ipc.h"
+#include "lockcover.h"
 #include <string.h>
 #include <stdio.h>
 
 extern const lv_font_t font_weather16;
 const void *ui_current_sharp_img(void);
 const void *ui_current_backdrop_img(void);
-static const void *saver_art(void){if(!th_simple())return ui_current_sharp_img();int bg=simple_cfg_get_int("simple_background",0);return bg==1?ui_current_backdrop_img():bg==2?ui_current_sharp_img():NULL;}
+static int lock_minimal(void){ return th_disco() && cfg_get_int("dlock_style", 0) == 1; }
+static int lock_src(void){ int v = th_disco() ? cfg_get_int("dlock_src", 0) : 0; return v < 0 || v > 2 ? 0 : v; }
+static const void *saver_art(void){
+    if(th_disco()){ int src = lock_src(); if(src == 2) return NULL; if(src == 1){ lockcover_request(); return lockcover_img(); } }
+    if(!th_simple())return ui_current_sharp_img();int bg=simple_cfg_get_int("simple_background",0);return bg==1?ui_current_backdrop_img():bg==2?ui_current_sharp_img():NULL;}
 lv_color_t ui_current_accent(void);
 const lv_anim_t *disco_scroll5(void);
 
@@ -24,6 +33,9 @@ static lv_obj_t *g_img, *g_t[2], *g_wx[2], *g_ti[2], *g_ar[2], *g_status[2], *g_
 static lv_font_t g_wf,g_title_font,g_artist_font;
 static char g_last[16];
 static int g_batt=-1,g_charging,g_wifi,g_bt;
+LV_FONT_DECLARE(font_zune_light_96)
+static lv_obj_t *g_root, *g_veil, *g_big[2], *g_ampm[2];   /* Clock only: the big clock and its AM/PM */
+static int g_built_minimal = -1, g_built_src = -1;
 void dsaver_set_status(int batt,int charging,int wifi,int bt);
 
 static void pair(lv_obj_t *root, lv_obj_t **p, const lv_font_t *f, int w, int y, int dim){
@@ -40,8 +52,9 @@ static void pair(lv_obj_t *root, lv_obj_t **p, const lv_font_t *f, int w, int y,
 }
 static char g_cur[4][192];                                         /* the text as set, per pair (an ellipsis edits the label's copy) */
 static void ptext(lv_obj_t **p, const char *t){
-    if(!p[1] || !t) return;
+    if(!t) return;
     int slot = p == g_t ? 0 : p == g_wx ? 1 : p == g_ti ? 2 : 3;
+    if(!p[1]){ snprintf(g_cur[slot], sizeof g_cur[slot], "%s", t); return; }   /* not shown (Clock only): remember it */
     if(!strcmp(g_cur[slot], t)) return;
     snprintf(g_cur[slot], sizeof g_cur[slot], "%s", t);
     if(lv_obj_get_style_anim(p[1], 0)){ lv_label_set_long_mode(p[0], LV_LABEL_LONG_SCROLL_CIRCULAR); lv_label_set_long_mode(p[1], LV_LABEL_LONG_SCROLL_CIRCULAR); }
@@ -75,8 +88,55 @@ static void progress(void){                                       /* once a minu
         else { lv_obj_remove_flag(g_seg[i], LV_OBJ_FLAG_HIDDEN); lv_arc_set_angles(g_seg[i], a0, e); }
     }
 }
+static void cover_ready(void){                                   /* lockcover.c finished a decode */
+    if(!g_img || lock_src() != 1) return;
+    const void *src = lockcover_img();
+    if(src){ lv_image_set_src(g_img, src); lv_obj_remove_flag(g_img, LV_OBJ_FLAG_HIDDEN); } else lv_obj_add_flag(g_img, LV_OBJ_FLAG_HIDDEN);
+}
+static void big_label(lv_obj_t *root, lv_obj_t **p, const lv_font_t *f, int y, lv_opa_t opa){
+    for(int k = 0; k < 2; k++){                                   /* [0] a soft shadow, [1] the text */
+        lv_obj_t *l = lv_label_create(root); lv_label_set_text(l, "");
+        lv_obj_set_style_text_font(l, f, 0); lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_set_style_text_color(l, k ? TC(FIXED_MEDIA_WHITE) : TC(FIXED_MEDIA_BLACK), 0);
+        lv_obj_set_style_text_opa(l, k ? opa : 110, 0);
+        lv_obj_align(l, LV_ALIGN_CENTER, k ? 0 : 2, y + (k ? 0 : 2));
+        lv_obj_clear_flag(l, LV_OBJ_FLAG_CLICKABLE);
+        p[k] = l;
+    }
+}
+static void minimal_clock(const char *t){                         /* "10:09" big; " PM" small underneath */
+    if(!g_big[1] || !t) return;
+    char hm[16] = "", sfx[8] = ""; int n = 0;
+    while(t[n] && n < (int)sizeof hm - 1 && ((t[n] >= '0' && t[n] <= '9') || t[n] == ':')){ hm[n] = t[n]; n++; }
+    hm[n] = 0;
+    const char *r = t + n; while(*r == ' ') r++;
+    snprintf(sfx, sizeof sfx, "%s", r);
+    for(int k = 0; k < 2; k++){ lv_label_set_text(g_big[k], hm); lv_label_set_text(g_ampm[k], sfx); }
+}
 void dsaver_create(lv_obj_t *root){
     memset(g_cur, 0, sizeof g_cur);
+    g_root = root; g_veil = NULL;
+    g_t[0] = g_t[1] = g_wx[0] = g_wx[1] = g_ti[0] = g_ti[1] = g_ar[0] = g_ar[1] = g_status[0] = g_status[1] = NULL;
+    g_big[0] = g_big[1] = g_ampm[0] = g_ampm[1] = NULL; g_tr = NULL;
+    for(int i = 0; i < NSEG; i++) g_seg[i] = NULL;
+    g_built_minimal = lock_minimal(); g_built_src = lock_src();
+    lockcover_set_listener(cover_ready);
+    if(g_built_minimal){                                          /* Clock only: picture, a light veil, the time */
+        lv_obj_set_style_bg_color(root, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_image_src(root, NULL, 0);
+        g_img = lv_image_create(root); lv_obj_set_pos(g_img, 0, 0); lv_obj_clear_flag(g_img, LV_OBJ_FLAG_CLICKABLE);
+        const void *src = saver_art();
+        if(src) lv_image_set_src(g_img, src); else lv_obj_add_flag(g_img, LV_OBJ_FLAG_HIDDEN);
+        g_veil = lv_obj_create(root); lv_obj_remove_style_all(g_veil);
+        lv_obj_set_size(g_veil, 360, 360); lv_obj_set_style_bg_color(g_veil, TC(FIXED_MEDIA_BLACK), 0);
+        lv_obj_set_style_bg_opa(g_veil, g_built_src == 1 ? 90 : 150, 0);   /* your own picture stays bright */
+        lv_obj_clear_flag(g_veil, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        big_label(root, g_big, &font_zune_light_96, -8, 240);
+        big_label(root, g_ampm, TF(UI_20), 52, 190);
+        g_last[0] = 0;
+        minimal_clock("--:--");
+        return;
+    }
     static const uint32_t IRI[NSEG] = { 0xFF5AA0, 0xFFB45A, 0xFFF06A, 0x62F28C, 0x4AD8FF, 0xB36BFF };
     lv_obj_set_style_bg_color(root, th_simple()?TC(CANVAS):TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_image_src(root, NULL, 0);
@@ -116,6 +176,7 @@ void dsaver_set_status(int batt,int charging,int wifi,int bt){
     for(int k=0;k<2;k++)lv_label_set_text(g_status[k],text);
 }
 void dsaver_set_clock(const char *t){
+    if(g_big[1]){ if(t && strcmp(t, g_last)){ snprintf(g_last, sizeof g_last, "%s", t); minimal_clock(t); } return; }
     if(!g_t[1] || !t || !strcmp(t, g_last)) return;
     strncpy(g_last, t, sizeof g_last - 1); ptext(g_t, t); progress();
 }
@@ -136,4 +197,20 @@ void dsaver_set_track(const char *title, const char *artist){
         if(th_simple()){extern unsigned ui_art_revision(void);static unsigned revision;static const void*previous;static int seen;unsigned current=ui_art_revision();if(seen&&revision==current&&previous==src){if(screen_current()==SCR_SAVER)progress();return;}seen=1;revision=current;previous=src;}
         if(src){ lv_image_set_src(g_img, src); lv_obj_remove_flag(g_img, LV_OBJ_FLAG_HIDDEN); } else lv_obj_add_flag(g_img, LV_OBJ_FLAG_HIDDEN); }
     progress();
+}
+
+/* saver.c: the standby screen is about to show. Rebuild it if its Disco lock choices changed since it was built;
+ * the clock, weather and track are put back from what was last set. */
+void dsaver_show_sync(void){
+    if(!g_root || !th_disco()) return;
+    if(lock_src() == 1) lockcover_request();
+    if(g_built_minimal == lock_minimal() && g_built_src == lock_src()){ cover_ready(); return; }
+    char clk[16], wx[192], ti[192], ar[192];
+    snprintf(clk, sizeof clk, "%s", g_last); snprintf(wx, sizeof wx, "%s", g_cur[1]);
+    snprintf(ti, sizeof ti, "%s", g_cur[2]); snprintf(ar, sizeof ar, "%s", g_cur[3]);
+    lv_obj_clean(g_root);
+    dsaver_create(g_root);
+    if(clk[0]) dsaver_set_clock(clk);
+    if(wx[0]) ptext(g_wx, wx);
+    dsaver_set_track(ti, ar);
 }

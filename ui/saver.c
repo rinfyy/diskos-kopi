@@ -577,6 +577,7 @@ void saver_set_accent(lv_color_t c)
  * than waiting for the next clock tick (which is where style changes were applied). */
 void saver_show_sync(void)
 {
+    if(th_disco_family()){ void dsaver_show_sync(void); dsaver_show_sync(); return; }
     if(th_braun() || th_disco_family() || th_null() || th_zune()) return;
     int s = simple_cfg_get_int("saver_style", 0);
     if (s != g_style) { relayout(s); g_style = s; }

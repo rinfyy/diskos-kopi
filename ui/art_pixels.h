@@ -46,9 +46,9 @@ static inline int art_pixels_sharp(const char *path, uint8_t *dst){
     }
     fclose(f); return ok ? 0 : -1;
 }
-static inline void art_pixels_tint(const uint8_t *src, uint8_t *dst, uint32_t canvas, int light){
+/* keep: of 256, how much of the cover shows through the canvas wash */
+static inline void art_pixels_tint_keep(const uint8_t *src, uint8_t *dst, uint32_t canvas, int keep){
     int cb = canvas & 255, cg = (canvas >> 8) & 255, cr = (canvas >> 16) & 255;
-    int keep = light ? 84 : 112;
     for(int i = 0; i < 360 * 360; i++){
         const uint8_t *p = src + (size_t)i * 4; uint8_t *o = dst + (size_t)i * 4;
         o[0] = (uint8_t)((p[0] * keep + cb * (256 - keep)) >> 8);
@@ -56,5 +56,8 @@ static inline void art_pixels_tint(const uint8_t *src, uint8_t *dst, uint32_t ca
         o[2] = (uint8_t)((p[2] * keep + cr * (256 - keep)) >> 8);
         o[3] = 255;
     }
+}
+static inline void art_pixels_tint(const uint8_t *src, uint8_t *dst, uint32_t canvas, int light){
+    art_pixels_tint_keep(src, dst, canvas, light ? 84 : 112);
 }
 #endif

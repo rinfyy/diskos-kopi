@@ -9,6 +9,7 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"theme_auto",NULL,"Appearance","Automatic appearance"},
     {"outdoor",NULL,"Appearance","Outdoor mode"},
     {"null_palette",NULL,"Appearance","Colour scheme"},
+    {"disco_palette",NULL,"Appearance","Colour palette"},
     {"disco_sheen",NULL,"Appearance","Rim sheen"},
     {"disco_eq",NULL,"Appearance","Equalizer colours"},
     {"disco_vol",NULL,"Appearance","Volume colours"},
@@ -38,6 +39,9 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"imm_style",NULL,"Immersive","Immersive style"},
     {"imm_lyrics",NULL,"Immersive","Immersive lyrics"},
     {"saver_idx",NULL,"Standby","Screensaver delay"},
+    {"dlock_style",NULL,"Standby","Lock screen"},
+    {"dlock_src",NULL,"Standby","Lock cover"},
+    {NULL,apply_lock_next,"Standby","Picture"},
     {"screenoff_idx",NULL,"Standby","Screen-off delay"},
     {"saver_style",NULL,"Standby","Screensaver style"},
     {"disco_qs_style",NULL,"Quick settings","Layout"},
@@ -99,6 +103,7 @@ static const display_entry_t *display_entry(const setting_t *s){
 static int display_variant_hidden(const setting_t *s){
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"saver_style"))return 1;
     if(s->apply==apply_grp_zune&&!th_zune())return 1;
+    if(!th_disco()&&(s->apply==apply_lock_next||(s->cfg_key&&!strncmp(s->cfg_key,"dlock_",6))))return 1;
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
     if(s->cfg_key&&!th_zune()&&!strncmp(s->cfg_key,"zune_",5))return 1;
     if(s->cfg_key&&!th_zune()&&(!strcmp(s->cfg_key,"zune_nav_hold")||!strncmp(s->cfg_key,"zlock_",6)))return 1;
@@ -126,6 +131,7 @@ static const char *display_disabled_reason(const setting_t *s){
     if(!strcmp(k,"theme_auto") && !theme_auto_supported())return "Automatic light/dark switching is available in Disco, Ring and Braun.";
     if(!strcmp(k,"null_side"))return "Null keeps its navigation on the right.";
     if((!strcmp(k,"zlock_src") || !strcmp(k,"zlock_tint")) && !th_zune())return "This option belongs to the Zune lock screen.";
+    if(!strcmp(k,"disco_palette") && !th_disco())return "Colour palettes here are specific to Disco.";
     if(!strcmp(k,"null_palette") && !th_null())return "Colour schemes are specific to Null. Use light/dark and accent settings for this theme.";
     if(!strncmp(k,"null_",5) && !th_null())return "This option is available in Null.";
     if(!strcmp(k,"simple_background") && !th_simple())return "This theme uses its own artwork background.";

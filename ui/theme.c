@@ -548,6 +548,10 @@ static void fork_palettes_init(void){
 }
 /* Disco: the Ring palette re-tuned for text over the album cover (dark: white on a darkened cover; light: dark grey
  * on a lightened one). Surfaces are drawn translucent over the cover by disco.c; the accent defaults to cyan. */
+static int g_disco_pal;   /* 1 = Kopi Ungu (cfg disco_palette); read once at theme_init */
+/* Kopi Ungu washes the cover further toward its espresso / latte canvas so every album sits in the same mood. */
+int theme_disco_kopi(void){ return g_disco_pal && g_preset == THEME_PRESET_DISCO; }
+int theme_backdrop_keep(int light){ return (g_disco_pal && g_preset == THEME_PRESET_DISCO) ? 40 : (light ? 84 : 112); }
 static void disco_palettes_init(void){
     for(int v=0;v<2;v++){
         memcpy(FORK_DISCO[v], FORK_RING[v], sizeof FORK_DISCO[v]);
@@ -565,6 +569,38 @@ static void disco_palettes_init(void){
             p[THEME_CLR_SURFACE_SELECTED]=p[THEME_CLR_LIST_PRESSED]=0xDDE1E6;
             p[THEME_CLR_ACCENT_PRIMARY]=p[THEME_CLR_ACCENT_EMPHASIS]=p[THEME_CLR_ACCENT_IDLE]=0x0B8FAA;   /* cyan, darkened to read on light */
             p[THEME_CLR_ON_ACCENT]=0xFFFFFF;
+        }
+    }
+    /* Opt-in Disco palette (cfg disco_palette; 0 = the original cyan palette above, unchanged). 1 = "Kopi Ungu":
+     * espresso-brown canvas, dark plum surfaces, warm cream type and a muted amethyst accent; light = latte paper. */
+    g_disco_pal = cfg_get_int("disco_palette",0)==1;
+    if(g_disco_pal){
+        for(int v=0;v<2;v++){
+            uint32_t *p=FORK_DISCO[v];
+            if(!v){
+                p[THEME_CLR_CANVAS]=0x140E0C;p[THEME_CLR_SURFACE]=0x22161F;p[THEME_CLR_SURFACE_RAISED]=0x30202B;
+                p[THEME_CLR_SURFACE_STRONG]=0x3D2A36;p[THEME_CLR_SURFACE_SELECTED]=p[THEME_CLR_LIST_PRESSED]=0x3A2532;
+                p[THEME_CLR_SURFACE_PRESSED]=0x30202B;p[THEME_CLR_ART_PLACEHOLDER]=0x2A1C17;
+                p[THEME_CLR_BORDER]=0x2E211D;p[THEME_CLR_BORDER_STRONG]=0x4A3540;
+                p[THEME_CLR_CONTROL_TRACK]=p[THEME_CLR_CONTROL_TRACK_STRONG]=0x4A3540;
+                p[THEME_CLR_TEXT_PRIMARY]=0xF3E9DF;p[THEME_CLR_TEXT_SECONDARY]=0xC9B8AA;
+                p[THEME_CLR_TEXT_MUTED]=0xA8968A;p[THEME_CLR_TEXT_LYRICS]=0xDCCFC2;p[THEME_CLR_TEXT_DISABLED]=0x7A6A62;
+                p[THEME_CLR_ACCENT_PRIMARY]=p[THEME_CLR_ACCENT_EMPHASIS]=p[THEME_CLR_ACCENT_IDLE]=0xB89AD6;
+                p[THEME_CLR_ON_ACCENT]=0x140E0C;
+                p[THEME_CLR_TEXT_HINT]=p[THEME_CLR_TEXT_FOOTNOTE]=0x8E7D74;p[THEME_CLR_TEXT_SEPARATOR]=0x857168;
+                p[THEME_CLR_GRABBER]=p[THEME_CLR_SIGNAL_INACTIVE]=0x8E7A86;p[THEME_CLR_INPUT_CURSOR]=0xB89AD6;
+                p[THEME_CLR_SWITCH_KNOB]=0x140E0C;
+            } else {
+                p[THEME_CLR_CANVAS]=0xF2EAE1;p[THEME_CLR_SURFACE]=0xFAF5EF;p[THEME_CLR_SURFACE_RAISED]=0xE7DCD6;
+                p[THEME_CLR_SURFACE_SELECTED]=p[THEME_CLR_LIST_PRESSED]=0xE2D4DD;
+                p[THEME_CLR_CONTROL_TRACK]=0xCDBFC6;
+                p[THEME_CLR_TEXT_PRIMARY]=0x2A1C17;p[THEME_CLR_TEXT_SECONDARY]=0x52403A;
+                p[THEME_CLR_TEXT_MUTED]=0x5E4C45;p[THEME_CLR_TEXT_LYRICS]=0x3E2E28;
+                p[THEME_CLR_ACCENT_PRIMARY]=p[THEME_CLR_ACCENT_EMPHASIS]=p[THEME_CLR_ACCENT_IDLE]=0x6B3F8E;
+                p[THEME_CLR_ON_ACCENT]=0xFFFFFF;
+                p[THEME_CLR_TEXT_DISABLED]=0x8A786F;p[THEME_CLR_TEXT_HINT]=p[THEME_CLR_TEXT_SEPARATOR]=0x7E6C64;
+            }
+            p[THEME_CLR_SWITCH_ON]=p[THEME_CLR_CONTROL_FILL]=p[THEME_CLR_WIDGET_PRIMARY]=p[THEME_CLR_ACCENT_PRIMARY];
         }
     }
 }
@@ -1033,6 +1069,11 @@ lv_color_t theme_accent_from_rgb(uint32_t rgb){
     rgb &= 0xFFFFFFu;
     if((g_custom_on && g_custom_fixed_accent) || (g_def && g_def->fixed_accent))
         return lv_color_hex(g_pal[THEME_CLR_ACCENT_PRIMARY]);                  /* the theme's one accent */
+    {   /* Kopi Ungu: album-derived accents become the palette's amethyst; a colour the user picked still wins */
+        extern int ui_accent_is_static(void);
+        if(g_disco_pal && g_preset == THEME_PRESET_DISCO && !ui_accent_is_static())
+            return lv_color_hex(g_pal[THEME_CLR_ACCENT_PRIMARY]);
+    }
     if(!g_variant && g_preset == 0) return lv_color_hex(rgb);
     uint32_t bg1 = g_pal[THEME_CLR_CANVAS], bg2 = g_pal[THEME_CLR_SURFACE], on = g_pal[THEME_CLR_ON_ACCENT];
     int lighten = !g_variant;
