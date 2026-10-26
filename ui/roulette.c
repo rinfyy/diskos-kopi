@@ -90,6 +90,34 @@ static lv_obj_t *dot(lv_obj_t *parent, int d){
 }
 static void land_art(const char *name, int boom){
     lv_obj_clean(g_land_art);
+    if(boom == 4){                                               /* Echo: four quarter-pads, one lit */
+        for(int i = 0; i < 4; i++){
+            lv_obj_t *b = lv_obj_create(g_land_art); lv_obj_remove_style_all(b);
+            lv_obj_set_size(b, 36, 36); lv_obj_set_pos(b, i % 2 ? 66 : 26, i / 2 ? 66 : 26);
+            lv_obj_set_style_radius(b, 10, 0);
+            lv_obj_set_style_bg_color(b, i == 1 ? TC(ACCENT_PRIMARY) : TC(TEXT_SECONDARY), 0);
+            lv_obj_set_style_bg_opa(b, i == 1 ? LV_OPA_COVER : LV_OPA_40, 0);
+            lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        }
+        lv_obj_t *hole = dot(g_land_art, 26); lv_obj_align(hole, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_bg_color(hole, TC(SURFACE), 0); lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
+        return;
+    }
+    if(boom == 5){                                               /* Glide: the orb between two pillars */
+        static const signed char P[2][4] = { { 78, -4, 22, 44 }, { 78, 76, 22, 56 } };
+        for(int i = 0; i < 2; i++){
+            lv_obj_t *b = lv_obj_create(g_land_art); lv_obj_remove_style_all(b);
+            lv_obj_set_size(b, P[i][2], P[i][3]); lv_obj_set_pos(b, P[i][0], P[i][1]);
+            lv_obj_set_style_radius(b, 8, 0); lv_obj_set_style_bg_color(b, TC(ACCENT_PRIMARY), 0);
+            lv_obj_set_style_bg_opa(b, LV_OPA_70, 0);
+            lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        }
+        lv_obj_t *glow = dot(g_land_art, 34); lv_obj_align(glow, LV_ALIGN_CENTER, -22, 2);
+        lv_obj_set_style_bg_color(glow, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(glow, LV_OPA_30, 0);
+        lv_obj_t *orb = dot(g_land_art, 20); lv_obj_align(orb, LV_ALIGN_CENTER, -22, 2);
+        lv_obj_set_style_bg_color(orb, TC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(orb, LV_OPA_COVER, 0);
+        return;
+    }
     if(boom == 3){                                               /* Snake: a short bent body, its head and a bite */
         static const signed char P[6][4] = { { 24, 70, 34, 10 }, { 48, 46, 10, 34 }, { 48, 46, 34, 10 },
                                              { 72, 46, 10, 30 }, { 72, 66, 26, 10 }, { 92, 62, 14, 14 } };
@@ -187,7 +215,8 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
         screen_show(SCR_APPLAND);return;
     }
     land_art(name, !strcmp(g_land_exec, APP_BUILTIN_BOOMSHINE) ? 1 : !strcmp(g_land_exec, APP_BUILTIN_STATS) ? 2 :
-                   !strcmp(g_land_exec, APP_BUILTIN_SNAKE) ? 3 : 0);
+                   !strcmp(g_land_exec, APP_BUILTIN_SNAKE) ? 3 : !strcmp(g_land_exec, APP_BUILTIN_ECHO) ? 4 :
+                   !strcmp(g_land_exec, APP_BUILTIN_GLIDE) ? 5 : 0);
     if(g_land_icon[0] && strncmp(g_land_exec, "builtin:", 8) && !access(g_land_icon, R_OK)){   /* the app's own icon */
         static lv_image_dsc_t *ic;
         lv_image_dsc_t *nw = app_icon_load(g_land_icon, 88);
@@ -202,6 +231,12 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
     lv_label_set_text(g_land_btn_l, button && button[0] ? button : "Launch");
     lv_obj_center(g_land_btn_l);
     screen_show(SCR_APPLAND);
+}
+void echo_landing(void){
+    applanding_show("Echo", "Watch. Then repeat.", "Repeat the lit pads.", "Play", APP_BUILTIN_ECHO);
+}
+void glide_landing(void){
+    applanding_show("Glide", "One tap to rise.", "Fly through the gaps.", "Play", APP_BUILTIN_GLIDE);
 }
 void snake_landing(void){
     applanding_show("Snake", "Eat. Grow. Don't bite.",

@@ -48,6 +48,10 @@ static void scan(void){
     g_nall = 0;
     add_builtin("boomshine", "Boomshine", "One tap. A chain reaction.", "Set off a single blast and\ncatch as many dots as you can.",
                 "Play", APP_BUILTIN_BOOMSHINE, "@boom");
+    add_builtin("builtin:echo", "Echo", "Watch. Then repeat.", "Four pads light up in turn.\nTap them back in order.",
+                "Play", APP_BUILTIN_ECHO, NULL);
+    add_builtin("builtin:glide", "Glide", "One tap to rise.", "Fly the orb through the gaps.\nThe edge is the wall.",
+                "Play", APP_BUILTIN_GLIDE, NULL);
     add_builtin("builtin:snake", "Snake", "Eat. Grow. Don't bite.", "Swipe or tap to turn.\nHow long can you get?",
                 "Play", APP_BUILTIN_SNAKE, NULL);
     add_builtin("builtin:stats", "Listening Stats", "Your music, in numbers.", "Top artists, albums and songs,\nby week, month or year.",

@@ -236,7 +236,11 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
 void boomshine_landing(void);
 #define APP_BUILTIN_BOOMSHINE "builtin:boomshine"   /* app_launch() target for the game built into mq_ui */
 #define APP_BUILTIN_SNAKE "builtin:snake"           /* the Snake game, also built into mq_ui (mq_ui --snake) */
+#define APP_BUILTIN_ECHO  "builtin:echo"            /* Echo, the memory game (mq_ui --echo, games/echo.c) */
+#define APP_BUILTIN_GLIDE "builtin:glide"           /* Glide, the one-tap flying game (mq_ui --glide, games/glide.c) */
 void snake_landing(void);
+void echo_landing(void);
+void glide_landing(void);
 #define APP_BUILTIN_SPHERE "builtin:songsphere"     /* SongSphere: built in since 2.2.0 (sphere_ui.c) */
 #define APP_BUILTIN_STATS "builtin:stats"           /* Listening Stats: a screen of mq_ui, opened from its landing page */
 void stats_create(lv_obj_t *root);

@@ -1403,6 +1403,7 @@ int main(int argc, char **argv){
         screen_show(scr);
         if(th_zune())zune_status_refresh();
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
+        if(getenv("GAME_LANDING")){if(!strcmp(getenv("GAME_LANDING"),"echo"))echo_landing();else glide_landing();nav_wait(60);}
         if(getenv("IMAGE_VIEW")){   /* "dir|a.jpg,b.png,..|index|fill": open the picture viewer and wait for the decode */
             char spec[1024];snprintf(spec,sizeof spec,"%s",getenv("IMAGE_VIEW"));char *dir=strtok(spec,"|"),*list=strtok(NULL,"|"),*ix=strtok(NULL,"|"),*fl=strtok(NULL,"|");
             char *names[64];int n=0;for(char *t=strtok(list,",");t&&n<64;t=strtok(NULL,","))names[n++]=t;
