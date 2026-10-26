@@ -13,6 +13,7 @@
 #include "musicdb.h"
 #include "scanner.h"
 #include "multipick.h"
+#include "imageview.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,6 +64,8 @@
 #define FB_K_AUDIO 0
 #define FB_K_ISO   1     /* SACD image the library has IS_ISO rows for: opens its tracks */
 #define FB_K_CUE   2     /* .cue sheet: opens the tracks of the file(s) it names */
+#define FB_K_IMAGE 3     /* JPEG / PNG / BMP / GIF: opens the picture viewer (imageview.c) */
+#define FB_K_OTHER 4     /* any other file: listed so the folder shows everything; hold for file operations */
 typedef struct {
     char name[FB_NAMELEN];
     int  is_dir;
@@ -81,6 +84,10 @@ static int         g_fb_i;                 /* next entry index to render */
 static int fb_has_ext(const char *name, const char *ext){
     size_t nl = strlen(name), el = strlen(ext);
     return nl > el && !strcasecmp(name + nl - el, ext);
+}
+static int fb_is_image(const char *name){
+    return name[0] != '.' && (fb_has_ext(name, ".jpg") || fb_has_ext(name, ".jpeg") || fb_has_ext(name, ".png")
+                              || fb_has_ext(name, ".bmp") || fb_has_ext(name, ".gif"));
 }
 static int fb_is_audio(const char *name){
     /* mirror scanner.c is_audio()'s music set (SONG-resident, folder-playable). .m4b is intentionally
@@ -122,7 +129,7 @@ static void fb_scan_leased(void){
     for(int pass = 0; pass < 2; pass++){
         for(errno = 0; (e = readdir(d)); errno = 0){
             const char *nm = e->d_name;
-            if(nm[0] == '.' && (nm[1] == 0 || (nm[1] == '.' && nm[2] == 0))) continue;  /* skip . and .. */
+            if(nm[0] == '.') continue;                       /* . and .., and hidden files (macOS "._x", ".Trashes") */
             if(g_nent >= FB_MAX_ENTRIES) break;
             if(g_nent >= g_ent_cap){                          /* grow the entry array as needed */
                 int nc = g_ent_cap ? g_ent_cap * 2 : 128;
@@ -147,14 +154,14 @@ static void fb_scan_leased(void){
             }
             if(is_dir != (pass == 0)) continue;               /* pass 0 = dirs only, pass 1 = files only */
             int kind = FB_K_AUDIO;
-            if(!is_dir && !fb_is_audio(nm)){                  /* files: audio we can play, indexed .iso images, .cue sheets */
+            if(!is_dir && !fb_is_audio(nm)){                  /* audio we can play, .iso / .cue, pictures, other files */
                 if(fb_has_ext(nm, ".cue")) kind = FB_K_CUE;
                 else if(fb_has_ext(nm, ".iso")){
                     char ip[FB_MAXPATH];
                     int pn = snprintf(ip, sizeof ip, "%s/%s", g_dir, nm);
-                    if(pn <= 0 || pn >= (int)sizeof ip || mdb_subtrack_count(ip, 1) <= 0) continue;
-                    kind = FB_K_ISO;
-                } else continue;
+                    kind = (pn > 0 && pn < (int)sizeof ip && mdb_subtrack_count(ip, 1) > 0) ? FB_K_ISO : FB_K_OTHER;
+                } else if(fb_is_image(nm)) kind = FB_K_IMAGE;
+                else kind = FB_K_OTHER;
             }
 
             fb_entry_t *slot = &g_ent[g_nent];
@@ -272,7 +279,8 @@ static void fb_add_row(int i){
         lv_obj_add_event_cb(r, fb_long_cb, LV_EVENT_LONG_PRESSED, (void *)(intptr_t)i);
 
         lv_obj_t *ic = lv_label_create(r);
-        lv_label_set_text(ic, en->is_dir ? LV_SYMBOL_DIRECTORY : LV_SYMBOL_AUDIO);
+        lv_label_set_text(ic, en->is_dir ? LV_SYMBOL_DIRECTORY : en->kind == FB_K_IMAGE ? LV_SYMBOL_IMAGE
+                              : en->kind == FB_K_OTHER ? LV_SYMBOL_FILE : LV_SYMBOL_AUDIO);
         lv_obj_set_pos(ic, 12, 17);
         lv_obj_set_style_text_font(ic, TF(UI_16), 0);
         lv_obj_set_style_text_color(ic, en->is_dir ? ui_current_accent() : TC(TEXT_DISABLED), 0);
@@ -295,7 +303,10 @@ static void fb_add_row(int i){
             const char *e = strrchr(en->name, '.'); char fmt[8] = "";
             if(e){ int k = 0; for(e++; *e && k < 6; e++) fmt[k++] = (char)((*e >= 'a' && *e <= 'z') ? *e - 32 : *e); fmt[k] = 0; }
             lv_obj_t *dt = lv_label_create(r);
-            lv_label_set_text(dt, fmt[0] ? fmt : "Audio");
+            char det[24];
+            if(en->kind == FB_K_IMAGE) snprintf(det, sizeof det, "%s  Picture", fmt);
+            else snprintf(det, sizeof det, "%s", fmt[0] ? fmt : en->kind == FB_K_OTHER ? "File" : "Audio");
+            lv_label_set_text(dt, det);
             lv_obj_set_pos(dt, 40, 30);
             lv_obj_set_style_text_font(dt, TH_F_DETAIL, 0);
             lv_obj_set_style_text_color(dt, TC(TEXT_SECONDARY), 0);
@@ -341,7 +352,7 @@ static void fb_zcrumb(void){
 }
 static void fb_zplay_cb(lv_event_t *e){
     (void)e;
-    for(int i = 0; i < g_nent; i++) if(!g_ent[i].is_dir){ fb_play(g_ent[i].name); return; }
+    for(int i = 0; i < g_nent; i++) if(!g_ent[i].is_dir && g_ent[i].kind == FB_K_AUDIO){ fb_play(g_ent[i].name); return; }
     ui_toast("No songs in this folder");
 }
 
@@ -456,12 +467,25 @@ static void fb_play_iso(const char *name){
     fb_play_tracks(paths, 1);
 }
 
+/* a picture: open the viewer with every picture of this folder, in the order listed */
+static void fb_view(int at){
+    int n = 0, idx = 0;
+    for(int i = 0; i < g_nent; i++) if(!g_ent[i].is_dir && g_ent[i].kind == FB_K_IMAGE) n++;
+    char **v = malloc(sizeof *v * (size_t)(n ? n : 1));
+    if(!v){ ui_toast("Not enough memory"); return; }
+    n = 0;
+    for(int i = 0; i < g_nent; i++) if(!g_ent[i].is_dir && g_ent[i].kind == FB_K_IMAGE){ if(i == at) idx = n; v[n++] = g_ent[i].name; }
+    if(imageview_open(g_dir, v, n, idx) != 0) ui_toast("Couldn't open the picture");
+    free(v);
+}
 static void fb_row_cb(lv_event_t *e){
     if(lv_event_get_code(e) != LV_EVENT_SHORT_CLICKED) return;
     int i = (int)(intptr_t)lv_event_get_user_data(e);
     if(i < 0 || i >= g_nent) return;
     fb_entry_t *en = &g_ent[i];
     if(en->is_dir) fb_descend(en->name);
+    else if(en->kind == FB_K_IMAGE) fb_view(i);
+    else if(en->kind == FB_K_OTHER) ui_toast("Can't open this type of file - hold for file actions");
     else if(en->kind == FB_K_ISO) fb_play_iso(en->name);
     else if(en->kind == FB_K_CUE) fb_play_sheet(en->name);
     else           fb_play(en->name);

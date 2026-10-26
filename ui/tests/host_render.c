@@ -15,6 +15,7 @@
 #include "lvgl/src/misc/lv_timer_private.h"
 #include "null_theme.h"
 #include "screens.h"
+#include "imageview.h"
 #include "onboarding.h"
 #include "quicksettings.h"
 lv_obj_t *quicksettings_test_button(int slot);
@@ -1402,6 +1403,12 @@ int main(int argc, char **argv){
         screen_show(scr);
         if(th_zune())zune_status_refresh();
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
+        if(getenv("IMAGE_VIEW")){   /* "dir|a.jpg,b.png,..|index|fill": open the picture viewer and wait for the decode */
+            char spec[1024];snprintf(spec,sizeof spec,"%s",getenv("IMAGE_VIEW"));char *dir=strtok(spec,"|"),*list=strtok(NULL,"|"),*ix=strtok(NULL,"|"),*fl=strtok(NULL,"|");
+            char *names[64];int n=0;for(char *t=strtok(list,",");t&&n<64;t=strtok(NULL,","))names[n++]=t;
+            assert(imageview_open(dir,names,n,ix?atoi(ix):0)==0);assert(imageview_test_wait(8000));
+            if(fl&&atoi(fl))imageview_test_fill(1);nav_wait(50);
+        }
         if(getenv("SAVER_WAIT_MS")){for(int w=0;w<atoi(getenv("SAVER_WAIT_MS"));w+=50){nav_wait(50);usleep(50000);}}   /* let background decodes (lock cover) land */
         if(getenv("FB_FIXTURE")){folderbrowser_open();nav_wait(500);if(getenv("FB_SCROLL")){lv_obj_t *list=NULL;lv_obj_t*r=screen_get_root(SCR_FOLDER);for(uint32_t i=0;i<lv_obj_get_child_count(r);i++){lv_obj_t*c=lv_obj_get_child(r,i);if(lv_obj_get_scroll_dir(c)==LV_DIR_VER&&lv_obj_get_y(c)==124){list=c;break;}}assert(list);lv_obj_scroll_to_y(list,atoi(getenv("FB_SCROLL")),LV_ANIM_OFF);nav_wait(500);}}
         if(getenv("ZUNE_CONFIRM")){void system_preview_confirmation(int);system_preview_confirmation(atoi(getenv("ZUNE_CONFIRM")));nav_wait(150);}

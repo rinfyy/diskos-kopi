@@ -16,6 +16,8 @@
  * for this request; outputs are created exclusively (never overwritten) and the caller validates them.
  *
  *   diskos-artdec poster <input> <outfile> writes 364x364 top-down BGRA for the fork immersive screen
+ *   diskos-artdec view   <input> <outfile> writes 360x360 top-down BGRA for the picture viewer: the picture keeps its
+ *                                          shape, fitted inside the square and centred; the unused border has alpha 0
  *
  * Exit status: 0 done, 2 usage, 3 no picture, 4 unsupported picture format, 5 malformed input, 6 over a resource
  * limit, 7 I/O error. Nothing is written unless all outputs were produced; a partial output is removed.
@@ -527,18 +529,18 @@ static contrib_t *make_contrib(int src, int dst, int box){
 }
 static void free_contrib(contrib_t *c){ if(c){ bfree(c[0].w); bfree(c); } }
 
-/* resample RGB8 src (sw x sh) to an N x N RGB image in 8.8 fixed point; NULL on budget failure */
-static uint16_t *resample(const unsigned char *src, int sw, int sh, int N, int box){
-    contrib_t *cx = make_contrib(sw, N, box), *cy = make_contrib(sh, N, box);
+/* resample RGB8 src (sw x sh) to a DW x DH RGB image in 8.8 fixed point; NULL on budget failure */
+static uint16_t *resample_rect(const unsigned char *src, int sw, int sh, int DW, int DH, int box){
+    contrib_t *cx = make_contrib(sw, DW, box), *cy = make_contrib(sh, DH, box);
     uint16_t *tmp = NULL, *out = NULL;
     if(!cx || !cy) goto fail;
-    tmp = bmalloc(sizeof(uint16_t) * (size_t)sh * N * 3);       /* horizontal pass: sh rows x N, 8.8 */
-    out = bmalloc(sizeof(uint16_t) * (size_t)N * N * 3);
+    tmp = bmalloc(sizeof(uint16_t) * (size_t)sh * DW * 3);      /* horizontal pass: sh rows x DW, 8.8 */
+    out = bmalloc(sizeof(uint16_t) * (size_t)DW * DH * 3);
     if(!tmp || !out) goto fail;
     for(int y = 0; y < sh; y++){
         const unsigned char *row = src + (size_t)y * sw * 3;
-        uint16_t *t = tmp + (size_t)y * N * 3;
-        for(int x = 0; x < N; x++){
+        uint16_t *t = tmp + (size_t)y * DW * 3;
+        for(int x = 0; x < DW; x++){
             uint32_t r = 0, g = 0, b = 0;                        /* <= 255 * WSUM: fits */
             const unsigned char *p = row + (size_t)cx[x].first * 3;
             for(int k = 0; k < cx[x].count; k++, p += 3){
@@ -550,11 +552,11 @@ static uint16_t *resample(const unsigned char *src, int sw, int sh, int N, int b
             t[x * 3 + 2] = (uint16_t)((b + (1 << (WBITS - 9))) >> (WBITS - 8));
         }
     }
-    for(int y = 0; y < N; y++){
-        uint16_t *o = out + (size_t)y * N * 3;
-        for(int x = 0; x < N * 3; x++){
+    for(int y = 0; y < DH; y++){
+        uint16_t *o = out + (size_t)y * DW * 3;
+        for(int x = 0; x < DW * 3; x++){
             uint32_t v = 0;                                      /* <= 65280 * WSUM < 2^31 */
-            for(int k = 0; k < cy[y].count; k++) v += (uint32_t)cy[y].w[k] * tmp[(size_t)(cy[y].first + k) * N * 3 + x];
+            for(int k = 0; k < cy[y].count; k++) v += (uint32_t)cy[y].w[k] * tmp[(size_t)(cy[y].first + k) * DW * 3 + x];
             o[x] = (uint16_t)((v + (WSUM / 2)) >> WBITS);
         }
     }
@@ -564,6 +566,7 @@ fail:
     bfree(tmp); bfree(out); free_contrib(cx); free_contrib(cy);
     return NULL;
 }
+static uint16_t *resample(const unsigned char *src, int sw, int sh, int N, int box){ return resample_rect(src, sw, sh, N, N, box); }
 
 /* apply EXIF orientation to an N x N image (square, so dimensions do not change) */
 static int orient(uint16_t **img, int N, int o){
@@ -582,6 +585,29 @@ static int orient(uint16_t **img, int N, int o){
         default: sx = N - 1 - y; sy = x; break;              /* 8 */
         }
         memcpy(dst + ((size_t)y * N + x) * 3, src + ((size_t)sy * N + sx) * 3, sizeof(uint16_t) * 3);
+    }
+    bfree(src); *img = dst;
+    return 0;
+}
+
+/* apply EXIF orientation to a w x h image; the result is w x h (o 1-4) or h x w (o 5-8) */
+static int orient_rect(uint16_t **img, int w, int h, int o){
+    if(o <= 1) return 0;
+    int W = o >= 5 ? h : w, H = o >= 5 ? w : h;
+    uint16_t *src = *img, *dst = bmalloc(sizeof(uint16_t) * (size_t)w * h * 3);
+    if(!dst) return -1;
+    for(int y = 0; y < H; y++) for(int x = 0; x < W; x++){
+        int sx, sy;                                          /* displayed (x,y) comes from stored (sx,sy) */
+        switch(o){
+        case 2: sx = w - 1 - x; sy = y; break;
+        case 3: sx = w - 1 - x; sy = h - 1 - y; break;
+        case 4: sx = x; sy = h - 1 - y; break;
+        case 5: sx = y; sy = x; break;
+        case 6: sx = y; sy = h - 1 - x; break;
+        case 7: sx = w - 1 - y; sy = h - 1 - x; break;
+        default: sx = w - 1 - y; sy = x; break;              /* 8 */
+        }
+        memcpy(dst + ((size_t)y * W + x) * 3, src + ((size_t)sy * w + sx) * 3, sizeof(uint16_t) * 3);
     }
     bfree(src); *img = dst;
     return 0;
@@ -731,6 +757,39 @@ done:
     return rc;
 }
 
+/* Picture viewer: fit the (oriented) picture inside N x N keeping its shape, centred; border alpha 0. */
+static int make_view(const pic_t *p, int N, const char *path){
+    int o = p->orient >= 1 && p->orient <= 8 ? p->orient : 1;
+    int64_t dw0 = o >= 5 ? p->h : p->w, dh0 = o >= 5 ? p->w : p->h;   /* displayed size */
+    int DW, DH;
+    if(dw0 >= dh0){ DW = N; DH = (int)((dh0 * N + dw0 / 2) / dw0); }
+    else          { DH = N; DW = (int)((dw0 * N + dh0 / 2) / dh0); }
+    if(DW < 1) DW = 1;
+    if(DH < 1) DH = 1;
+    int tw = o >= 5 ? DH : DW, th = o >= 5 ? DW : DH;           /* the same box in stored orientation */
+    uint16_t *img = resample_rect(p->rgb, p->w, p->h, tw, th, 1);
+    if(!img) return ST_LIMIT;
+    if(orient_rect(&img, tw, th, o)){ bfree(img); return ST_LIMIT; }
+    unsigned char *buf = bmalloc((size_t)N * N * 4);
+    if(!buf){ bfree(img); return ST_LIMIT; }
+    memset(buf, 0, (size_t)N * N * 4);
+    int ox = (N - DW) / 2, oy = (N - DH) / 2;
+    for(int y = 0; y < DH; y++) for(int x = 0; x < DW; x++){
+        const uint16_t *s = img + ((size_t)y * DW + x) * 3;
+        unsigned char *d = buf + ((size_t)(y + oy) * N + (x + ox)) * 4;
+        d[0] = px8(s[2]); d[1] = px8(s[1]); d[2] = px8(s[0]); d[3] = 255;
+    }
+    bfree(img);
+    int rc = ST_IO, fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if(fd >= 0){
+        if(write_all(fd, buf, (size_t)N * N * 4) == 0) rc = ST_OK;
+        if(close(fd) != 0) rc = ST_IO;
+        if(rc != ST_OK) unlink(path);
+    }
+    bfree(buf);
+    return rc;
+}
+
 static int make(const pic_t *p, int N, int box, int blurred, uint16_t **res){
     uint16_t *img = resample(p->rgb, p->w, p->h, N, box);
     if(!img) return ST_LIMIT;
@@ -814,7 +873,8 @@ int main(int argc, char **argv){
     int soft = !strcmp(argv[1],"art-soft");
     int saver = !strcmp(argv[1], "saver");
     int poster = !strcmp(argv[1], "poster");
-    if(!roulette && !saver && !poster && !soft && strcmp(argv[1], "art")) return ST_USAGE;
+    int view = !strcmp(argv[1], "view");
+    if(!roulette && !saver && !poster && !soft && !view && strcmp(argv[1], "art")) return ST_USAGE;
 #ifndef ARTDEC_INPROC
     if(limits()) return ST_LIMIT;                             /* in-process: the budget above still applies */
 #endif
@@ -863,6 +923,11 @@ int main(int argc, char **argv){
     free_tags();                                              /* compressed bytes no longer needed */
 
     int rc = ST_OK;
+    if(view){
+        rc = make_view(&pic, 360, argv[3]);
+        stbi_image_free(pic.rgb);
+        return rc;
+    }
     if(saver || poster || roulette){
         int size = roulette ? 224 : poster ? 364 : 360;
         uint16_t *img = NULL;

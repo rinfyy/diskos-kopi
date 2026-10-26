@@ -165,6 +165,7 @@ void art_kill_all(void){
  * 5 malformed, 6 over a limit, 7 I/O), or -1 when it was killed, cancelled, timed out or never started. Lets a caller
  * tell "this picture cannot be decoded" from "this attempt was interrupted" - the return value can't. */
 static __thread int t_art_exit = -1;
+static __thread const char *t_raw_mode;   /* art_make_view: "view" instead of saver/poster for a raw run */
 int art_last_exit(void){ return t_art_exit; }
 static int art_run_helper(const char *input, const char *saver_raw, const char *cover_bmp,
                     const char *thumb_bmp, const char *backdrop_bmp, int cancellable, unsigned gen0,
@@ -181,7 +182,7 @@ static int art_run_helper(const char *input, const char *saver_raw, const char *
     snprintf(sv, sizeof sv, "%s/v.bgra", stage);
     /* the same arguments the standalone diskos-artdec takes */
     char *argv_art[] = { "diskos-artdec", th_simple()?"art-soft":"art", (char *)input, stage, NULL };
-    char *argv_sav[] = { "diskos-artdec", raw_size == 364 ? "poster" : "saver", (char *)input, sv, NULL };
+    char *argv_sav[] = { "diskos-artdec", t_raw_mode ? (char *)t_raw_mode : raw_size == 364 ? "poster" : "saver", (char *)input, sv, NULL };
     char **argv = saver_raw ? argv_sav : argv_art;
     /* The decoder runs IN this thread (artdec_inproc.c): no child process, no fork, no slot to leak. A skip or an
      * SD revocation before it starts stops it here; one that lands while it runs is honoured just below, before
@@ -330,6 +331,18 @@ static int art_make_raw(const char *track, const char *out_raw, int64_t deadline
     return r == 0 ? 0 : -1;
 }
 
+/* Picture viewer: one picture file (never a sidecar stand-in), shape kept, 360x360 BGRA with a transparent border.
+ * Same admission, revocation, staging and deadline rules as the covers. */
+int art_make_view(const char *picture, const char *out_raw, int64_t deadline_ms){
+    unsigned kill0;
+    pthread_mutex_lock(&g_pid_mu); art_reap_leftovers_locked(); kill0 = g_kill_gen; pthread_mutex_unlock(&g_pid_mu);
+    if(!sd_io_begin()) return -1;
+    t_kill0 = kill0; t_kill_armed = 1; t_raw_mode = "view";
+    int r = art_run_helper(picture, out_raw, NULL, NULL, NULL, 0, 0, deadline_ms, 360);
+    t_raw_mode = NULL; t_kill_armed = 0;
+    sd_io_end();
+    return r == 0 ? 0 : -1;
+}
 /* Both sharp-cover clients share the same admission, revocation, staging and deadline rules. */
 int art_make_saver(const char *track, const char *out_raw, int64_t deadline_ms){
     return art_make_raw(track, out_raw, deadline_ms, 360, 0, 0);

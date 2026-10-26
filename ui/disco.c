@@ -234,7 +234,7 @@ static lv_image_dsc_t g_bd_dsc;
 static int g_bd_ok;
 static lv_obj_t *g_parent;
 static int no_backdrop(int which){
-    return which == SCR_HOME || which == SCR_NOWPLAYING || which == SCR_SAVER || which == SCR_QUICK || which == SCR_SPHERE;   /* SongSphere: its ball is drawn on the plain canvas */
+    return which == SCR_HOME || which == SCR_NOWPLAYING || which == SCR_SAVER || which == SCR_QUICK || which == SCR_SPHERE || which == SCR_IMAGE;   /* SongSphere: its ball is drawn on the plain canvas */
 }
 static void backdrop_apply(void){
     for(int i = 0; i < SCR_COUNT; i++){

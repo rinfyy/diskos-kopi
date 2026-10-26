@@ -409,6 +409,7 @@ void screens_init(void)
     s_roots[SCR_APPPICK]   = screen_make_root(parent);
     s_roots[SCR_SPHERE]    = screen_make_root(parent);
     s_roots[SCR_SHELF] = screen_make_root(parent);
+    s_roots[SCR_IMAGE] = screen_make_root(parent);
     s_roots[SCR_UPNEXT] = screen_make_root(parent);
     s_roots[SCR_DATETIME] = screen_make_root(parent);
 
@@ -460,6 +461,7 @@ void screens_init(void)
     modes_create(s_roots[SCR_WORKMODE]);
     debug_create(s_roots[SCR_DEBUG]);
     folderbrowser_create(s_roots[SCR_FOLDER]);
+    { void imageview_create(lv_obj_t *); imageview_create(s_roots[SCR_IMAGE]); }
     books_create(s_roots[SCR_BOOKS]);
     chapters_create(s_roots[SCR_CHAPTERS]);
     upnext_create(s_roots[SCR_UPNEXT]);

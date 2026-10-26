@@ -29,4 +29,6 @@ void art_sidecar_signature(const char *track, uint64_t *h);
 int art_make_saver(const char *track, const char *out_raw, int64_t deadline_ms);   /* CLOCK_MONOTONIC ms */
 /* Fork sharp cover: 364x364 BGRA, skip-cancellable. Worker threads only. */
 int art_make_poster(const char *track, const char *out_raw, unsigned gen0);
+/* Picture viewer: 360x360 BGRA of a JPEG/PNG/BMP/GIF file, shape kept, border alpha 0. Worker threads only. */
+int art_make_view(const char *picture, const char *out_raw, int64_t deadline_ms);
 #endif
