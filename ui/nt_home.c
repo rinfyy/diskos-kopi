@@ -458,11 +458,21 @@ static void art_apply(int force){
     lv_image_set_src(g_art, NULL); lv_image_set_src(g_art, &g_spin_dsc);   /* same buffer, new pixels */
     lv_obj_remove_flag(g_art, LV_OBJ_FLAG_HIDDEN); lv_obj_center(g_art);
 }
-/* the lyric line sits centred between the artist and the progress line: one line or two (then it ends in ...) */
-static void lyric_place(void){
+/* the lyric line sits centred between the artist and the progress line, on up to two rows. A line too long for two
+ * rows at 18 px is set at 16 px; only one still too long ends in "..." */
+#define LYR_W   292
+#define LYR_GAP 3
+static char g_lyr_shown[256];                                             /* the line on screen, whole */
+static void lyric_place(const char *t){   /* t: the whole line (a "..." label keeps a cut copy) */
     const lv_font_t *f = ui_font_cjk(18); int lh = lv_font_get_line_height(f);
-    lv_point_t sz; lv_text_get_size(&sz, lv_label_get_text(g_lyric), f, 0, 0, 280, LV_TEXT_FLAG_NONE);
-    int h = sz.y > 2 * lh ? 2 * lh : sz.y < lh ? lh : sz.y;
+    lv_point_t sz; lv_text_get_size(&sz, t, f, 0, LYR_GAP, LYR_W, LV_TEXT_FLAG_NONE);
+    if(sz.y > 2 * lh + LYR_GAP){
+        const lv_font_t *f2 = ui_font_cjk(16); int lh2 = lv_font_get_line_height(f2);
+        lv_point_t s2; lv_text_get_size(&s2, t, f2, 0, LYR_GAP, LYR_W, LV_TEXT_FLAG_NONE);
+        if(s2.y <= 2 * lh2 + LYR_GAP){ f = f2; lh = lh2; sz = s2; }
+    }
+    lv_obj_set_style_text_font(g_lyric, f, 0);
+    int full = 2 * lh + LYR_GAP, h = sz.y > full ? full : sz.y < lh ? lh : sz.y;
     lv_obj_set_height(g_lyric, h); lv_obj_align(g_lyric, LV_ALIGN_TOP_MID, 0, 50 - h / 2);
 }
 /* the play / pause mark in the hub shows on a touch or a change, then fades away after 2 s */
@@ -490,9 +500,9 @@ static void lyrics_refresh(long pos){
         if(!line && g_lyr_n > 0 && pos < g_lyr[0].ms) line = NULL;
     }
     if(line){
-        if(strcmp(lv_label_get_text(g_lyric), line)){ lv_label_set_text(g_lyric, line); lyric_place(); }
+        if(strncmp(g_lyr_shown, line, sizeof g_lyr_shown - 1)){ snprintf(g_lyr_shown, sizeof g_lyr_shown, "%s", line); lyric_place(line); lv_label_set_text(g_lyric, line); }
         lv_obj_remove_flag(g_lyric, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_title, LV_OBJ_FLAG_HIDDEN);
-    } else { lv_obj_add_flag(g_lyric, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(g_title, LV_OBJ_FLAG_HIDDEN); }
+    } else { g_lyr_shown[0] = 0; lv_obj_add_flag(g_lyric, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(g_title, LV_OBJ_FLAG_HIDDEN); }
 }
 static void progress_paint(void){
     track_state_t st; ipc_get_state(&st);
@@ -632,7 +642,7 @@ static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
 
 void nt_home_create(lv_obj_t *root){
     g_mode = cfg_get_int("nt_music", 0) == 1;
-    g_lyr_on = cfg_get_int("nt_lyrics", 1) != 0;
+    g_lyr_on = cfg_get_int("nt_lyrics", 1) != 0; g_lyr_shown[0] = 0;
     g_layer = plain(root); lv_obj_set_size(g_layer, 360, 360);
     lv_obj_set_style_bg_color(g_layer, MC(CANVAS), 0); lv_obj_set_style_bg_opa(g_layer, LV_OPA_COVER, 0);
     lv_obj_add_flag(g_layer, LV_OBJ_FLAG_CLICKABLE);                      /* nothing underneath takes a touch */
@@ -666,21 +676,22 @@ void nt_home_create(lv_obj_t *root){
 
     /* the information under the CD */
     g_info = plain(g_layer); lv_obj_set_size(g_info, 360, 160); lv_obj_set_pos(g_info, 0, 200);
-    lv_obj_t *hit = plain(g_info); lv_obj_set_size(hit, 280, 76); lv_obj_align(hit, LV_ALIGN_TOP_MID, 0, 14);   /* the text: actions */
+    lv_obj_t *hit = plain(g_info); lv_obj_set_size(hit, LYR_W, 80); lv_obj_align(hit, LV_ALIGN_TOP_MID, 0, 14);   /* the text: actions */
     lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(hit, info_cb, LV_EVENT_ALL, NULL);
     g_artist = text(hit, ui_font_cjk(16), MC(TEXT_MUTED), 250); lv_obj_align(g_artist, LV_ALIGN_TOP_MID, 0, 0);
     g_title = text(hit, ui_font_cjk(22), MC(TEXT_PRIMARY), 270); lv_obj_align(g_title, LV_ALIGN_TOP_MID, 0, 22);
-    g_lyric = text(hit, ui_font_cjk(18), MC(TEXT_PRIMARY), 0); lv_obj_set_width(g_lyric, 280);
+    g_lyric = text(hit, ui_font_cjk(18), MC(TEXT_PRIMARY), 0); lv_obj_set_width(g_lyric, LYR_W);
+    lv_obj_set_style_text_line_space(g_lyric, LYR_GAP, 0); lv_obj_set_style_text_align(g_lyric, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(g_lyric, LV_LABEL_LONG_DOT); lv_obj_set_height(g_lyric, 2 * lv_font_get_line_height(ui_font_cjk(18)));
     lv_obj_align(g_lyric, LV_ALIGN_TOP_MID, 0, 38); lv_obj_add_flag(g_lyric, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *seek = plain(g_info); lv_obj_set_size(seek, 160, 26); lv_obj_align(seek, LV_ALIGN_TOP_MID, 0, 82);   /* the line: seek */
+    lv_obj_t *seek = plain(g_info); lv_obj_set_size(seek, 160, 26); lv_obj_align(seek, LV_ALIGN_TOP_MID, 0, 88);   /* the line: seek */
     lv_obj_add_flag(seek, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(seek, seek_cb, LV_EVENT_ALL, NULL);
     g_line = plain(seek); lv_obj_set_size(g_line, 120, 3); lv_obj_center(g_line);
     lv_obj_set_style_radius(g_line, 2, 0); lv_obj_set_style_bg_color(g_line, MC(CONTROL_TRACK), 0); lv_obj_set_style_bg_opa(g_line, LV_OPA_COVER, 0);
     g_line_fill = plain(g_line); lv_obj_set_size(g_line_fill, 0, 3);
     lv_obj_set_style_radius(g_line_fill, 2, 0); lv_obj_set_style_bg_color(g_line_fill, MC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_line_fill, LV_OPA_COVER, 0);
     lv_obj_t *times = plain(g_info); lv_obj_set_size(times, LV_SIZE_CONTENT, LV_SIZE_CONTENT); lv_obj_set_flex_flow(times, LV_FLEX_FLOW_ROW);
-    lv_obj_align(times, LV_ALIGN_TOP_MID, 0, 106);
+    lv_obj_align(times, LV_ALIGN_TOP_MID, 0, 112);
     g_el = text(times, TF(UI_16), MC(TEXT_PRIMARY), 0); g_tot = text(times, TF(UI_16), MC(TEXT_MUTED), 0);
     /* (no status line on Music: the battery lives in the Quick Settings bar) */
 
