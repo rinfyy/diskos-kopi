@@ -1285,7 +1285,8 @@ void ui_shutdown_screen(void){
     lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
     lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);                  /* taps do nothing now */
     lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
-    if(th_braun()){
+    if(th_nt()){ void splash_nt_goodbye(lv_obj_t *); splash_nt_goodbye(o); }   /* NTDisk: the boot splash, backwards */
+    else if(th_braun()){
         br_face(o);
         lv_obj_t *k = br_knob(o, 180, 140, 52, LV_SYMBOL_POWER, TF(UI_38));
         br_knob_set_on(k, 1);
@@ -1754,6 +1755,14 @@ int ui_sleep_state(int *secs_left){
 static char g_app_exec[256];
 static int  g_app_pending = 0;
 void app_launch_direct(const char *exec){ snprintf(g_app_exec, sizeof g_app_exec, "%s", exec); g_app_pending = 1; }
+static char g_app_arg[1024];                     /* Videos: the file (argv[2]) */
+/* Files > a .mpg: play it full screen. Its sound goes through the Disc's own AirPlay receiver, so from Playback the
+ * Disc switches to AirPlay for the video and back afterwards (the music pauses). */
+void video_play(const char *path){
+    if(!path || !*path || strlen(path) >= sizeof g_app_arg){ ui_toast("Can't open this video"); return; }
+    snprintf(g_app_arg, sizeof g_app_arg, "%s", path);
+    snprintf(g_app_exec, sizeof g_app_exec, "%s", APP_BUILTIN_VIDEO); g_app_pending = 1;
+}
 void app_launch(const char *exec){
     if(!strcmp(exec, APP_BUILTIN_ROULETTE) || !strcmp(exec, "/usr/data/apps/album-roulette/app")){   /* built in since 2.2.0 */
         screen_show(SCR_ROULETTE);
@@ -1770,6 +1779,7 @@ void app_launch(const char *exec){
     if(!strcmp(exec, APP_BUILTIN_PET)){ pet_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
+    if(!strcmp(exec, APP_BUILTIN_VIDEOS)){ folderbrowser_open_videos(); return; }
     if(!strcmp(exec, APP_BUILTIN_BROWSER)){ browser_open(NULL); return; }
     if(!strcmp(exec, APP_BUILTIN_SHELF)){discshelf_landing();return;}
     if(!strcmp(exec, APP_BUILTIN_SPHERE)){ sphere_ui_landing(); return; }   /* built in: a screen of mq_ui */
@@ -1899,7 +1909,7 @@ static void app_run(const char *exec){
     /* a game built into mq_ui ("builtin:boomshine") runs as this same program with its own flag */
     int builtin = !strcmp(exec, APP_BUILTIN_BOOMSHINE) || !strcmp(exec, APP_BUILTIN_SNAKE) ||
                   !strcmp(exec, APP_BUILTIN_ECHO) || !strcmp(exec, APP_BUILTIN_GLIDE) || !strcmp(exec, APP_BUILTIN_PET) ||
-                  !strcmp(exec, APP_BUILTIN_DOOM);
+                  !strcmp(exec, APP_BUILTIN_DOOM) || !strcmp(exec, APP_BUILTIN_VIDEO);
     /* preflight: a missing/non-executable app shouldn't blank the screen for nothing */
     if(!builtin && access(exec, X_OK) != 0){
         lv_obj_invalidate(lv_screen_active()); lv_refr_now(NULL);
@@ -1911,11 +1921,13 @@ static void app_run(const char *exec){
     app_env_write();
     int failed = 0, killed = 0;
     pid_t pid = -1;
-    char *argv[] = { (char *)exec, NULL, NULL };
+    char *argv[] = { (char *)exec, NULL, NULL, NULL };
     if(builtin){ argv[0] = "/proc/self/exe"; argv[1] = !strcmp(exec, APP_BUILTIN_SNAKE) ? "--snake" : !strcmp(exec, APP_BUILTIN_ECHO) ? "--echo" :
                                                          !strcmp(exec, APP_BUILTIN_GLIDE) ? "--glide" :
                                                          !strcmp(exec, APP_BUILTIN_PET) ? "--pet" :
-                                                         !strcmp(exec, APP_BUILTIN_DOOM) ? "--doom" : "--boomshine"; }   /* the running image, never a path that can change */
+                                                         !strcmp(exec, APP_BUILTIN_DOOM) ? "--doom" :
+                                                         !strcmp(exec, APP_BUILTIN_VIDEO) ? "--video" : "--boomshine";
+                 if(!strcmp(exec, APP_BUILTIN_VIDEO)) argv[2] = g_app_arg; }   /* the running image, never a path that can change */
     if(command_spawn(&pid, argv) != 0) pid = -1;   /* posix_spawn in its own group (a fork() of the UI can fail for memory) */
     if(pid > 0){
         int status = 0;
@@ -3154,6 +3166,12 @@ int main(int argc, char **argv){
         dup2(fileno(stdout), fileno(stderr));
         return pet ? pet_main(argc - 1, argv + 1) : glide ? glide_main(argc - 1, argv + 1) : echo_main(argc - 1, argv + 1);
     }
+    if(argc > 1 && !strcmp(argv[1], "--video")){            /* Videos (Files > a .mpg): video_disc.c */
+        int video_main(int, char **);
+        if(!freopen("/tmp/video.log", "w", stdout)) { /* keep going without a log */ }
+        dup2(fileno(stdout), fileno(stderr));
+        return video_main(argc - 1, argv + 1);
+    }
     if(argc > 1 && !strcmp(argv[1], "--doom")){             /* Doom (Apps > Doom): doom_disc.c */
         int doom_main(int, char **);
         if(!freopen("/tmp/doom.log", "w", stdout)) { /* keep going without a log */ }
@@ -3653,8 +3671,14 @@ int main(int argc, char **argv){
 
         if(g_app_pending){          /* run a launched app between frames */
             g_app_pending = 0;
+            if(!strcmp(g_app_exec, APP_BUILTIN_VIDEO)){         /* from Files: stay there; sound by AirPlay */
+                int prev = ui_get_source_mode(), sw = prev == 0 && ui_set_source_mode(5) == 0;
+                app_run(g_app_exec);
+                if(sw) ui_set_source_mode(prev);
+            } else {
             screen_back();          /* leave the Apps screen first */
             app_run(g_app_exec);
+            }
             last = ~0u;             /* force a state refresh after returning */
             last_activity = lv_tick_get();   /* using an app counts as activity */
         }

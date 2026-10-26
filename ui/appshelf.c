@@ -58,6 +58,7 @@ static void scan(void){
                 "Play", APP_BUILTIN_ECHO, NULL);
     add_builtin("builtin:glide", "Glide", "One tap to rise.", "Fly the orb through the gaps.\nThe edge is the wall.",
                 "Play", APP_BUILTIN_GLIDE, NULL);
+    add_builtin("builtin:videos", "Videos", "Watch on the Disc.", "", "Open", APP_BUILTIN_VIDEOS, NULL);
     add_builtin("builtin:doom", "Doom", "Rip and tear.", "Left moves. Right fires.", "Play", APP_BUILTIN_DOOM, NULL);
     add_builtin("builtin:snake", "Snake", "Eat. Grow. Don't bite.", "Swipe or tap to turn.\nHow long can you get?",
                 "Play", APP_BUILTIN_SNAKE, NULL);
@@ -230,6 +231,7 @@ static void open_cb(lv_event_t *e){
     if(!strcmp(a->exec, APP_BUILTIN_ROULETTE)){ screen_show(SCR_ROULETTE); return; }   /* its own vinyl landing page */
     if(!strcmp(a->exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }          /* tools open straight away */
     if(!strcmp(a->exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
+    if(!strcmp(a->exec, APP_BUILTIN_VIDEOS)){ folderbrowser_open_videos(); return; }
     if(!strcmp(a->exec, APP_BUILTIN_BROWSER)){ browser_open(NULL); return; }
     applanding_icon(a->icon);
     applanding_show(a->name, a->tagline, a->about, a->button, a->exec);

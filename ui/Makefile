@@ -52,7 +52,10 @@ DOOM_SRCS := $(sort $(wildcard $(APP)/vendor/doomgeneric/*.c)) $(APP)/doom_disc.
 DOOM_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 \
   -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE -I$(APP)/vendor/doomgeneric -I$(APP) $(REPRO_FLAGS) $(FP_FLAGS)
 OBJCOPY_LOCAL ?= llvm-objcopy
-OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/doom_all.o $(APP)/vendor/smb-build/libsmb2.a
+# Videos (video_disc.c): MPEG-1 playback with pl_mpeg (MIT, ui/vendor/pl_mpeg), run as `mq_ui --video <file>`; its sound
+# goes to the Disc's own AirPlay receiver (ss_airplay.h, as MA Sendspin does). A full-screen child: no LVGL.
+VIDEO_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -I$(APP) $(REPRO_FLAGS) $(FP_FLAGS)
+OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/doom_all.o $(APP)/video_disc.o $(APP)/vendor/smb-build/libsmb2.a
 
 # Every on-screen colour is a theme role (theme.h); theme.c is the only place RGB becomes a colour. The link fails if
 # any other app source (.c, or any header in the tree) builds a colour itself: an LVGL colour constructor, palette,
@@ -126,6 +129,8 @@ $(APP)/snake/snake.o: $(APP)/snake/snake.c
 	$(CC) $(SNAKE_FLAGS) -c $< -o $@
 $(APP)/games/%.o: $(APP)/games/%.c $(APP)/games/platform.h
 	$(CC) $(SNAKE_FLAGS) -c $< -o $@
+$(APP)/video_disc.o: $(APP)/video_disc.c $(APP)/vendor/pl_mpeg/pl_mpeg.h $(APP)/ss_airplay.h $(APP)/games/platform.h
+	$(CC) $(VIDEO_FLAGS) -c $< -o $@
 %.doom.o: %.c
 	$(CC) $(DOOM_FLAGS) -c $< -o $@
 $(APP)/doom_all.o: $(DOOM_SRCS:.c=.doom.o)

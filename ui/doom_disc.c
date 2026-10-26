@@ -114,7 +114,7 @@ static finger_t fg[SLOTS];
 static int tfd = -1, tmt, txmin, txmax, tymin, tymax, tslot;
 static int joy_up, joy_dn, joy_l, joy_r, joy_run, fire_on, use_on;
 static const struct { int role, x, y, r; const char *label; } BTN[] = {
-    { R_MAP, 112, 44, 22, "MAP" }, { R_MENU, 180, 30, 22, "MENU" }, { R_WPN, 248, 44, 22, "WPN" },
+    { R_MAP, 118, 60, 24, "MAP" }, { R_MENU, 180, 46, 26, "MENU" }, { R_WPN, 242, 60, 24, "WPN" },   /* away from the rim */
     { R_USE, 318, 150, 26, "USE" },
 };
 static int axis(int v, int lo, int hi){ if(hi <= lo){ lo = 0; hi = 359; } if(v < lo) v = lo; if(v > hi) v = hi; return (int)(((int64_t)v - lo) * 359 / ((int64_t)hi - lo)); }
@@ -139,15 +139,18 @@ static int open_touch(void){
 }
 static int role_at(int x, int y){
     for(unsigned i = 0; i < sizeof BTN / sizeof BTN[0]; i++){
-        int dx = x - BTN[i].x, dy = y - BTN[i].y, r = BTN[i].r + 10;
+        int dx = x - BTN[i].x, dy = y - BTN[i].y, r = BTN[i].r + 12;
         if(dx * dx + dy * dy <= r * r) return BTN[i].role;
     }
+    if(y < 84) return x < 148 ? R_MAP : x > 212 ? R_WPN : R_MENU;      /* the whole top band: the nearest of the three */
     if(menuactive || messageToPrint) return R_MTAP;                         /* the menu is up: touch picks */
     if(y < 72) return R_NONE;
     return x < GW / 2 ? R_JOY : R_FIRE;
 }
+static int g_ntouch;
 static void finger_down(finger_t *f){
     f->x0 = f->x; f->y0 = f->y; f->role = role_at(f->x, f->y);
+    if(g_ntouch < 60){ g_ntouch++; printf("touch raw %d,%d -> %d,%d role %d menu %d\n", f->rx, f->ry, f->x, f->y, f->role, menuactive); fflush(stdout); }   /* /tmp/doom.log */
     switch(f->role){
     case R_MENU: f->rx2 = M_DiskCanGoBack() ? KEY_BACKSPACE : KEY_ESCAPE; key((unsigned char)f->rx2, 1); break;   /* a page back, or close */
     case R_MAP:  key(KEY_TAB, 1); break;
@@ -226,7 +229,8 @@ static void read_touch(void){
 static void draw_controls(void){
     uint32_t ink = 0xF2F2F2, red = 0xD71921;
     for(unsigned i = 0; i < sizeof BTN / sizeof BTN[0]; i++){
-        int on = (BTN[i].role == R_USE && use_on);
+        int on = 0;                                                       /* lit while a finger holds it */
+        for(int k = 0; k < SLOTS; k++) if(fg[k].down && fg[k].role == BTN[i].role) on = 1;
         gp_disc(BTN[i].x, BTN[i].y, BTN[i].r, on ? red : 0x000000, on ? 200 : 120);
         gp_ring(BTN[i].x, BTN[i].y, BTN[i].r, 2, ink, 150);
         int w = gp_text_w(BTN[i].label, 1);
@@ -383,21 +387,21 @@ int doom_main(int argc, char **argv){
         #define TAP(px, py) do { f->down = 1; f->x = f->x0 = (px); f->y = f->y0 = (py); finger_down(f); for(int k_ = 0; k_ < 3; k_++) doomgeneric_Tick(); \
                                  f->down = 0; finger_up(f); for(int k_ = 0; k_ < 6; k_++) doomgeneric_Tick(); } while(0)
         #define DOOM_Y(dy) (IMG_Y + (dy) * IMG_H / DOOMGENERIC_RESY)
-        TAP(180, 30); void *main_menu = currentMenu;
+        TAP(180, 46); void *main_menu = currentMenu;
         TAP(170, DOOM_Y(64 + 16 + 6)); int options = menuactive && currentMenu != main_menu;
-        TAP(180, 30); int back = menuactive && currentMenu == main_menu;
+        TAP(180, 46); int back = menuactive && currentMenu == main_menu;
         TAP(170, DOOM_Y(64 + 5 * 16 + 6)); int asked = messageToPrint != 0;
-        TAP(180, 30); int kept = !messageToPrint;
+        TAP(180, 46); int kept = !messageToPrint;
         printf("%s doom menu by touch: options %d, back %d, quit asks %d, no keeps playing %d\n",
                options && back && asked && kept ? "PASS" : "FAIL", options, back, asked, kept);
         closed = closed && options && back && asked && kept;
         /* a new game by touch: New Game > the first episode > Hurt Me Plenty; then save it in the first slot */
-        TAP(180, 30); TAP(170, DOOM_Y(64 + 6));                             /* menu, New Game */
+        TAP(180, 46); TAP(170, DOOM_Y(64 + 6));                             /* menu, New Game */
         TAP(170, DOOM_Y(63 + 6));                                           /* episode 1 */
         TAP(170, DOOM_Y(63 + 2 * 16 + 6));                                  /* Hurt Me Plenty */
         for(int i = 0; i < 20; i++) doomgeneric_Tick();
         int started = !menuactive && gamestate == GS_LEVEL;
-        TAP(180, 30); TAP(170, DOOM_Y(64 + 3 * 16 + 6));                    /* menu, Save Game */
+        TAP(180, 46); TAP(170, DOOM_Y(64 + 3 * 16 + 6));                    /* menu, Save Game */
         TAP(170, DOOM_Y(54 + 6));                                           /* slot 1: named "SAVE 1", Enter saves */
         TAP(170, DOOM_Y(54 + 6));
         for(int i = 0; i < 10; i++) doomgeneric_Tick();

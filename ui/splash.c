@@ -323,6 +323,7 @@ static lv_obj_t *g_ntword, *g_ntdot, *g_ntsub, *g_ntrim[NT_RIM];
 static int g_ntcols;                                                       /* columns shown so far */
 static void ntword_draw(lv_event_t *e){
     lv_layer_t *layer = lv_event_get_layer(e); if(!layer) return;
+    int g_ntcols = *(const int *)lv_event_get_user_data(e);               /* the boot's or the goodbye's count */
     lv_area_t a; lv_obj_get_coords(lv_event_get_target(e), &a);
     lv_draw_rect_dsc_t r; lv_draw_rect_dsc_init(&r); r.radius = LV_RADIUS_CIRCLE; r.bg_opa = LV_OPA_COVER;
     for(int col = 0; col < g_ntcols && col < NT_COLS; col++){
@@ -348,7 +349,7 @@ static int ntbuild(void){
     }
     g_ntword = plain(g_sp.root); lv_obj_set_size(g_ntword, NT_COLS * NT_CELL, 7 * NT_CELL);
     lv_obj_set_pos(g_ntword, 180 - (NT_COLS * NT_CELL + 14) / 2, 180 - 7 * NT_CELL / 2 - 8);
-    lv_obj_add_event_cb(g_ntword, ntword_draw, LV_EVENT_DRAW_MAIN, NULL);
+    lv_obj_add_event_cb(g_ntword, ntword_draw, LV_EVENT_DRAW_MAIN, &g_ntcols);
     g_ntdot = plain(g_sp.root); lv_obj_set_size(g_ntdot, 8, 8);           /* the red full stop */
     lv_obj_set_pos(g_ntdot, 180 - (NT_COLS * NT_CELL + 14) / 2 + NT_COLS * NT_CELL + 6, 180 + 7 * NT_CELL / 2 - 8 - 8);
     lv_obj_set_style_radius(g_ntdot, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(g_ntdot, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_ntdot, LV_OPA_COVER, 0);
@@ -372,3 +373,60 @@ static void ntframe(float t){
     lv_obj_set_style_opa(g_ntsub, (lv_opa_t)(255 * smooth(seg(t, 0.55f, 0.72f))), 0);
     lv_obj_set_style_opa(g_sp.root, (lv_opa_t)(255 * (1 - seg(t, 0.9f, 1))), 0);
 }
+
+/* ==== NTDisk shutdown: the boot backwards. The rim's dots go out one by one, the word is wiped away a column at a time
+ * (the red head now erasing), "SHUTTING DOWN" fades, and the red full stop is the last thing left before it shrinks to
+ * nothing. 1.6 s on the shutdown screen, then black until the player switches off. ==== */
+#define GB_MS 1600
+static lv_obj_t *g_gb, *g_gbrim[NT_RIM], *g_gbword, *g_gbdot, *g_gbsub;
+static int g_gbcols; static uint32_t g_gb_t0; static lv_timer_t *g_gb_tm;
+static void gb_frame(lv_timer_t *tm){
+    (void)tm;
+    if(!g_gb) return;
+    float t = clampf((float)lv_tick_elaps(g_gb_t0) / GB_MS);
+    int lit = NT_RIM - (int)(NT_RIM * smooth(seg(t, 0.04f, 0.72f)));       /* going out, the last one red */
+    for(int i = 0; i < NT_RIM; i++){
+        lv_color_t c = i < lit ? (i == lit - 1 && lit < NT_RIM ? TC(ACCENT_PRIMARY) : TC(FIXED_MEDIA_WHITE)) : TC(FIXED_MEDIA_HINT);
+        if(!lv_color_eq(lv_obj_get_style_bg_color(g_gbrim[i], 0), c)) lv_obj_set_style_bg_color(g_gbrim[i], c, 0);
+        lv_obj_set_style_opa(g_gbrim[i], (lv_opa_t)(255 * (1 - seg(t, 0.72f, 0.82f))), 0);
+    }
+    int cols = NT_COLS - (int)(NT_COLS * seg(t, 0.14f, 0.62f) + 0.5f);
+    if(cols != g_gbcols){ g_gbcols = cols; lv_obj_invalidate(g_gbword); }
+    lv_obj_set_style_opa(g_gbsub, (lv_opa_t)(255 * (1 - smooth(seg(t, 0.45f, 0.66f)))), 0);
+    float k = 1 - smooth(seg(t, 0.78f, 0.98f));                             /* the full stop: alone, then gone */
+    int d = (int)(8 + 10 * smooth(seg(t, 0.62f, 0.76f)));                  /* it grows a little as the rest goes */
+    d = (int)(d * k);
+    float m = smooth(seg(t, 0.6f, 0.76f));                                  /* from the word's end to the middle */
+    float x0 = 180 - (NT_COLS * NT_CELL + 14) / 2 + NT_COLS * NT_CELL + 6 + 4, y0 = 180 + 7 * NT_CELL / 2 - 8 - 8 + 4;
+    lv_obj_set_size(g_gbdot, d, d);
+    lv_obj_set_pos(g_gbdot, (int)(x0 + (180 - x0) * m) - d / 2, (int)(y0 + (180 - y0) * m) - d / 2);
+    if(t >= 1 && g_gb_tm){ lv_timer_delete(g_gb_tm); g_gb_tm = NULL; }
+}
+static void gb_deleted(lv_event_t *e){ (void)e; g_gb = NULL; if(g_gb_tm){ lv_timer_delete(g_gb_tm); g_gb_tm = NULL; } }
+void splash_nt_goodbye(lv_obj_t *parent){
+    g_gb = plain(parent); lv_obj_set_size(g_gb, 360, 360);
+    lv_obj_set_style_bg_color(g_gb, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(g_gb, LV_OPA_COVER, 0);
+    lv_obj_add_event_cb(g_gb, gb_deleted, LV_EVENT_DELETE, NULL);
+    for(int i = 0; i < NT_RIM; i++){
+        float an = (i * 360.0f / NT_RIM - 90) * 0.0174533f;
+        lv_obj_t *d = g_gbrim[i] = plain(g_gb); lv_obj_set_size(d, 5, 5);
+        lv_obj_set_pos(d, 180 + (int)lroundf(166 * cosf(an)) - 2, 180 + (int)lroundf(166 * sinf(an)) - 2);
+        lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(d, TC(FIXED_MEDIA_WHITE), 0);
+    }
+    g_gbcols = NT_COLS;
+    g_gbword = plain(g_gb); lv_obj_set_size(g_gbword, NT_COLS * NT_CELL, 7 * NT_CELL);
+    lv_obj_set_pos(g_gbword, 180 - (NT_COLS * NT_CELL + 14) / 2, 180 - 7 * NT_CELL / 2 - 8);
+    lv_obj_add_event_cb(g_gbword, ntword_draw, LV_EVENT_DRAW_MAIN, &g_gbcols);
+    g_gbdot = plain(g_gb); lv_obj_set_size(g_gbdot, 8, 8);
+    lv_obj_set_pos(g_gbdot, 180 - (NT_COLS * NT_CELL + 14) / 2 + NT_COLS * NT_CELL + 6, 180 + 7 * NT_CELL / 2 - 8 - 8);
+    lv_obj_set_style_radius(g_gbdot, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(g_gbdot, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_gbdot, LV_OPA_COVER, 0);
+    g_gbsub = lv_label_create(g_gb); kit_keep(g_gbsub); lv_label_set_text(g_gbsub, "SHUTTING DOWN");
+    lv_obj_set_style_text_font(g_gbsub, TF(UI_12), 0); lv_obj_set_style_text_letter_space(g_gbsub, 4, 0);
+    lv_obj_set_style_text_color(g_gbsub, TC(FIXED_MEDIA_HINT), 0); lv_obj_align(g_gbsub, LV_ALIGN_TOP_MID, 0, 214);
+    g_gb_t0 = lv_tick_get();
+    if(g_gb_tm) lv_timer_delete(g_gb_tm);
+    g_gb_tm = lv_timer_create(gb_frame, 33, NULL);
+    gb_frame(NULL);
+}
+void splash_nt_goodbye_test(int ms){ g_gb_t0 = lv_tick_get() - (uint32_t)ms; gb_frame(NULL); }   /* host renders */

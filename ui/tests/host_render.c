@@ -802,6 +802,7 @@ int main(int argc, char **argv){
     }
     if(!strcmp(argv[3],"shutdown")){
         screen_set_anim(0); screens_init(); ui_shutdown_screen();
+        if(getenv("GB_MS")){void splash_nt_goodbye_test(int);splash_nt_goodbye_test(atoi(getenv("GB_MS")));for(int i=0;i<3;i++){lv_tick_inc(5);lv_timer_handler();}}
         goto render;
     }
     if(!strncmp(argv[3],"shortcuts-",10)){
@@ -1421,6 +1422,7 @@ int main(int argc, char **argv){
                 if(getenv("NT_JUMP")){void nt_lyrics_test_jump(int);nt_lyrics_test_jump(atoi(getenv("NT_JUMP")));nav_wait(100);}}}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("DOOM_LANDING")){doom_landing();nav_wait(60);}
+        if(getenv("VIDEOS_OPEN")){folderbrowser_open_videos();nav_wait(80);}
         if(getenv("APPS_OPEN")){if(getenv("APPS_ALL"))simple_cfg_set_int("apps_show_all",atoi(getenv("APPS_ALL")));appshelf_reload();screen_show(SCR_APPSHELF);nav_wait(60);
             if(getenv("APPS_SCROLL")){lv_obj_t*appshelf_scroller(void);lv_obj_scroll_to_y(appshelf_scroller(),atoi(getenv("APPS_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}
         if(getenv("STOPWATCH")){long long ms=0;int run=0,laps=0;sscanf(getenv("STOPWATCH"),"%lld,%d,%d",&ms,&run,&laps);void stopwatch_test_state(int64_t,int,int);

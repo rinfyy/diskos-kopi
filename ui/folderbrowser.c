@@ -67,6 +67,7 @@
 #define FB_K_IMAGE 3     /* JPEG / PNG / BMP / GIF: opens the picture viewer (imageview.c) */
 #define FB_K_OTHER 4     /* any other file: listed so the folder shows everything; hold for file operations */
 #define FB_K_DOC   5     /* .html .htm .txt .md: opens in the Browser as a readable page */
+#define FB_K_VIDEO 6     /* .mpg .mpeg (MPEG-1): plays full screen (video_disc.c); other video files say how to convert */
 typedef struct {
     char name[FB_NAMELEN];
     int  is_dir;
@@ -163,6 +164,7 @@ static void fb_scan_leased(void){
                     kind = (pn > 0 && pn < (int)sizeof ip && mdb_subtrack_count(ip, 1) > 0) ? FB_K_ISO : FB_K_OTHER;
                 } else if(fb_is_image(nm)) kind = FB_K_IMAGE;
                 else if(fb_has_ext(nm, ".html") || fb_has_ext(nm, ".htm") || fb_has_ext(nm, ".txt") || fb_has_ext(nm, ".md")) kind = FB_K_DOC;
+                else if(fb_has_ext(nm, ".mpg") || fb_has_ext(nm, ".mpeg") || fb_has_ext(nm, ".m1v")) kind = FB_K_VIDEO;
                 else kind = FB_K_OTHER;
             }
 
@@ -282,7 +284,7 @@ static void fb_add_row(int i){
 
         lv_obj_t *ic = lv_label_create(r);
         lv_label_set_text(ic, en->is_dir ? LV_SYMBOL_DIRECTORY : en->kind == FB_K_IMAGE ? LV_SYMBOL_IMAGE
-                              : en->kind == FB_K_DOC ? LV_SYMBOL_EDIT : en->kind == FB_K_OTHER ? LV_SYMBOL_FILE : LV_SYMBOL_AUDIO);
+                              : en->kind == FB_K_DOC ? LV_SYMBOL_EDIT : en->kind == FB_K_VIDEO ? LV_SYMBOL_VIDEO : en->kind == FB_K_OTHER ? LV_SYMBOL_FILE : LV_SYMBOL_AUDIO);
         lv_obj_set_pos(ic, 12, 17);
         lv_obj_set_style_text_font(ic, TF(UI_16), 0);
         lv_obj_set_style_text_color(ic, en->is_dir ? ui_current_accent() : TC(TEXT_DISABLED), 0);
@@ -308,6 +310,7 @@ static void fb_add_row(int i){
             char det[24];
             if(en->kind == FB_K_IMAGE) snprintf(det, sizeof det, "%s  Picture", fmt);
             else if(en->kind == FB_K_DOC) snprintf(det, sizeof det, "%s  Document", fmt);
+            else if(en->kind == FB_K_VIDEO) snprintf(det, sizeof det, "%s  Video", fmt);
             else snprintf(det, sizeof det, "%s", fmt[0] ? fmt : en->kind == FB_K_OTHER ? "File" : "Audio");
             lv_label_set_text(dt, det);
             lv_obj_set_pos(dt, 40, 30);
@@ -490,6 +493,11 @@ static void fb_row_cb(lv_event_t *e){
     else if(en->kind == FB_K_IMAGE) fb_view(i);
     else if(en->kind == FB_K_DOC){ char full[FB_MAXPATH]; int n = snprintf(full, sizeof full, "%s/%s", g_dir, en->name);
                                    if(n > 0 && n < (int)sizeof full) browser_open(full); else ui_toast("Path too long"); }
+    else if(en->kind == FB_K_VIDEO){ char full[FB_MAXPATH]; int n = snprintf(full, sizeof full, "%s/%s", g_dir, en->name);
+                                     if(n > 0 && n < (int)sizeof full) video_play(full); else ui_toast("Path too long"); }
+    else if(en->kind == FB_K_OTHER && (fb_has_ext(en->name, ".mp4") || fb_has_ext(en->name, ".mkv") || fb_has_ext(en->name, ".mov") ||
+                                       fb_has_ext(en->name, ".avi") || fb_has_ext(en->name, ".webm") || fb_has_ext(en->name, ".m4v")))
+        ui_toast("Videos play as .mpg (MPEG-1) - convert it first, see the README");
     else if(en->kind == FB_K_OTHER) ui_toast("Can't open this type of file - hold for file actions");
     else if(en->kind == FB_K_ISO) fb_play_iso(en->name);
     else if(en->kind == FB_K_CUE) fb_play_sheet(en->name);
@@ -557,6 +565,14 @@ void folderbrowser_create(lv_obj_t *root){
     snprintf(g_dir, sizeof g_dir, "%s", FB_ROOT);   /* first content built on open() */
 }
 
+/* Apps > Videos: Files, in the SD card's Videos folder when there is one */
+void folderbrowser_open_videos(void){
+    static const char *const D[] = { FB_ROOT "/Videos", FB_ROOT "/VIDEOS", FB_ROOT "/videos", FB_ROOT "/Video" };
+    snprintf(g_dir, sizeof g_dir, "%s", FB_ROOT);
+    for(unsigned i = 0; i < sizeof D / sizeof D[0]; i++){ struct stat st; if(stat(D[i], &st) == 0 && S_ISDIR(st.st_mode)){ snprintf(g_dir, sizeof g_dir, "%s", D[i]); break; } }
+    if(!strcmp(g_dir, FB_ROOT)) ui_toast("Tip: keep your .mpg videos in a Videos folder");
+    fb_scan(); fb_rebuild(); screen_show(SCR_FOLDER);
+}
 void folderbrowser_open(void){
     snprintf(g_dir, sizeof g_dir, "%s", FB_ROOT);   /* always (re)enter at the SD root */
     fb_scan();
