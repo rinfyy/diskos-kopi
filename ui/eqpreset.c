@@ -24,10 +24,14 @@ static void name_for(int p,char *b,size_t n){
 }
 static unsigned profile_ticket;
 static lv_timer_t *profile_timer;
+static eq_profile_t g_prof; static int g_prof_ok;                 /* the selected preset's curve, once read */
+static lv_obj_t *reset_button,*copy_button,*paste_button;
+static void tools_paint(void);
 static void profile_paint(int p,int read,int graphic,const int hz[10]){
  int user=p>=11 && read>=0 && graphic;
  if(user){lv_obj_remove_state(edit_button,LV_STATE_DISABLED);lv_obj_remove_state(rename_button,LV_STATE_DISABLED);}
  else {lv_obj_add_state(edit_button,LV_STATE_DISABLED);lv_obj_add_state(rename_button,LV_STATE_DISABLED);}
+ tools_paint();
  lv_label_set_text(note_label,read==-2?"Loading profile...":read<0?"Profile unavailable":p<11?"Built-in preset":!graphic?"Parametric profile":!fw_custom_peq_curve_writable(hz,10)?"Custom editing unavailable":"Editable profile");
 }
 static void profile_poll(lv_timer_t *timer){
@@ -35,7 +39,7 @@ static void profile_poll(lv_timer_t *timer){
  eq_profile_t result;
  if(eq_profile_take(profile_ticket,&result)){
   profile_ticket=0;
-  if(result.preset==selected())profile_paint(result.preset,result.read,result.graphic,result.hz);
+  if(result.preset==selected()){g_prof=result;g_prof_ok=result.read>=0;profile_paint(result.preset,result.read,result.graphic,result.hz);}
  }
 }
 
@@ -124,9 +128,9 @@ static void zeq_build(void){
 void eqpreset_refresh(void){
  if(th_zune()){ if(fw_os_ver()==257)eq_rate_request(); zeq_build(); return; }
  if(!name_label)return;if(fw_os_ver()==257)eq_rate_request();int p=selected();char b[80];name_for(p,b,sizeof b);if(th_null()){char up[80];theme_upper(up,sizeof up,b);lv_label_set_text(name_label,up);}else lv_label_set_text(name_label,b);
- profile_ticket=0;
+ profile_ticket=0;g_prof_ok=0;
  if(p>=11){profile_ticket=eq_profile_request(p);profile_paint(p,profile_ticket?-2:-1,0,NULL);}
- else profile_paint(p,0,0,NULL);
+ else {if(p>=1)profile_ticket=eq_profile_request(p);profile_paint(p,0,0,NULL);}   /* built-ins are read too: they can be copied */
  lv_label_set_text(switch_label,p?"On":"Off");
  if(switch_pointer&&th_braun())br_pointer_set(switch_pointer,58,p);
  if(switch_pointer)lv_obj_set_style_bg_color(switch_pointer,p?theme_on_color(ui_current_accent()):TC(TEXT_MUTED),0);
@@ -151,6 +155,57 @@ static void jm1_cb(lv_event_t *e){
  int slot=eqcustom_install("JM-1 (IM4)",hz,t,-4.0);
  if(slot>0){char b[64];snprintf(b,sizeof b,"JM-1 saved as USER%d",slot-10);ui_toast(b);eqpreset_refresh();}
 }
+/* ---- Reset / Copy / Paste ----
+ * Copy keeps the selected preset's curve (bands, Q, preamp) - a built-in one too - in cfg "eq_clip", so it survives a
+ * restart. Paste writes it over the selected USER preset; Reset makes that preset flat. Both ask first. */
+int eqcustom_store(int slot,const int *hz,const int *tenths,const double *q,double master);
+int eqcustom_store_flat(int slot);
+static int clip_get(int hz[10],int t[10],double q[10],double *m){
+ const char *s=simple_cfg_get_str("eq_clip",NULL);if(!s||!*s)return 0;
+ int n=0;for(int i=0;i<10;i++){int k=0;if(sscanf(s,"%d:%d:%lf%n",&hz[i],&t[i],&q[i],&k)!=3)return 0;s+=k;if(*s==',')s++;n++;}
+ if(sscanf(s,";%lf",m)!=1)*m=0;
+ return n==10;
+}
+static void tools_paint(void){
+ if(!reset_button)return;
+ int p=selected(),hz[10],t[10];double q[10],m;
+ if(p>=11){lv_obj_remove_state(reset_button,LV_STATE_DISABLED);}else lv_obj_add_state(reset_button,LV_STATE_DISABLED);
+ if(p>=1&&g_prof_ok&&g_prof.graphic)lv_obj_remove_state(copy_button,LV_STATE_DISABLED);else lv_obj_add_state(copy_button,LV_STATE_DISABLED);
+ if(p>=11&&clip_get(hz,t,q,&m))lv_obj_remove_state(paste_button,LV_STATE_DISABLED);else lv_obj_add_state(paste_button,LV_STATE_DISABLED);
+}
+static int tool_target;
+static void do_reset(void){
+ if(tool_target!=selected()||tool_target<11)return;
+ if(eqcustom_store_flat(tool_target)>0){char b[80],n[64];name_for(tool_target,n,sizeof n);snprintf(b,sizeof b,"%s reset to flat",n);ui_toast(b);eqpreset_refresh();}
+}
+static void reset_cb(lv_event_t *e){
+ (void)e;int p=selected();if(p<11){ui_toast("Built-in presets can't be changed");return;}
+ tool_target=p;char t[96],n[64];name_for(p,n,sizeof n);snprintf(t,sizeof t,"Reset %s?",n);
+ fileops_confirm(t,"Back to flat: every band at 0 dB on its standard frequency, preamp 0.","Reset",do_reset);
+}
+static void copy_cb(lv_event_t *e){
+ (void)e;int p=selected();
+ if(p<1){ui_toast("EQ is off - nothing to copy");return;}
+ if(!g_prof_ok){ui_toast("Still reading this preset");return;}
+ if(!g_prof.graphic){ui_toast("This preset uses filters the editor can't copy");return;}
+ char b[400];int n=0;
+ for(int i=0;i<10;i++)n+=snprintf(b+n,sizeof b-(size_t)n,"%s%d:%d:%.2f",i?",":"",g_prof.hz[i],g_prof.gains[i],g_prof.q[i]>0?g_prof.q[i]:0.7);
+ snprintf(b+n,sizeof b-(size_t)n,";%.1f",g_prof.master);
+ if(simple_cfg_set_str("eq_clip",b)){ui_toast("Couldn't copy");return;}
+ char nm[64],t[96];name_for(p,nm,sizeof nm);snprintf(t,sizeof t,"Copied %s",nm);ui_toast(t);tools_paint();
+}
+static void do_paste(void){
+ int hz[10],t[10];double q[10],m;
+ if(tool_target!=selected()||tool_target<11||!clip_get(hz,t,q,&m))return;
+ if(eqcustom_store(tool_target,hz,t,q,m)>0){char b[80],n[64];name_for(tool_target,n,sizeof n);snprintf(b,sizeof b,"Pasted into %s",n);ui_toast(b);eqpreset_refresh();}
+}
+static void paste_cb(lv_event_t *e){
+ (void)e;int p=selected(),hz[10],t[10];double q[10],m;
+ if(p<11){ui_toast("Paste into a USER preset");return;}
+ if(!clip_get(hz,t,q,&m)){ui_toast("Copy a preset first");return;}
+ tool_target=p;char tt[96],n[64];name_for(p,n,sizeof n);snprintf(tt,sizeof tt,"Paste into %s?",n);
+ fileops_confirm(tt,"The copied curve replaces this preset's curve.","Paste",do_paste);
+}
 static void renamed(const char *text){if(!text||!*text)return;char key[24];snprintf(key,sizeof key,"eq_name%d",rename_preset);
  if(simple_cfg_set_str(key,text)){ui_toast("Couldn't save profile name");return;}eqpreset_refresh();}
 static void rename_cb(lv_event_t *e){(void)e;rename_preset=selected();char b[80];name_for(rename_preset,b,sizeof b);kbinput_open("Rename EQ",b,renamed);}
@@ -167,11 +222,15 @@ void eqpreset_create(lv_obj_t *root){
  lv_obj_t *next_b=button(root,LV_SYMBOL_RIGHT,118,123,42,42,cycle,(void *)(intptr_t)1,"eq.next");
  name_label=lv_label_create(root);lv_obj_set_width(name_label,178);lv_label_set_long_mode(name_label,LV_LABEL_LONG_SCROLL_CIRCULAR);lv_obj_align(name_label,LV_ALIGN_TOP_MID,0,128);
  lv_obj_set_style_text_align(name_label,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(name_label,TF(UI_24),0);lv_obj_set_style_text_color(name_label,TC(TEXT_PRIMARY),0);
- edit_button=button(root,"Edit",-60,183,104,44,edit,NULL,"eq.edit");rename_button=button(root,"Rename",60,183,104,44,rename_cb,NULL,"eq.rename");
+ edit_button=button(root,"Edit",-60,176,104,44,edit,NULL,"eq.edit");rename_button=button(root,"Rename",60,176,104,44,rename_cb,NULL,"eq.rename");
+ reset_button=button(root,"Reset",-94,228,84,30,reset_cb,NULL,"eq.reset");copy_button=button(root,"Copy",0,228,84,30,copy_cb,NULL,"eq.copy");
+ paste_button=button(root,"Paste",94,228,84,30,paste_cb,NULL,"eq.paste");
+ {lv_obj_t *tb[3]={reset_button,copy_button,paste_button};for(int i=0;i<3;i++){lv_obj_set_style_text_font(lv_obj_get_child(tb[i],0),TF(UI_14),0);
+   lv_obj_set_style_opa(tb[i],LV_OPA_40,LV_STATE_DISABLED);}}   /* greyed out when it can't apply here */
  {lv_obj_t *jm=button(root,"+ JM-1 (IM4)",0,72,150,32,jm1_cb,NULL,"eq.jm1");lv_obj_set_style_text_font(lv_obj_get_child(jm,0),TF(UI_14),0);
   if(th_null()){lv_obj_set_style_radius(jm,0,0);lv_obj_set_style_bg_opa(jm,0,0);lv_obj_set_style_border_width(jm,1,0);lv_obj_set_style_border_color(jm,TC(TEXT_SECONDARY),0);kit_keep(jm);}}
- note_label=lv_label_create(root);lv_obj_set_width(note_label,280);lv_obj_align(note_label,LV_ALIGN_TOP_MID,0,244);lv_obj_set_style_text_align(note_label,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(note_label,TF(UI_12),0);lv_obj_set_style_text_color(note_label,TC(TEXT_SECONDARY),0);
- switch_button=button(root,"Off",0,274,58,58,toggle,NULL,"eq.toggle");switch_label=lv_obj_get_child(switch_button,0);
+ note_label=lv_label_create(root);lv_obj_set_width(note_label,280);lv_obj_align(note_label,LV_ALIGN_TOP_MID,0,266);lv_obj_set_style_text_align(note_label,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(note_label,TF(UI_12),0);lv_obj_set_style_text_color(note_label,TC(TEXT_SECONDARY),0);
+ switch_button=button(root,"Off",0,286,54,54,toggle,NULL,"eq.toggle");switch_label=lv_obj_get_child(switch_button,0);
  switch_pointer=lv_obj_create(switch_button);lv_obj_remove_style_all(switch_pointer);
  lv_obj_set_size(switch_pointer,3,9);lv_obj_align(switch_pointer,LV_ALIGN_TOP_MID,10,4);
  lv_obj_set_style_bg_opa(switch_pointer,LV_OPA_COVER,0);lv_obj_set_style_radius(switch_pointer,1,0);
@@ -179,13 +238,15 @@ void eqpreset_create(lv_obj_t *root){
  if(th_disco()&&!th_nt()){   /* fork: Disco keeps the navigation circle's sliver on the right rim - the controls step left of it */
   for(uint32_t k=0;k<lv_obj_get_child_count(root);k++){
    lv_obj_t *o=lv_obj_get_child(root,(int32_t)k);
-   if(o==name_label||o==edit_button||o==rename_button||o==note_label||o==switch_button) lv_obj_set_style_translate_x(o,disco_mirror()?20:-20,0);   /* Left: step right of it */
+   if(o==name_label||o==edit_button||o==rename_button||o==note_label||o==switch_button||o==reset_button||o==copy_button||o==paste_button) lv_obj_set_style_translate_x(o,disco_mirror()?20:-20,0);   /* Left: step right of it */
   }
   lv_obj_set_width(name_label,150);
   lv_obj_set_style_translate_x(next_b,disco_mirror()?4:-36,0); lv_obj_set_style_translate_x(prev_b,disco_mirror()?36:-4,0);
   lv_obj_add_flag(switch_pointer,LV_OBJ_FLAG_HIDDEN);
  }
  if(th_null()){
+  {lv_obj_t *tb[3]={reset_button,copy_button,paste_button};for(int i=0;i<3;i++){lv_obj_set_style_radius(tb[i],0,0);lv_obj_set_style_bg_opa(tb[i],0,0);
+    lv_obj_set_style_border_width(tb[i],1,0);lv_obj_set_style_border_color(tb[i],TC(TEXT_SECONDARY),0);kit_keep(tb[i]);}}
   lv_label_set_long_mode(name_label,LV_LABEL_LONG_SCROLL_CIRCULAR);lv_obj_set_width(name_label,192);
   lv_obj_align(name_label,LV_ALIGN_TOP_MID,0,125);lv_obj_set_style_text_font(name_label,TF(HEADER_SM),0);
   lv_obj_t *buttons[]={prev_b,next_b,edit_button,rename_button,switch_button};
@@ -197,7 +258,7 @@ void eqpreset_create(lv_obj_t *root){
   lv_obj_set_style_text_font(lv_obj_get_child(edit_button,0),TF(HEADER_SM),0);
   lv_obj_set_style_text_font(lv_obj_get_child(rename_button,0),TF(HEADER_SM),0);
   lv_obj_set_style_text_font(switch_label,TF(HEADER_SM),0);
-  lv_obj_set_size(switch_button,104,48);lv_obj_align(switch_button,LV_ALIGN_TOP_MID,0,280);
+  lv_obj_set_size(switch_button,104,44);lv_obj_align(switch_button,LV_ALIGN_TOP_MID,0,288);
   lv_obj_add_flag(switch_pointer,LV_OBJ_FLAG_HIDDEN);kit_keep(name_label);
  }
  if(th_nt())lv_obj_add_flag(switch_pointer,LV_OBJ_FLAG_HIDDEN);

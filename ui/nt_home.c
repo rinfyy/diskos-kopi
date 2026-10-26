@@ -275,8 +275,8 @@ static void fmt_time(long ms, char *o, size_t n){ long s = ms > 0 ? ms / 1000 : 
 /* The CD turns while music plays (about one turn every 8 s). The cover is resampled once per album into a square
  * buffer; each frame rotates it into a round ARGB image (bilinear, antialiased edge) - only the rows that are on screen,
  * and only while Music is showing and playing. No clip mask, so LVGL just blends one image. */
-#define SPIN_MS   66
-#define SPIN_TURN 8000
+#define SPIN_MS   40                  /* 25 frames a second */
+#define SPIN_TURN 14000               /* one turn in 14 s */
 static uint32_t *g_src, *g_out; static uint8_t *g_mask; static int g_sd;   /* d x d */
 static lv_image_dsc_t g_spin_dsc; static int g_angle10, g_src_ok, g_row0;   /* angle in tenths of a degree */
 static unsigned g_src_rev = ~0u; static lv_timer_t *g_spin_tm;
@@ -440,7 +440,10 @@ static void spin_render(void){
 static void spin_tick(lv_timer_t *t){
     (void)t;
     if(!g_playing || !g_have || screen_current() != SCR_HOME){ lv_timer_pause(g_spin_tm); return; }
-    g_angle10 = (g_angle10 + 3600 * SPIN_MS / SPIN_TURN) % 3600;
+    static uint32_t last; static int frac;                              /* by the clock, not by frames: no stutter */
+    uint32_t now = lv_tick_get(), dt = last ? now - last : SPIN_MS; last = now;
+    if(dt > 200) dt = SPIN_MS;                                           /* (after a pause: carry on from here) */
+    frac += (int)dt * 3600; g_angle10 = (g_angle10 + frac / SPIN_TURN) % 3600; frac %= SPIN_TURN;
     spin_render();
 }
 static void spin_run(void){                                              /* start or stop the turning */
@@ -539,6 +542,7 @@ static lv_point_t g_down;
  * actions; put a finger on the outer part of the CD and turn it = scrub (one turn = 60 s), the time shows in the hub
  * and the CD turns with the finger. */
 #define SCRUB_TURN_MS 60000
+#define HUB_R 36                                                          /* the play / pause hit circle */
 static int g_g_mode, g_g_moved; static float g_g_ang0, g_g_acc; static long g_g_pos0, g_g_dur, g_g_target;
 static uint32_t g_g_t0;
 static int disc_cx(void){ return 180; }
@@ -579,7 +583,7 @@ static void disc_cb(lv_event_t *e){
     if(c == LV_EVENT_PRESSED){
         g_down = p; g_g_mode = 0; g_g_moved = 0; g_g_acc = 0; g_g_ang0 = pt_angle(p); g_g_t0 = lv_tick_get();
         int dx = p.x - disc_cx(), dy = p.y - disc_cy(), r = (g_mode ? BIG_D : DISC_D) / 2;
-        if(dx * dx + dy * dy > (r * 55 / 100) * (r * 55 / 100)) g_g_mode = 1;           /* the outer part: may become a turn */
+        (void)dx; (void)dy; (void)r;                                     /* (no turn-to-scrub: the CD never scrolls the song) */
         track_state_t st; ipc_get_state(&st); g_g_pos0 = st.position_ms; g_g_dur = st.duration_ms; g_g_target = g_g_pos0;
         hub_flash();
         return;
@@ -614,7 +618,10 @@ static void disc_cb(lv_event_t *e){
         g_g_mode = 0;
         return;
     }
-    if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved) dtap(0);
+    if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved){                      /* play / pause: the hub in the middle only */
+        int dx = g_down.x - disc_cx(), dy = g_down.y - disc_cy();
+        dtap(dx * dx + dy * dy <= HUB_R * HUB_R ? 0 : 2);
+    }
     else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode != 2) disco_track_overlay_open();
 }
 static void info_cb(lv_event_t *e){
@@ -643,6 +650,7 @@ static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
 void nt_home_create(lv_obj_t *root){
     g_mode = cfg_get_int("nt_music", 0) == 1;
     g_lyr_on = cfg_get_int("nt_lyrics", 1) != 0; g_lyr_shown[0] = 0;
+    for(lv_obj_t *o = root; o; o = lv_obj_get_parent(o)) lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);   /* a drag on the CD moves nothing */
     g_layer = plain(root); lv_obj_set_size(g_layer, 360, 360);
     lv_obj_set_style_bg_color(g_layer, MC(CANVAS), 0); lv_obj_set_style_bg_opa(g_layer, LV_OPA_COVER, 0);
     lv_obj_add_flag(g_layer, LV_OBJ_FLAG_CLICKABLE);                      /* nothing underneath takes a touch */
@@ -763,33 +771,6 @@ int nt_home_owns_point(int x, int y){
  * The cover fills the screen under a dark veil; the song's lines run over it, the current one bright and kept in the
  * middle. Scroll to read ahead (it follows again 4 s later); tap a line to jump there; tap the top handle, or hold
  * anywhere, to close. A song without synced lyrics shows its title and artist. */
-/* the cover behind the lyrics, pixelated: 24 x 24 blocks of 15 px, each the average colour of its patch */
-#define PX_N 24
-static uint32_t *g_pix; static lv_image_dsc_t g_pix_dsc; static const void *g_pix_from; static unsigned g_pix_rev = ~0u;
-static const void *pixelate(const lv_image_dsc_t *a){
-    if(!a || !a->data || !a->header.w || !a->header.h) return NULL;
-    if(a->header.cf != LV_COLOR_FORMAT_RGB888 && a->header.cf != LV_COLOR_FORMAT_XRGB8888 && a->header.cf != LV_COLOR_FORMAT_ARGB8888) return a;
-    if(g_pix_from == a && g_pix_rev == ui_art_revision()) return &g_pix_dsc;   /* made already */
-    if(!g_pix && !(g_pix = malloc(360 * 360 * 4))) return a;
-    int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
-    int st = a->header.stride ? (int)a->header.stride : w * bpp, B = 360 / PX_N;
-    for(int by = 0; by < PX_N; by++) for(int bx = 0; bx < PX_N; bx++){
-        int y0 = by * h / PX_N, y1 = (by + 1) * h / PX_N, x0 = bx * w / PX_N, x1 = (bx + 1) * w / PX_N;
-        if(y1 <= y0) y1 = y0 + 1;
-        if(x1 <= x0) x1 = x0 + 1;
-        unsigned r = 0, g = 0, b = 0, n = 0;
-        for(int yy = y0; yy < y1 && yy < h; yy += 2){ const uint8_t *q = a->data + (size_t)yy * st + (size_t)x0 * bpp;
-            for(int xx = x0; xx < x1 && xx < w; xx += 2, q += 2 * bpp){ b += q[0]; g += q[1]; r += q[2]; n++; } }
-        uint32_t v = 0xFF000000u | (n ? (r / n) << 16 | (g / n) << 8 | (b / n) : 0);
-        for(int y = by * B; y < (by + 1) * B; y++){ uint32_t *o = g_pix + y * 360 + bx * B; for(int x = 0; x < B; x++) o[x] = v; }
-    }
-    memset(&g_pix_dsc, 0, sizeof g_pix_dsc);
-    g_pix_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_pix_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888;
-    g_pix_dsc.header.w = g_pix_dsc.header.h = 360; g_pix_dsc.header.stride = 360 * 4;
-    g_pix_dsc.data = (const uint8_t *)g_pix; g_pix_dsc.data_size = 360 * 360 * 4;
-    g_pix_from = a; g_pix_rev = ui_art_revision();
-    return &g_pix_dsc;
-}
 static lv_obj_t *l_root, *l_cover, *l_list, *l_none, *l_time, **l_lab; static int l_n, l_cur = -1; static unsigned l_rev = ~0u;
 static lv_timer_t *l_tm; static uint32_t l_touch; static lyr_line_t *l_lines;
 static void l_close_cb(lv_event_t *e){ (void)e; nt_lyrics_close(); }
@@ -799,15 +780,19 @@ static void l_gesture_cb(lv_event_t *e){                                  /* a s
     if(d == LV_DIR_RIGHT || d == LV_DIR_LEFT){ nt_lyrics_close(); if(in) lv_indev_wait_release(in); }
 }
 static void l_scroll_cb(lv_event_t *e){ (void)e; l_touch = lv_tick_get(); }
-/* a tap on a line (not a scroll): the song jumps to it, the line lights red for a moment */
+/* hold a line: the song jumps to it, the line lights red for a moment. A tap anywhere brings the list back to the
+ * line that's playing now. */
 static void l_jump(int i){
     if(!l_lines || !l_lab || i < 0 || i >= l_n) return;
     ui_seek_to(l_lines[i].ms); l_touch = 0; l_cur = -1;
     lv_obj_set_style_text_color(l_lab[i], TC(ACCENT_PRIMARY), 0); lv_obj_set_style_text_opa(l_lab[i], LV_OPA_COVER, 0);
     char t[24], b[48]; fmt_time(l_lines[i].ms, t, sizeof t); snprintf(b, sizeof b, "Jump to %s", t); ui_toast(b);
 }
+static void l_tick(lv_timer_t *t);
 static void l_line_cb(lv_event_t *e){
-    if(lv_event_get_code(e) != LV_EVENT_SHORT_CLICKED || !l_lab) return;
+    lv_event_code_t c = lv_event_get_code(e);
+    if(c == LV_EVENT_SHORT_CLICKED){ l_touch = 0; l_cur = -1; l_tick(NULL); return; }   /* back to the line playing now */
+    if(c != LV_EVENT_LONG_PRESSED || !l_lab) return;
     lv_indev_t *in = lv_indev_active(); if(!in) return;
     lv_point_t p; lv_indev_get_point(in, &p);
     for(int i = 0; i < l_n; i++){ lv_area_t a; lv_obj_get_coords(l_lab[i], &a); a.y1 -= 7; a.y2 += 7;
@@ -873,8 +858,8 @@ void nt_lyrics_open(void){
         lv_obj_set_flex_flow(l_list, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(l_list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
         lv_obj_set_style_pad_row(l_list, 14, 0); lv_obj_set_style_pad_top(l_list, 160, 0); lv_obj_set_style_pad_bottom(l_list, 160, 0);
         lv_obj_add_event_cb(l_list, l_scroll_cb, LV_EVENT_SCROLL_BEGIN, NULL); lv_obj_add_event_cb(l_list, l_scroll_cb, LV_EVENT_PRESSED, NULL);
-        lv_obj_add_event_cb(l_list, l_hold_cb, LV_EVENT_LONG_PRESSED, NULL);
         lv_obj_add_event_cb(l_list, l_line_cb, LV_EVENT_SHORT_CLICKED, NULL);
+        lv_obj_add_event_cb(l_list, l_line_cb, LV_EVENT_LONG_PRESSED, NULL);
         l_none = text(l_root, ui_font_cjk(20), TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_width(l_none, 270);
         lv_label_set_long_mode(l_none, LV_LABEL_LONG_WRAP); lv_obj_center(l_none);
         for(int k = 0; k < 2; k++){                                         /* the lines fade out at the top and bottom */
@@ -896,8 +881,7 @@ void nt_lyrics_open(void){
     }
     const lv_image_dsc_t *c = g_have ? ui_current_sharp_img() : NULL;
     lv_image_set_src(l_cover, NULL);
-    const lv_image_dsc_t *px = pixelate(c);
-    if(px){ lv_image_set_src(l_cover, px); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (px->header.w ? px->header.w : 360)) + (px == &g_pix_dsc ? 0 : 1)); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
+    if(c){ lv_image_set_src(l_cover, c); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (c->header.w ? c->header.w : 360)) + 1); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
     else lv_obj_add_flag(l_cover, LV_OBJ_FLAG_HIDDEN);
     l_rev = ~0u; l_touch = 0; lv_label_set_text(l_none, ""); l_build();
     lv_obj_remove_flag(l_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(l_root);

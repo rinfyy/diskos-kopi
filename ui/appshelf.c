@@ -52,6 +52,7 @@ static void scan(void){
                 "Play", APP_BUILTIN_BOOMSHINE, "@boom");
     add_builtin("builtin:browser", "Browser", "Read the web as text.", "", "Open", APP_BUILTIN_BROWSER, NULL);
     add_builtin("builtin:stopwatch", "Stopwatch", "Time anything, with laps.", "", "Open", APP_BUILTIN_STOPWATCH, NULL);
+    add_builtin("builtin:chess", "Chess", "You against the Disc.", "", "Play", APP_BUILTIN_CHESS, NULL);
     add_builtin("builtin:pet", "Pip", "A little friend to look after.", "Feed it, play, keep it clean.", "Visit", APP_BUILTIN_PET, NULL);
     add_builtin("builtin:echo", "Echo", "Watch. Then repeat.", "Four pads light up in turn.\nTap them back in order.",
                 "Play", APP_BUILTIN_ECHO, NULL);
@@ -227,6 +228,7 @@ static void open_cb(lv_event_t *e){
     if(!strcmp(a->exec, APP_BUILTIN_SPHERE)){ sphere_ui_landing(); return; }   /* Static guard; initialize SongSphere only after Open. */
     if(!strcmp(a->exec, APP_BUILTIN_ROULETTE)){ screen_show(SCR_ROULETTE); return; }   /* its own vinyl landing page */
     if(!strcmp(a->exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }          /* tools open straight away */
+    if(!strcmp(a->exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
     if(!strcmp(a->exec, APP_BUILTIN_BROWSER)){ browser_open(NULL); return; }
     applanding_icon(a->icon);
     applanding_show(a->name, a->tagline, a->about, a->button, a->exec);

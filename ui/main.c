@@ -1768,6 +1768,7 @@ void app_launch(const char *exec){
     if(!strcmp(exec, APP_BUILTIN_GLIDE)){ glide_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_PET)){ pet_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }
+    if(!strcmp(exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_BROWSER)){ browser_open(NULL); return; }
     if(!strcmp(exec, APP_BUILTIN_SHELF)){discshelf_landing();return;}
     if(!strcmp(exec, APP_BUILTIN_SPHERE)){ sphere_ui_landing(); return; }   /* built in: a screen of mq_ui */
