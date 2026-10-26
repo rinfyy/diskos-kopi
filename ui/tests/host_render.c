@@ -776,6 +776,7 @@ int main(int argc, char **argv){
     if(getenv("NP_FONT"))cfg_set_int_deferred(atoi(argv[1])==THEME_PRESET_SIMPLE?"simple_track_font":"np_font",atoi(getenv("NP_FONT")));
     if(getenv("NULL_PALETTE"))cfg_set_int_deferred("null_palette",atoi(getenv("NULL_PALETTE")));
     if(getenv("DISCO_PALETTE"))cfg_set_int_deferred("disco_palette",atoi(getenv("DISCO_PALETTE")));
+    if(getenv("NULL_CUSTOM")){int a=1,b=10,c=1;sscanf(getenv("NULL_CUSTOM"),"%d,%d,%d",&a,&b,&c);cfg_set_int_deferred("null_custom_on",a);cfg_set_int_deferred("null_custom_off",b);cfg_set_int_deferred("null_custom_bg",c);}
     if(getenv("NULL_BG"))cfg_set_int_deferred("null_music_background",atoi(getenv("NULL_BG")));
     if(getenv("NULL_SIDE"))cfg_set_int_deferred("null_side",atoi(getenv("NULL_SIDE")));
     if(getenv("NULL_TEXT"))cfg_set_int_deferred("null_text_align",atoi(getenv("NULL_TEXT")));
@@ -1400,6 +1401,7 @@ int main(int argc, char **argv){
         if(th_null()&&!strcmp(page,"scr43"))appshelf_open();
         screen_show(scr);
         if(th_zune())zune_status_refresh();
+        if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("SAVER_WAIT_MS")){for(int w=0;w<atoi(getenv("SAVER_WAIT_MS"));w+=50){nav_wait(50);usleep(50000);}}   /* let background decodes (lock cover) land */
         if(getenv("FB_FIXTURE")){folderbrowser_open();nav_wait(500);if(getenv("FB_SCROLL")){lv_obj_t *list=NULL;lv_obj_t*r=screen_get_root(SCR_FOLDER);for(uint32_t i=0;i<lv_obj_get_child_count(r);i++){lv_obj_t*c=lv_obj_get_child(r,i);if(lv_obj_get_scroll_dir(c)==LV_DIR_VER&&lv_obj_get_y(c)==124){list=c;break;}}assert(list);lv_obj_scroll_to_y(list,atoi(getenv("FB_SCROLL")),LV_ANIM_OFF);nav_wait(500);}}
         if(getenv("ZUNE_CONFIRM")){void system_preview_confirmation(int);system_preview_confirmation(atoi(getenv("ZUNE_CONFIRM")));nav_wait(150);}

@@ -604,11 +604,34 @@ static void disco_palettes_init(void){
         }
     }
 }
+/* Null "Custom" palette (null_palette 3): the main (highlight) and detail (UI text) colours and the background are
+ * chosen in Settings from these swatches; cfg null_custom_on / null_custom_off / null_custom_bg hold the indices.
+ * Every swatch reads at 4.5:1 or better on every background, so any combination stays legible. */
+static const uint32_t NULL_SWATCH_RGB[NULL_SWATCH_COUNT] = {
+    0xFFFFFF, 0xF3E9DF, 0xFFB000, 0xFFE34D, 0xC5F56A, 0x39FF14, 0x7FE0B0, 0x00E5FF,
+    0x4DB8FF, 0x009FFF, 0xB89AD6, 0xA77BFF, 0xFF4FB0, 0xFF8FC0, 0xFF3045, 0xFF8A2A };
+const char *const null_swatch_names[NULL_SWATCH_COUNT] = {
+    "White", "Cream", "Amber", "Yellow", "Lime", "Green", "Mint", "Cyan",
+    "Sky", "Blue", "Lavender", "Violet", "Magenta", "Pink", "Red", "Orange" };
+static const uint32_t NULL_BG_RGB[NULL_BG_COUNT] = { 0x000000, 0x140E0C, 0x1A0F1C, 0x0A0F1E, 0x0B140E, 0x161616 };
+const char *const null_bg_names[NULL_BG_COUNT] = { "Black", "Espresso", "Plum", "Navy", "Forest", "Charcoal" };
+static uint32_t null_mix(uint32_t a, uint32_t b, int t){   /* t of 255 toward b */
+    uint32_t o = 0;
+    for(int sh = 0; sh <= 16; sh += 8) o |= (uint32_t)((((a >> sh) & 255) * (255 - t) + ((b >> sh) & 255) * t) / 255) << sh;
+    return o;
+}
+static int null_pick(const char *key, int def, int n){ int v = cfg_get_int(key, def); return v >= 0 && v < n ? v : def; }
 static void null_palettes_init(void){
  int scheme=cfg_get_int("null_palette",0);
- int matrix=scheme==2;
+ int matrix=scheme==2, custom=scheme==3;
  uint32_t off=matrix?0x39FF14:scheme==1?0xFF3045:0x009FFF;
  uint32_t on=matrix?0xFFFFFF:scheme==1?0xC5F56A:0xFFE34D;
+ uint32_t bg=0;
+ if(custom){
+  on=NULL_SWATCH_RGB[null_pick("null_custom_on",1,NULL_SWATCH_COUNT)];
+  off=NULL_SWATCH_RGB[null_pick("null_custom_off",10,NULL_SWATCH_COUNT)];
+  bg=NULL_BG_RGB[null_pick("null_custom_bg",1,NULL_BG_COUNT)];
+ }
  for(int v=0;v<2;v++){uint32_t*p=FORK_NULL[v];memcpy(p,DEFAULT_DARK,sizeof FORK_NULL[v]);
  for(int r=THEME_CLR_CANVAS;r<=THEME_CLR_RAISED_PRESSED;r++)p[r]=0;
  p[THEME_CLR_BORDER]=p[THEME_CLR_BORDER_STRONG]=0x18232B;p[THEME_CLR_OUTLINE_BRIGHT]=on;
@@ -630,6 +653,15 @@ static void null_palettes_init(void){
   p[THEME_CLR_TEXT_FOOTNOTE]=p[THEME_CLR_TEXT_HINT]=off;
   p[THEME_CLR_KEY_SELECTED]=p[THEME_CLR_KEY_PRESSED]=0x10280B;
   p[THEME_CLR_STATUS_SUCCESS]=off;
+ }
+ if(custom){                                          /* the chosen background replaces Null's black; lines and
+                                                       * selections are the detail colour faded into it */
+  for(int r=THEME_CLR_CANVAS;r<=THEME_CLR_RAISED_PRESSED;r++)p[r]=bg;
+  p[THEME_CLR_CONTROL_OFF]=p[THEME_CLR_KEY_SURFACE]=p[THEME_CLR_SWITCH_KNOB]=p[THEME_CLR_ACTION_SURFACE]=bg;
+  p[THEME_CLR_ACTION_SHADOW]=p[THEME_CLR_ON_ACCENT]=bg;
+  p[THEME_CLR_BORDER]=p[THEME_CLR_BORDER_STRONG]=null_mix(bg,off,48);
+  p[THEME_CLR_KEY_SELECTED]=p[THEME_CLR_KEY_PRESSED]=null_mix(bg,off,36);
+  p[THEME_CLR_TEXT_FOOTNOTE]=p[THEME_CLR_TEXT_HINT]=null_mix(on,bg,70);
  }
  }
 }

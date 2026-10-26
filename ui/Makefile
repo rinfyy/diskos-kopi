@@ -40,7 +40,11 @@ SQLITE_FLAGS := -Os -pipe -static -ffunction-sections -fdata-sections -DSQLITE_T
 BOOM_OBJS := $(APP)/boomshine/main.o $(APP)/boomshine/game.o
 BOOM_FLAGS := -O2 -pipe -std=c11 -static -Wall -Wextra -ffunction-sections -fdata-sections -DBOOMSHINE_BUILTIN \
   -Dmain=boomshine_main $(REPRO_FLAGS) $(FP_FLAGS)
-OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(APP)/vendor/smb-build/libsmb2.a
+# Snake (GPL, ui/snake): built in like Boomshine and run as `mq_ui --snake`; no LVGL, no theme roles (it reads the
+# theme's colours from /tmp/diskos-app-env at launch).
+SNAKE_OBJS := $(APP)/snake/snake.o
+SNAKE_FLAGS := -O2 -pipe -std=gnu11 -static -Wall -Wextra -ffunction-sections -fdata-sections $(REPRO_FLAGS) $(FP_FLAGS)
+OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/vendor/smb-build/libsmb2.a
 
 # Every on-screen colour is a theme role (theme.h); theme.c is the only place RGB becomes a colour. The link fails if
 # any other app source (.c, or any header in the tree) builds a colour itself: an LVGL colour constructor, palette,
@@ -110,6 +114,8 @@ checkpunct:   # app text only; generated font sources intentionally describe Uni
 
 $(APP)/sqlite3.o: $(APP)/sqlite3.c
 	$(CC) $(SQLITE_FLAGS) -c $< -o $@
+$(APP)/snake/snake.o: $(APP)/snake/snake.c
+	$(CC) $(SNAKE_FLAGS) -c $< -o $@
 $(APP)/boomshine/%.o: $(APP)/boomshine/%.c $(APP)/boomshine/game.h $(APP)/boomshine/fonts.h
 	$(CC) $(BOOM_FLAGS) -c $< -o $@
 

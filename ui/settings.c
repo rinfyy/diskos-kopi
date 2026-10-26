@@ -358,6 +358,9 @@ static void apply_disco_menu(int v){ (void)v; disco_menu_open(); }     /* fork: 
 static void apply_disco_options(int v);
 static void apply_null_options(int v);
 static void apply_null_reload(int v){(void)v;theme_reload_or_revert("null_palette");}
+static void apply_null_c_on(int v){(void)v;theme_reload_or_revert("null_custom_on");}
+static void apply_null_c_off(int v){(void)v;theme_reload_or_revert("null_custom_off");}
+static void apply_null_c_bg(int v){(void)v;theme_reload_or_revert("null_custom_bg");}
 static void apply_null_qs_layout(int v){(void)v;null_qs_build();}
 static void apply_null_live(int v){(void)v;null_options_changed();}
 static void apply_null_menu(int v){(void)v;disco_menu_open();}
@@ -365,7 +368,7 @@ static void apply_null_qs(int v){(void)v;disco_qs_menu_open();}
 static const char *OPT_LIBRARY_SEEK[]={"A-Z keys","A-Z wheel"};
 static const char *OPT_NULLFONTS[]={"Original","Jersey","Handjet","Matrix"};
 static const char *OPT_NULLQS[]={"Text","Icons"};
-static const char *OPT_NULLPAL[]={"Cyan / Yellow","Red / Lime","Matrix"};
+static const char *OPT_NULLPAL[]={"Cyan / Yellow","Red / Lime","Matrix","Custom"};
 static const char *OPT_NULLTEXT[]={"Center","Left"};
 static const char *OPT_NULLBG[]={"Black","Dark cover","Pixel cover"};
 static const char *OPT_NULLAUTO[]={"Off","5 seconds","10 seconds","30 seconds"};
@@ -835,7 +838,10 @@ static const setting_t TABLE[] = {
     {"Display","Null Options",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_null_options,0,"Null theme settings",NULL},
     {"Null Options","Menu items",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_null_menu,0,"Choose and reorder destinations and installed apps",NULL},
     {"Null Options","Quick settings",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_null_qs,0,"Choose up to eight quick items and arrange their order",NULL},
-    {"Null Options","Palette",ST_CYCLER,"null_palette",0,0,2,OPT_NULLPAL,3,NULL,apply_null_reload,0,"Cyan/yellow, red/lime or Matrix white/green on black",NULL},
+    {"Null Options","Palette",ST_CYCLER,"null_palette",0,0,3,OPT_NULLPAL,4,NULL,apply_null_reload,0,"Cyan/yellow, red/lime, Matrix white/green, or Custom: your own colours below",NULL},
+    {"Null Options","Main colour",ST_CYCLER,"null_custom_on",0,0,0,null_swatch_names,NULL_SWATCH_COUNT,NULL,apply_null_c_on,1,"Custom palette: titles, the selected row, the time and highlights.",NULL},
+    {"Null Options","Detail colour",ST_CYCLER,"null_custom_off",0,0,0,null_swatch_names,NULL_SWATCH_COUNT,NULL,apply_null_c_off,10,"Custom palette: menu text, lines, icons and progress.",NULL},
+    {"Null Options","Background",ST_CYCLER,"null_custom_bg",0,0,0,null_bg_names,NULL_BG_COUNT,NULL,apply_null_c_bg,1,"Custom palette: the screen behind everything. Black is classic Null.",NULL},
     {"Null Options","Background",ST_CYCLER,"null_music_background",0,0,2,OPT_NULLBG,3,NULL,apply_null_live,0,"Black, dark cover or cached20x20 pixel cover",NULL},
     {"Null Options","Title hold",ST_CYCLER,"null_title_hold",0,0,0,OPT_DHOLD,3,NULL,NULL,0,"Immersive, favourite/unfavourite, or no action when holding track text.",NULL},
     {"Null Options","Controls",ST_CYCLER,"null_controls",0,0,2,OPT_DCTRL,3,NULL,apply_null_live,0,"Buttons, autofade or gestures",NULL},

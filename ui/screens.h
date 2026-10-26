@@ -235,6 +235,8 @@ void applanding_create(lv_obj_t *root);
 void applanding_show(const char *name, const char *tagline, const char *about, const char *button, const char *exec);
 void boomshine_landing(void);
 #define APP_BUILTIN_BOOMSHINE "builtin:boomshine"   /* app_launch() target for the game built into mq_ui */
+#define APP_BUILTIN_SNAKE "builtin:snake"           /* the Snake game, also built into mq_ui (mq_ui --snake) */
+void snake_landing(void);
 #define APP_BUILTIN_SPHERE "builtin:songsphere"     /* SongSphere: built in since 2.2.0 (sphere_ui.c) */
 #define APP_BUILTIN_STATS "builtin:stats"           /* Listening Stats: a screen of mq_ui, opened from its landing page */
 void stats_create(lv_obj_t *root);

@@ -9,6 +9,9 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"theme_auto",NULL,"Appearance","Automatic appearance"},
     {"outdoor",NULL,"Appearance","Outdoor mode"},
     {"null_palette",NULL,"Appearance","Colour scheme"},
+    {"null_custom_on",NULL,"Appearance","Custom main"},
+    {"null_custom_off",NULL,"Appearance","Custom detail"},
+    {"null_custom_bg",NULL,"Appearance","Custom background"},
     {"disco_palette",NULL,"Appearance","Colour palette"},
     {"disco_sheen",NULL,"Appearance","Rim sheen"},
     {"disco_eq",NULL,"Appearance","Equalizer colours"},
@@ -103,6 +106,7 @@ static const display_entry_t *display_entry(const setting_t *s){
 static int display_variant_hidden(const setting_t *s){
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"saver_style"))return 1;
     if(s->apply==apply_grp_zune&&!th_zune())return 1;
+    if(s->cfg_key&&!strncmp(s->cfg_key,"null_custom_",12)&&!(th_null()&&cfg_get_int("null_palette",0)==3))return 1;   /* only with Null > Custom */
     if(!th_disco()&&(s->apply==apply_lock_next||(s->cfg_key&&!strncmp(s->cfg_key,"dlock_",6))))return 1;
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
     if(s->cfg_key&&!th_zune()&&!strncmp(s->cfg_key,"zune_",5))return 1;

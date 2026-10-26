@@ -90,6 +90,21 @@ static lv_obj_t *dot(lv_obj_t *parent, int d){
 }
 static void land_art(const char *name, int boom){
     lv_obj_clean(g_land_art);
+    if(boom == 3){                                               /* Snake: a short bent body, its head and a bite */
+        static const signed char P[6][4] = { { 24, 70, 34, 10 }, { 48, 46, 10, 34 }, { 48, 46, 34, 10 },
+                                             { 72, 46, 10, 30 }, { 72, 66, 26, 10 }, { 92, 62, 14, 14 } };
+        for(int i = 0; i < 6; i++){
+            lv_obj_t *b = lv_obj_create(g_land_art); lv_obj_remove_style_all(b);
+            lv_obj_set_size(b, P[i][2], P[i][3]); lv_obj_set_pos(b, P[i][0], P[i][1]);
+            lv_obj_set_style_radius(b, 5, 0);
+            lv_obj_set_style_bg_color(b, i == 5 ? TC(TEXT_PRIMARY) : TC(ACCENT_PRIMARY), 0);
+            lv_obj_set_style_bg_opa(b, i == 5 ? LV_OPA_COVER : (lv_opa_t)(120 + i * 25), 0);
+            lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        }
+        lv_obj_t *food = dot(g_land_art, 10); lv_obj_set_pos(food, 92, 32);
+        lv_obj_set_style_bg_color(food, TC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(food, LV_OPA_COVER, 0);
+        return;
+    }
     if(boom == 2){                                               /* Listening Stats: a little rising bar chart */
         static const signed char H[5] = { 22, 38, 30, 52, 64 };
         for(int i = 0; i < 5; i++){
@@ -171,7 +186,8 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
         lv_obj_remove_flag(*guard,LV_OBJ_FLAG_HIDDEN);g_land_icon[0]=0;
         screen_show(SCR_APPLAND);return;
     }
-    land_art(name, !strcmp(g_land_exec, APP_BUILTIN_BOOMSHINE) ? 1 : !strcmp(g_land_exec, APP_BUILTIN_STATS) ? 2 : 0);
+    land_art(name, !strcmp(g_land_exec, APP_BUILTIN_BOOMSHINE) ? 1 : !strcmp(g_land_exec, APP_BUILTIN_STATS) ? 2 :
+                   !strcmp(g_land_exec, APP_BUILTIN_SNAKE) ? 3 : 0);
     if(g_land_icon[0] && strncmp(g_land_exec, "builtin:", 8) && !access(g_land_icon, R_OK)){   /* the app's own icon */
         static lv_image_dsc_t *ic;
         lv_image_dsc_t *nw = app_icon_load(g_land_icon, 88);
@@ -186,6 +202,10 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
     lv_label_set_text(g_land_btn_l, button && button[0] ? button : "Launch");
     lv_obj_center(g_land_btn_l);
     screen_show(SCR_APPLAND);
+}
+void snake_landing(void){
+    applanding_show("Snake", "Eat. Grow. Don't bite.",
+                    "Swipe or tap to turn.", "Play", APP_BUILTIN_SNAKE);
 }
 void boomshine_landing(void){
     applanding_show("Boomshine", "One tap. A chain reaction.",
