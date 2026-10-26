@@ -13,6 +13,7 @@
  *
  * This layer is built on top of Disco's Music widgets (disco_home.c keeps running underneath for its popup, idle
  * logic and timers); it is opaque, so LVGL never draws what it covers. Colours and fonts are theme roles only. */
+#include "lockcover.h"
 #include "screens.h"
 #include "theme.h"
 #include "config.h"
@@ -29,7 +30,7 @@
 
 #define DISC_D   300              /* CD + info: the CD's diameter, its centre above the screen's top third */
 #define DISC_CY  50
-#define BIG_D    276              /* Disc only */
+#define BIG_D    296              /* Disc only */
 #define LYR_CAP  240
 
 void disco_track_overlay_open(void);
@@ -287,6 +288,10 @@ static void spin_alloc(int d){
 static void spin_source(void){
     int d = g_sd; if(!d) return;
     const lv_image_dsc_t *a = g_have ? ui_current_sharp_img() : NULL;
+    if(g_have && cfg_get_int("nt_disc", 0) == 1){                      /* Disc: My picture (the album until it is decoded) */
+        const lv_image_dsc_t *p = lockcover_img();
+        if(p) a = p; else lockcover_request();
+    }
     int ok = a && a->data && a->header.w > 0 &&
              (a->header.cf == LV_COLOR_FORMAT_RGB888 || a->header.cf == LV_COLOR_FORMAT_XRGB8888 || a->header.cf == LV_COLOR_FORMAT_ARGB8888);
     if(ok){
@@ -316,6 +321,83 @@ static void spin_source(void){
     }
     g_src_ok = 1; g_src_rev = ui_art_revision();
 }
+/* ---- your picture behind the clock (Idle screen: Plain / My picture / My picture, blurred) ------------------------ */
+/* The blurred one: the 360x360 picture area-averaged down to 40x40, box-blurred three times, then stretched back up
+ * (bilinear) - a soft wash of its colours, made once per picture. */
+#define BL_N 40
+static uint32_t *g_blur; static lv_image_dsc_t g_blur_dsc; static int g_blur_ok;
+static void blur_make(const lv_image_dsc_t *a){
+    g_blur_ok = 0;
+    if(!a || !a->data || a->header.cf != LV_COLOR_FORMAT_XRGB8888) return;
+    if(!g_blur && !(g_blur = malloc(360 * 360 * 4))) return;
+    int w = (int)a->header.w, h = (int)a->header.h, st = a->header.stride ? (int)a->header.stride : w * 4;
+    static int sm[3][BL_N * BL_N], tmp[BL_N * BL_N];
+    for(int y = 0; y < BL_N; y++) for(int x = 0; x < BL_N; x++){
+        int y0 = y * h / BL_N, y1 = (y + 1) * h / BL_N, x0 = x * w / BL_N, x1 = (x + 1) * w / BL_N;
+        unsigned c[3] = {0, 0, 0}, n = 0;
+        for(int yy = y0; yy < y1; yy++){ const uint8_t *q = a->data + (size_t)yy * st + (size_t)x0 * 4;
+            for(int xx = x0; xx < x1; xx++, q += 4){ c[0] += q[0]; c[1] += q[1]; c[2] += q[2]; n++; } }
+        for(int k = 0; k < 3; k++) sm[k][y * BL_N + x] = n ? (int)(c[k] / n) : 0;
+    }
+    for(int k = 0; k < 3; k++) for(int pass = 0; pass < 3; pass++) for(int dir = 0; dir < 2; dir++){
+        for(int y = 0; y < BL_N; y++) for(int x = 0; x < BL_N; x++){
+            int sum = 0;
+            for(int o = -2; o <= 2; o++){
+                int xx = dir ? x : x + o, yy = dir ? y + o : y;
+                xx = xx < 0 ? 0 : xx >= BL_N ? BL_N - 1 : xx; yy = yy < 0 ? 0 : yy >= BL_N ? BL_N - 1 : yy;
+                sum += sm[k][yy * BL_N + xx];
+            }
+            tmp[y * BL_N + x] = sum / 5;
+        }
+        memcpy(sm[k], tmp, sizeof tmp);
+    }
+    for(int y = 0; y < 360; y++){
+        int fy = (y * (BL_N - 1) * 256) / 359, iy = fy >> 8; fy &= 255; if(iy >= BL_N - 1){ iy = BL_N - 2; fy = 256; }
+        for(int x = 0; x < 360; x++){
+            int fx = (x * (BL_N - 1) * 256) / 359, ix = fx >> 8; fx &= 255; if(ix >= BL_N - 1){ ix = BL_N - 2; fx = 256; }
+            uint32_t v = 0xFF000000u;
+            for(int k = 0; k < 3; k++){
+                const int *m = sm[k] + iy * BL_N + ix;
+                int top = m[0] * (256 - fx) + m[1] * fx, bot = m[BL_N] * (256 - fx) + m[BL_N + 1] * fx;
+                v |= (uint32_t)((top * (256 - fy) + bot * fy) >> 16) << (k * 8);
+            }
+            g_blur[y * 360 + x] = v;
+        }
+    }
+    memset(&g_blur_dsc, 0, sizeof g_blur_dsc);
+    g_blur_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_blur_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888;
+    g_blur_dsc.header.w = g_blur_dsc.header.h = 360; g_blur_dsc.header.stride = 360 * 4;
+    g_blur_dsc.data = (const uint8_t *)g_blur; g_blur_dsc.data_size = 360 * 360 * 4;
+    g_blur_ok = 1;
+}
+static const void *idle_picture(void){                                  /* NULL = plain */
+    int m = cfg_get_int("nt_idle", 0);
+    if(m <= 0) return NULL;
+    const lv_image_dsc_t *p = lockcover_img();
+    if(!p){ lockcover_request(); return NULL; }
+    if(m == 1) return p;
+    if(!g_blur_ok) blur_make(p);
+    return g_blur_ok ? (const void *)&g_blur_dsc : (const void *)p;
+}
+typedef struct { lv_obj_t *img, *veil; } bg_t;
+static void bg_build(bg_t *b, lv_obj_t *parent, lv_color_t veil){
+    b->img = lv_image_create(parent); lv_obj_remove_flag(b->img, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_pos(b->img, 0, 0);
+    b->veil = plain(parent); lv_obj_set_size(b->veil, 360, 360); lv_obj_set_pos(b->veil, 0, 0);
+    lv_obj_set_style_bg_color(b->veil, veil, 0); lv_obj_set_style_bg_opa(b->veil, LV_OPA_COVER, 0);
+    lv_obj_move_to_index(b->veil, 0); lv_obj_move_to_index(b->img, 0);     /* behind the clock */
+    lv_obj_add_flag(b->img, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(b->veil, LV_OBJ_FLAG_HIDDEN);
+}
+static void bg_apply(bg_t *b){
+    if(!b->img) return;
+    const void *src = idle_picture();
+    lv_image_set_src(b->img, NULL);
+    if(!src){ lv_obj_add_flag(b->img, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(b->veil, LV_OBJ_FLAG_HIDDEN); return; }
+    lv_image_set_src(b->img, src); lv_obj_set_pos(b->img, 0, 0);
+    lv_obj_set_style_bg_opa(b->veil, src == (const void *)&g_blur_dsc ? 120 : 150, 0);   /* the clock stays readable */
+    lv_obj_remove_flag(b->img, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(b->veil, LV_OBJ_FLAG_HIDDEN);
+}
+static bg_t g_ibg, g_sbg;                                                  /* Music's idle face, standby */
+
 static void spin_render(void){
     int d = g_sd; if(!d || !g_src_ok) return;
     float rad = g_angle10 * 0.1f * 0.01745329f;
@@ -562,11 +644,12 @@ void nt_home_create(lv_obj_t *root){
     lv_obj_t *times = plain(g_info); lv_obj_set_size(times, LV_SIZE_CONTENT, LV_SIZE_CONTENT); lv_obj_set_flex_flow(times, LV_FLEX_FLOW_ROW);
     lv_obj_align(times, LV_ALIGN_TOP_MID, 0, 106);
     g_el = text(times, TF(UI_16), MC(TEXT_PRIMARY), 0); g_tot = text(times, TF(UI_16), MC(TEXT_MUTED), 0);
-    stat_build(&g_stat, g_layer, g_mode ? 340 : 334, MC(TEXT_PRIMARY), MC(TEXT_MUTED));       /* CD + info / Disc only */
+    /* (no status line on Music: the battery lives in the Quick Settings bar) */
 
     /* nothing playing: the clock face */
     g_idle_box = plain(g_layer); lv_obj_set_size(g_idle_box, 360, 360);
     face_build(&g_face, g_idle_box, 46, 118, 148, 228, TF(CLOCK), 9, 1);
+    bg_build(&g_ibg, g_idle_box, MC(CANVAS));
     g_start = plain(g_idle_box); lv_obj_set_size(g_start, 178, 40); lv_obj_align(g_start, LV_ALIGN_TOP_MID, 0, 276);
     lv_obj_set_style_radius(g_start, 20, 0); lv_obj_add_flag(g_start, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(g_start, 8);
     lv_obj_set_style_bg_color(g_start, MC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_start, LV_OPA_COVER, 0);
@@ -584,7 +667,15 @@ void nt_home_create(lv_obj_t *root){
     face_clock(&g_face, g_clock[0] ? g_clock : NULL, g_sub[0] ? g_sub : NULL);
     face_weather(&g_face, g_wx);
     stat_set(&g_stat, MC(TEXT_PRIMARY)); stat_set(&g_istat, MC(TEXT_PRIMARY));
+    lockcover_set_listener(nt_home_pictures_apply);                     /* (the Disco lock screen's picture, NTDisk takes it) */
+    bg_apply(&g_ibg);
     view_apply();
+}
+/* the Disc or Idle screen setting, a new picture, or a picture finished decoding */
+void nt_home_pictures_apply(void){
+    g_blur_ok = 0;
+    if(g_art) art_apply(1);
+    bg_apply(&g_ibg); bg_apply(&g_sbg);
 }
 void nt_home_now_playing(const char *title, const char *artist, int playing){
     int have = title && title[0];
@@ -746,6 +837,7 @@ void nt_saver_create(lv_obj_t *root){
     lv_obj_set_style_bg_color(root, TC(CANVAS), 0); lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_image_src(root, NULL, 0);
     face_build(&g_sface, root, 46, 120, 150, 242, TF(SAVER_CLOCK), 10, 0);
+    memset(&g_sbg, 0, sizeof g_sbg); bg_build(&g_sbg, root, TC(CANVAS)); bg_apply(&g_sbg);
     g_snote = plain(root); lv_obj_set_size(g_snote, LV_SIZE_CONTENT, LV_SIZE_CONTENT);    /* while a song plays */
     lv_obj_set_flex_flow(g_snote, LV_FLEX_FLOW_ROW); lv_obj_set_style_pad_column(g_snote, 8, 0);
     lv_obj_set_flex_align(g_snote, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);

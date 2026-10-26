@@ -780,6 +780,8 @@ int main(int argc, char **argv){
     if(getenv("NT_STYLE"))cfg_set_int_deferred("nt_style",atoi(getenv("NT_STYLE")));
     if(getenv("NT_FONT"))cfg_set_int_deferred("nt_font",atoi(getenv("NT_FONT")));
     if(getenv("NT_MUSIC"))cfg_set_int_deferred("nt_music",atoi(getenv("NT_MUSIC")));
+    if(getenv("NT_DISC"))cfg_set_int_deferred("nt_disc",atoi(getenv("NT_DISC")));
+    if(getenv("NT_IDLEBG"))cfg_set_int_deferred("nt_idle",atoi(getenv("NT_IDLEBG")));
     if(getenv("NT_LYRICS"))cfg_set_int_deferred("nt_lyrics",atoi(getenv("NT_LYRICS")));
     if(getenv("NULL_CUSTOM")){int a=1,b=10,c=1;sscanf(getenv("NULL_CUSTOM"),"%d,%d,%d",&a,&b,&c);cfg_set_int_deferred("null_custom_on",a);cfg_set_int_deferred("null_custom_off",b);cfg_set_int_deferred("null_custom_bg",c);}
     if(getenv("NULL_BG"))cfg_set_int_deferred("null_music_background",atoi(getenv("NULL_BG")));
@@ -1408,6 +1410,7 @@ int main(int argc, char **argv){
         if(th_zune())zune_status_refresh();
         if(th_nt()){home_set_status(getenv("NT_BATT")?atoi(getenv("NT_BATT")):67,getenv("NT_CHG")!=NULL,1,1);home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");
             if(getenv("NT_IDLE"))nt_home_now_playing(NULL,NULL,0);nav_wait(60);
+            if(getenv("NT_DISC")||getenv("NT_IDLEBG")){for(int i=0;i<400;i++){lv_tick_inc(10);lv_timer_handler();usleep(3000);}nav_wait(60);}
             if(getenv("NT_PROMPT")){void settings_test_nt_prompt(int);settings_test_nt_prompt(atoi(getenv("NT_PROMPT"))==2);nav_wait(80);}
             if(getenv("NT_LYRWAIT"))for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}
             if(getenv("NT_EQSEL")){void eqcustom_test_select(int);nav_wait(300);eqcustom_test_select(atoi(getenv("NT_EQSEL")));nav_wait(60);}

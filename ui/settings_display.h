@@ -17,6 +17,9 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"nt_font",NULL,"Appearance","Font"},
     {"nt_music",NULL,"Music screen","Layout"},
     {"nt_lyrics",NULL,"Music screen","Lyrics as title"},
+    {"nt_disc",NULL,"Music screen","Disc"},
+    {"nt_idle",NULL,"Music screen","Idle screen"},
+    {NULL,apply_nt_pic_next,"Music screen","Change picture"},
     {"disco_palette",NULL,"Appearance","Colour palette"},
     {"disco_sheen",NULL,"Appearance","Rim sheen"},
     {"disco_eq",NULL,"Appearance","Equalizer colours"},
@@ -115,7 +118,8 @@ static int display_variant_hidden(const setting_t *s){
     if(!th_disco()&&(s->apply==apply_lock_next||(s->cfg_key&&!strncmp(s->cfg_key,"dlock_",6))))return 1;
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
     if(s->cfg_key&&!th_nt()&&!strncmp(s->cfg_key,"nt_",3))return 1;
-    if(s->apply==apply_nt_restart&&!(th_nt()&&g_nt_pending))return 1;   /* only while a change waits */
+    if(s->apply==apply_nt_restart&&!(th_nt()&&g_nt_pending))return 1;
+    if(s->apply==apply_nt_pic_next&&!(th_nt()&&(cfg_get_int("nt_disc",0)==1||cfg_get_int("nt_idle",0)>=1)))return 1;   /* only with a picture in use */   /* only while a change waits */
     if(!th_nt()&&(s->apply==apply_playkey_learn||(s->cfg_key&&(!strcmp(s->cfg_key,"pk_double")||!strcmp(s->cfg_key,"pk_hold")))))return 1;   /* NTDisk's play-button shortcuts */
     if(th_nt()&&(s->apply==apply_grp_musicinfo||s->apply==apply_grp_musicprogress||s->apply==apply_grp_musictext))return 1;                  /* NTDisk's own rows */
     if(th_nt()&&(s->apply==apply_lock_next||(s->cfg_key&&(!strncmp(s->cfg_key,"dlock_",6)||!strcmp(s->cfg_key,"disco_palette")||

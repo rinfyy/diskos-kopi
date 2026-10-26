@@ -654,6 +654,36 @@ static void nt_palettes_init(void){
         };
         for(unsigned i = 0; i < sizeof R / sizeof R[0]; i++) p[R[i].r] = v ? R[i].light : R[i].dark;
     }
+    /* Style 4 Cream (a light pastel cream) and 5 Midnight (a deep navy): the same roles, other tones */
+    int st = cfg_get_int("nt_style", 0);
+    if(st == 4 || st == 5){
+        static const struct { theme_color_role_t r; uint32_t cream, midnight; } T[] = {
+            {THEME_CLR_CANVAS,0xF3EBDC,0x0A0F1E},{THEME_CLR_SURFACE,0xFBF6EC,0x141B2E},{THEME_CLR_SURFACE_RAISED,0xF6EEDF,0x1B2340},
+            {THEME_CLR_SURFACE_STRONG,0xE6DAC5,0x26304F},{THEME_CLR_SURFACE_SELECTED,0xEADFCB,0x222B47},{THEME_CLR_LIST_PRESSED,0xEADFCB,0x222B47},
+            {THEME_CLR_SURFACE_PRESSED,0xEFE5D3,0x1F2844},{THEME_CLR_RAISED_PRESSED,0xE6DAC5,0x26304F},{THEME_CLR_ART_PLACEHOLDER,0xFBF6EC,0x141B2E},
+            {THEME_CLR_BORDER,0xE2D6C2,0x232C48},{THEME_CLR_BORDER_STRONG,0xD3C5AE,0x313B5E},{THEME_CLR_CONNECTED_SURFACE,0xF6EEDF,0x1B2340},
+            {THEME_CLR_CONTROL_TRACK,0xDCCFB9,0x2C3656},{THEME_CLR_CONTROL_TRACK_STRONG,0xDCCFB9,0x2C3656},
+            {THEME_CLR_CONTROL_FILL,0x3A3128,0xE4E9F6},{THEME_CLR_CONTROL_KNOB,0x3A3128,0xE4E9F6},{THEME_CLR_CONTROL_OFF,0xF6EEDF,0x1B2340},
+            {THEME_CLR_ON_CONTROL,0xFBF6EC,0x0A0F1E},
+            {THEME_CLR_TEXT_PRIMARY,0x3A3128,0xE4E9F6},{THEME_CLR_TEXT_SECONDARY,0x6B5F51,0xAAB3CC},{THEME_CLR_TEXT_MUTED,0x8C7F6E,0x7F8AA8},
+            {THEME_CLR_TEXT_DISABLED,0xAA9D8A,0x5A6482},{THEME_CLR_TEXT_LYRICS,0x4A4036,0xCDD3E4},{THEME_CLR_TEXT_HINT,0x8C7F6E,0x7F8AA8},
+            {THEME_CLR_TEXT_FOOTNOTE,0x8C7F6E,0x7F8AA8},{THEME_CLR_TEXT_SEPARATOR,0x9C8F7D,0x6A7594},
+            {THEME_CLR_ACCENT_PRIMARY,0xD9634C,0xE5484D},{THEME_CLR_ACCENT_EMPHASIS,0xD9634C,0xE5484D},{THEME_CLR_ACCENT_IDLE,0xD9634C,0xE5484D},
+            {THEME_CLR_SWITCH_ON,0xD9634C,0xE5484D},{THEME_CLR_WIDGET_PRIMARY,0xD9634C,0xE5484D},{THEME_CLR_INPUT_CURSOR,0xD9634C,0xE5484D},
+            {THEME_CLR_DECOR_1,0xD9634C,0xE5484D},{THEME_CLR_SWITCH_OFF,0xB8AB97,0x3C4668},
+            {THEME_CLR_SIGNAL_ACTIVE,0x3A3128,0xE4E9F6},{THEME_CLR_SIGNAL_INACTIVE,0x8C7F6E,0x7F8AA8},{THEME_CLR_GRABBER,0x8C7F6E,0x7F8AA8},
+            {THEME_CLR_PAGE_DOT_ACTIVE,0x3A3128,0xE4E9F6},{THEME_CLR_PAGE_DOT_INACTIVE,0xC9BCA6,0x3C4668},{THEME_CLR_PAGE_DOT_DIM,0xE2D6C2,0x232C48},
+            {THEME_CLR_KEY_SURFACE,0xFBF6EC,0x1B2340},{THEME_CLR_KEY_SELECTED,0xF2CFC2,0x4A2030},{THEME_CLR_KEY_PRESSED,0xE6DAC5,0x26304F},
+            {THEME_CLR_KEY_TEXT,0x3A3128,0xE4E9F6},{THEME_CLR_INPUT_PLACEHOLDER,0x8C7F6E,0x7F8AA8},
+            {THEME_CLR_ACTION_SURFACE,0x3A3128,0xE4E9F6},{THEME_CLR_ON_ACTION,0xFBF6EC,0x0A0F1E},
+            {THEME_CLR_FOLDER_ICON,0x6B5F51,0xAAB3CC},{THEME_CLR_DOT_GRID,0xE6DAC5,0x141B2E},
+            {THEME_CLR_IMAGE_TINT,0xF3EBDC,0x0A0F1E},{THEME_CLR_ART_WALL_FRONT,0xFBF6EC,0x1B2340},{THEME_CLR_ART_WALL_SIDE,0xF6EEDF,0x141B2E},
+            {THEME_CLR_WEATHER_SUN,0x3A3128,0xE4E9F6},{THEME_CLR_WEATHER_MOON,0x6B5F51,0xAAB3CC},{THEME_CLR_WEATHER_RAIN,0x6B5F51,0xAAB3CC},
+            {THEME_CLR_WEATHER_BORDER,0xD3C5AE,0x313B5E},
+        };
+        uint32_t *p = FORK_NT[st == 4 ? 1 : 0];
+        for(unsigned i = 0; i < sizeof T / sizeof T[0]; i++) p[T[i].r] = st == 4 ? T[i].cream : T[i].midnight;
+    }
 }
 static void null_palettes_init(void){
  int scheme=cfg_get_int("null_palette",0);
@@ -776,7 +806,7 @@ void theme_init(void){
         g_preset=THEME_PRESET_DISCO;cfg_set_int("theme_preset",g_preset);
     }
     if(g_preset==THEME_PRESET_NULL||g_preset==THEME_PRESET_ZUNE)g_variant=0;   /* dark-only themes */
-    if(g_preset==THEME_PRESET_NTDISK){ int st = cfg_get_int("nt_style", 0); g_variant = outdoor || st == 1 || st == 3; }   /* NTDisk: its Style */
+    if(g_preset==THEME_PRESET_NTDISK){ int st = cfg_get_int("nt_style", 0); g_variant = outdoor || st == 1 || st == 3 || st == 4; }   /* NTDisk: its Style (4 Cream is a light one) */
     if(theme_auto_supported() && cfg_get_int("theme_auto",0) && !outdoor){
         time_t now=time(NULL); struct tm tm; localtime_r(&now,&tm);
         g_variant = !(tm.tm_hour >= 20 || tm.tm_hour < 7);

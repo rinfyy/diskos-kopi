@@ -83,6 +83,7 @@ static void dnum_set(lv_obj_t *o, const char *s){
 static const char *const SHORT[] = { "Wi-Fi", "BT", "Library", "Rescan", "Modes", "Settings", "Equalizer", "Search", "Queue",
                                      "Up next", "Shortcut", "Weather", "Lyrics", "Info", "Immerse", "Folders", "Faves",
                                      "Mode", "Gain", "Shuffle", "Sleep" };
+static lv_obj_t *q_top, *q_tsep, *q_tbat, *q_tbat_fill, *q_tpct;
 static lv_obj_t *q_root, *q_panel, *q_clock, *q_date, *q_tile[8], *q_icon[8], *q_name[8], *q_dot[8];
 static lv_obj_t *q_cover, *q_art, *q_pp, *q_pp_l, *q_bright, *q_batt, *q_batt_fill, *q_batt_txt, *q_handle;
 static int q_ids[8], q_n, q_open;
@@ -125,7 +126,19 @@ static void qs_construct(void){
     lv_obj_set_style_bg_color(q_panel, TC(CANVAS), 0); lv_obj_set_style_bg_opa(q_panel, LV_OPA_COVER, 0);
     lv_obj_add_flag(q_panel, LV_OBJ_FLAG_CLICKABLE);                      /* taps never fall through */
     q_clock = dnum_create(q_panel, 4, TC(TEXT_PRIMARY)); lv_obj_align(q_clock, LV_ALIGN_TOP_MID, 0, 18); dnum_set(q_clock, "00:00");
-    q_date = label(q_panel, TF(UI_12), TC(TEXT_MUTED), ""); lv_obj_align(q_date, LV_ALIGN_TOP_MID, 0, 50);
+    /* the top bar under the time: date · a small battery and its percentage */
+    q_top = plain(q_panel); lv_obj_set_size(q_top, LV_SIZE_CONTENT, 16); lv_obj_align(q_top, LV_ALIGN_TOP_MID, 0, 49);
+    lv_obj_set_flex_flow(q_top, LV_FLEX_FLOW_ROW); lv_obj_set_flex_align(q_top, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(q_top, 6, 0);
+    q_date = label(q_top, TF(UI_12), TC(TEXT_MUTED), "");
+    q_tsep = plain(q_top); lv_obj_set_size(q_tsep, 3, 3); lv_obj_set_style_radius(q_tsep, 2, 0);
+    lv_obj_set_style_bg_color(q_tsep, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(q_tsep, LV_OPA_COVER, 0);
+    q_tbat = plain(q_top); lv_obj_set_size(q_tbat, 20, 10); lv_obj_set_style_radius(q_tbat, 3, 0);
+    lv_obj_set_style_border_width(q_tbat, 1, 0); lv_obj_set_style_border_color(q_tbat, TC(TEXT_MUTED), 0); lv_obj_set_style_pad_all(q_tbat, 2, 0);
+    q_tbat_fill = plain(q_tbat); lv_obj_set_size(q_tbat_fill, 14, 4); lv_obj_set_style_radius(q_tbat_fill, 1, 0);
+    lv_obj_set_style_bg_color(q_tbat_fill, TC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(q_tbat_fill, LV_OPA_COVER, 0); lv_obj_align(q_tbat_fill, LV_ALIGN_LEFT_MID, 0, 0);
+    q_tpct = label(q_top, TF(UI_12), TC(TEXT_PRIMARY), "");
+    lv_obj_add_flag(q_tsep, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(q_tbat, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(q_tpct, LV_OBJ_FLAG_HIDDEN);
     for(int k = 0; k < 8; k++){
         int col = k % 2, row = k / 2;
         lv_obj_t *t = q_tile[k] = plain(q_panel); lv_obj_set_size(t, 112, 44); lv_obj_set_pos(t, 62 + col * 124, 72 + row * 50);
@@ -230,6 +243,13 @@ void nt_qs_battery(int pct, int charging){
     lv_obj_set_height(q_batt_fill, 140 * pct / 100 < 8 ? 8 : 140 * pct / 100);
     lv_obj_set_style_bg_color(q_batt_fill, charging ? TC(STATUS_SUCCESS) : pct <= 15 ? TC(ACCENT_PRIMARY) : TC(TEXT_PRIMARY), 0);
     char b[16]; snprintf(b, sizeof b, "%s%d%%", charging ? LV_SYMBOL_CHARGE : "", pct); set_text(q_batt_txt, b);
+    if(q_tbat){                                                            /* the top bar */
+        lv_obj_remove_flag(q_tsep, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(q_tbat, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(q_tpct, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_width(q_tbat_fill, 14 * pct / 100 < 2 ? 2 : 14 * pct / 100);
+        lv_obj_set_style_bg_color(q_tbat_fill, charging ? TC(STATUS_SUCCESS) : pct <= 15 ? TC(ACCENT_PRIMARY) : TC(TEXT_PRIMARY), 0);
+        if(charging) lv_obj_set_style_text_font(q_tpct, theme_font_original(12), 0);
+        snprintf(b, sizeof b, "%s%d%%", charging ? LV_SYMBOL_CHARGE " " : "", pct); set_text(q_tpct, b);
+    }
 }
 static void q_pos(void *o, int32_t v){ lv_obj_set_y(o, v); }
 static void q_hidden(lv_anim_t *a){ (void)a; if(!q_open && q_root) lv_obj_add_flag(q_root, LV_OBJ_FLAG_HIDDEN); }
