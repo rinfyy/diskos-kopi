@@ -1408,7 +1408,7 @@ int main(int argc, char **argv){
         if(th_null()&&!strcmp(page,"scr43"))appshelf_open();
         screen_show(scr);
         if(th_zune())zune_status_refresh();
-        if(th_nt()){home_set_status(getenv("NT_BATT")?atoi(getenv("NT_BATT")):67,getenv("NT_CHG")!=NULL,1,1);home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");
+        if(th_nt()){home_set_status(getenv("NT_BATT")?atoi(getenv("NT_BATT")):67,getenv("NT_CHG")!=NULL,1,1);home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");if(getenv("NT_NOWX")){home_set_weather("");saver_set_weather("");}
             if(getenv("NT_IDLE"))nt_home_now_playing(NULL,NULL,0);nav_wait(60);
             if(getenv("NT_DISC")||getenv("NT_IDLEBG")){for(int i=0;i<400;i++){lv_tick_inc(10);lv_timer_handler();usleep(3000);}nav_wait(60);}
             if(getenv("NT_PROMPT")){void settings_test_nt_prompt(int);settings_test_nt_prompt(atoi(getenv("NT_PROMPT"))==2);nav_wait(80);}

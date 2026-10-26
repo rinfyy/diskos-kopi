@@ -175,7 +175,18 @@ static void weather_text(const char *s, char *cond, size_t cn, char *temp, size_
 
 /* the clock face, shared by idle Music and standby. With the NTDisk (dot) font the clock is a dot matrix; with
  * Sans or Mono it is that font's clock. */
-typedef struct { lv_obj_t *root, *icon, *wx_row, *cond, *temp, *clock, *dclock, *date_row, *d_a, *d_day, *d_b; } face_t;
+typedef struct { lv_obj_t *root, *icon, *wx_row, *cond, *temp, *clock, *dclock, *date_row, *d_a, *d_day, *d_b;
+                 lv_obj_t *mv[6]; int mv_y[6], n_mv, lift, lifted; } face_t;
+/* With no weather (Weather off, or not fetched yet) the icon and weather line go, and the clock, date and what's
+ * under them move up by f->lift so the whole face sits in the middle of the screen. */
+static void face_track(face_t *f, lv_obj_t *o){ if(o && f->n_mv < 6){ f->mv[f->n_mv] = o; f->mv_y[f->n_mv++] = lv_obj_get_y_aligned(o); } }
+static void face_layout(face_t *f, int no_wx){
+    if(!f->icon || f->lifted == no_wx) return;
+    f->lifted = no_wx;
+    if(no_wx){ lv_obj_add_flag(f->icon, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(f->wx_row, LV_OBJ_FLAG_HIDDEN); }
+    else { lv_obj_remove_flag(f->icon, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(f->wx_row, LV_OBJ_FLAG_HIDDEN); }
+    for(int i = 0; i < f->n_mv; i++) lv_obj_align(f->mv[i], LV_ALIGN_TOP_MID, 0, f->mv_y[i] - (no_wx ? f->lift : 0));
+}
 static void face_build(face_t *f, lv_obj_t *parent, int y_icon, int y_wx, int y_clock, int y_date, const lv_font_t *clock_font, int cell, int music){
 #define FC(role) (music ? th_nt_music_color(THEME_CLR_##role) : TC(role))
     f->root = parent;
@@ -197,6 +208,7 @@ static void face_build(face_t *f, lv_obj_t *parent, int y_icon, int y_wx, int y_
     lv_obj_align(f->date_row, LV_ALIGN_TOP_MID, 0, y_date);
     f->d_a = text(f->date_row, TF(UI_18), FC(TEXT_PRIMARY), 0); f->d_day = text(f->date_row, TF(UI_18), FC(ACCENT_PRIMARY), 0);
     f->d_b = text(f->date_row, TF(UI_18), FC(TEXT_PRIMARY), 0);
+    f->n_mv = 0; f->lifted = -1; face_track(f, f->dclock ? f->dclock : f->clock); face_track(f, f->date_row);
 #undef FC
 }
 static void face_clock(face_t *f, const char *t, const char *sub){
@@ -214,6 +226,7 @@ static void face_weather(face_t *f, const char *s){
     lv_label_set_text(f->cond, c); lv_label_set_text(f->temp, t);
     if(c[0]) lv_obj_remove_flag(f->cond, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(f->cond, LV_OBJ_FLAG_HIDDEN);
     dm_icon(f->icon, wx_kind(s));
+    face_layout(f, !c[0] && !t[0]);
 }
 
 #define MC(role) th_nt_music_color(THEME_CLR_##role)
@@ -682,6 +695,7 @@ void nt_home_create(lv_obj_t *root){
     lv_obj_add_event_cb(g_start, start_cb, LV_EVENT_CLICKED, NULL);
     lv_obj_t *sl = text(g_start, TF(UI_14), MC(CANVAS), 0); lv_label_set_text(sl, "tap to start"); lv_obj_center(sl);
     stat_build(&g_istat, g_idle_box, 328, MC(TEXT_PRIMARY), MC(TEXT_MUTED));
+    face_track(&g_face, g_start); face_track(&g_face, g_istat.row); g_face.lift = 68;   /* clock to status line: 152..344 -> 84..276 */
 
     keep_all(g_layer);
     if(g_tm) lv_timer_delete(g_tm);                                     /* built again (a screen rebuild) */
@@ -901,6 +915,7 @@ void nt_saver_create(lv_obj_t *root){
     g_strack = text(g_snote, ui_font_cjk(14), TC(TEXT_SECONDARY), 0);
     lv_label_set_long_mode(g_strack, LV_LABEL_LONG_DOT); lv_obj_set_width(g_strack, 190);
     lv_obj_add_flag(g_snote, LV_OBJ_FLAG_HIDDEN);
+    face_track(&g_sface, g_snote); face_track(&g_sface, g_sstat.row); g_sface.lift = 64;  /* 154..336 -> 90..272 */
     face_clock(&g_sface, g_clock[0] ? g_clock : NULL, g_sub[0] ? g_sub : NULL);
     face_weather(&g_sface, g_wx);
     keep_all(root);
