@@ -1764,6 +1764,7 @@ void app_launch(const char *exec){
         return;
     }
     if(!strcmp(exec, APP_BUILTIN_SNAKE)){ snake_landing(); return; }
+    if(!strcmp(exec, APP_BUILTIN_DOOM)){ doom_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_ECHO)){ echo_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_GLIDE)){ glide_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_PET)){ pet_landing(); return; }
@@ -1897,7 +1898,8 @@ void ui_app_play_ids(int *ids, int n, int shuffle, const char *name, int play, i
 static void app_run(const char *exec){
     /* a game built into mq_ui ("builtin:boomshine") runs as this same program with its own flag */
     int builtin = !strcmp(exec, APP_BUILTIN_BOOMSHINE) || !strcmp(exec, APP_BUILTIN_SNAKE) ||
-                  !strcmp(exec, APP_BUILTIN_ECHO) || !strcmp(exec, APP_BUILTIN_GLIDE) || !strcmp(exec, APP_BUILTIN_PET);
+                  !strcmp(exec, APP_BUILTIN_ECHO) || !strcmp(exec, APP_BUILTIN_GLIDE) || !strcmp(exec, APP_BUILTIN_PET) ||
+                  !strcmp(exec, APP_BUILTIN_DOOM);
     /* preflight: a missing/non-executable app shouldn't blank the screen for nothing */
     if(!builtin && access(exec, X_OK) != 0){
         lv_obj_invalidate(lv_screen_active()); lv_refr_now(NULL);
@@ -1912,7 +1914,8 @@ static void app_run(const char *exec){
     char *argv[] = { (char *)exec, NULL, NULL };
     if(builtin){ argv[0] = "/proc/self/exe"; argv[1] = !strcmp(exec, APP_BUILTIN_SNAKE) ? "--snake" : !strcmp(exec, APP_BUILTIN_ECHO) ? "--echo" :
                                                          !strcmp(exec, APP_BUILTIN_GLIDE) ? "--glide" :
-                                                         !strcmp(exec, APP_BUILTIN_PET) ? "--pet" : "--boomshine"; }   /* the running image, never a path that can change */
+                                                         !strcmp(exec, APP_BUILTIN_PET) ? "--pet" :
+                                                         !strcmp(exec, APP_BUILTIN_DOOM) ? "--doom" : "--boomshine"; }   /* the running image, never a path that can change */
     if(command_spawn(&pid, argv) != 0) pid = -1;   /* posix_spawn in its own group (a fork() of the UI can fail for memory) */
     if(pid > 0){
         int status = 0;
@@ -3150,6 +3153,12 @@ int main(int argc, char **argv){
         if(!freopen(pet ? "/tmp/pip.log" : glide ? "/tmp/glide.log" : "/tmp/echo.log", "w", stdout)) { /* keep going without a log */ }
         dup2(fileno(stdout), fileno(stderr));
         return pet ? pet_main(argc - 1, argv + 1) : glide ? glide_main(argc - 1, argv + 1) : echo_main(argc - 1, argv + 1);
+    }
+    if(argc > 1 && !strcmp(argv[1], "--doom")){             /* Doom (Apps > Doom): doom_disc.c */
+        int doom_main(int, char **);
+        if(!freopen("/tmp/doom.log", "w", stdout)) { /* keep going without a log */ }
+        dup2(fileno(stdout), fileno(stderr));
+        return doom_main(argc - 1, argv + 1);
     }
     if(argc > 1 && !strcmp(argv[1], "--snake")){            /* the built-in Snake game (Apps > Snake) */
         int snake_main(int, char **);

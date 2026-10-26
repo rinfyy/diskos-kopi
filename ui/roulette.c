@@ -258,6 +258,9 @@ void echo_landing(void){
 void glide_landing(void){
     applanding_show("Glide", "One tap to rise.", "Fly through the gaps.", "Play", APP_BUILTIN_GLIDE);
 }
+void doom_landing(void){
+    applanding_show("Doom", "Rip and tear.", "Left moves. Right fires.", "Play", APP_BUILTIN_DOOM);
+}
 void snake_landing(void){
     applanding_show("Snake", "Eat. Grow. Don't bite.",
                     "Swipe or tap to turn.", "Play", APP_BUILTIN_SNAKE);

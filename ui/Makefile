@@ -45,7 +45,14 @@ BOOM_FLAGS := -O2 -pipe -std=c11 -static -Wall -Wextra -ffunction-sections -fdat
 # theme's colours from /tmp/diskos-app-env at launch).
 SNAKE_OBJS := $(APP)/snake/snake.o $(APP)/games/platform.o $(APP)/games/echo.o $(APP)/games/glide.o $(APP)/games/pet.o
 SNAKE_FLAGS := -O2 -pipe -std=gnu11 -static -Wall -Wextra -ffunction-sections -fdata-sections $(REPRO_FLAGS) $(FP_FLAGS)
-OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/vendor/smb-build/libsmb2.a
+# Doom (GPL-2.0-or-later, ui/vendor/doomgeneric) and its backend doom_disc.c: built in like Snake and run as
+# `mq_ui --doom`. They're linked first into one object whose only global symbol is doom_main, so Doom's many short
+# global names (screens, viewwidth, sha1...) never meet the UI's. No LVGL, no theme roles (a full-screen game).
+DOOM_SRCS := $(sort $(wildcard $(APP)/vendor/doomgeneric/*.c)) $(APP)/doom_disc.c
+DOOM_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 \
+  -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE -I$(APP)/vendor/doomgeneric -I$(APP) $(REPRO_FLAGS) $(FP_FLAGS)
+OBJCOPY_LOCAL ?= llvm-objcopy
+OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/doom_all.o $(APP)/vendor/smb-build/libsmb2.a
 
 # Every on-screen colour is a theme role (theme.h); theme.c is the only place RGB becomes a colour. The link fails if
 # any other app source (.c, or any header in the tree) builds a colour itself: an LVGL colour constructor, palette,
@@ -119,6 +126,12 @@ $(APP)/snake/snake.o: $(APP)/snake/snake.c
 	$(CC) $(SNAKE_FLAGS) -c $< -o $@
 $(APP)/games/%.o: $(APP)/games/%.c $(APP)/games/platform.h
 	$(CC) $(SNAKE_FLAGS) -c $< -o $@
+%.doom.o: %.c
+	$(CC) $(DOOM_FLAGS) -c $< -o $@
+$(APP)/doom_all.o: $(DOOM_SRCS:.c=.doom.o)
+	$(CC) -r -nostdlib -o $@.tmp $^
+	$(OBJCOPY_LOCAL) --keep-global-symbol=doom_main $@.tmp $@
+	rm -f $@.tmp
 $(APP)/boomshine/%.o: $(APP)/boomshine/%.c $(APP)/boomshine/game.h $(APP)/boomshine/fonts.h
 	$(CC) $(BOOM_FLAGS) -c $< -o $@
 
@@ -126,7 +139,7 @@ $(APP)/boomshine/%.o: $(APP)/boomshine/%.c $(APP)/boomshine/game.h $(APP)/boomsh
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(OBJS:.o=.d) mq_ui mq_ui.debug mq_ui.manifest ipodos-ui diskos-bootprobe diskos-artdec
+	rm -f $(OBJS) $(OBJS:.o=.d) $(DOOM_SRCS:.c=.doom.o) mq_ui mq_ui.debug mq_ui.manifest ipodos-ui diskos-bootprobe diskos-artdec
 -include $(patsubst %.o,%.d,$(filter %.o,$(OBJS)))
 
 # Native render/action diagnostics. Explicitly separate from the production theme/cross-build gates.

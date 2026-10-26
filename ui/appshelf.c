@@ -58,6 +58,7 @@ static void scan(void){
                 "Play", APP_BUILTIN_ECHO, NULL);
     add_builtin("builtin:glide", "Glide", "One tap to rise.", "Fly the orb through the gaps.\nThe edge is the wall.",
                 "Play", APP_BUILTIN_GLIDE, NULL);
+    add_builtin("builtin:doom", "Doom", "Rip and tear.", "Left moves. Right fires.", "Play", APP_BUILTIN_DOOM, NULL);
     add_builtin("builtin:snake", "Snake", "Eat. Grow. Don't bite.", "Swipe or tap to turn.\nHow long can you get?",
                 "Play", APP_BUILTIN_SNAKE, NULL);
     add_builtin("builtin:stats", "Listening Stats", "Your music, in numbers.", "Top artists, albums and songs,\nby week, month or year.",

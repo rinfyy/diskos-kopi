@@ -242,6 +242,8 @@ void snake_landing(void);
 void echo_landing(void);
 #define APP_BUILTIN_STOPWATCH "builtin:stopwatch"   /* Stopwatch (SCR_STOPWATCH, stopwatch.c): opens straight away */
 #define APP_BUILTIN_BROWSER "builtin:browser"       /* Browser (SCR_BROWSER, browser.c): a text web reader */
+#define APP_BUILTIN_DOOM "builtin:doom"             /* Doom (mq_ui --doom, doom_disc.c + vendor/doomgeneric) */
+void doom_landing(void);
 #define APP_BUILTIN_PET "builtin:pet"               /* Pip, the virtual pet (mq_ui --pet, games/pet.c) */
 void stopwatch_create(lv_obj_t *root);
 void stopwatch_open(void);
