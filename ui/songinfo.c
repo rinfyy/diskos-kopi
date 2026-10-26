@@ -322,6 +322,40 @@ void songinfo_create(lv_obj_t *root)
         if(i == F_TITLE || i == F_ARTIST) lv_obj_add_flag(cell, LV_OBJ_FLAG_HIDDEN);   /* shown in the header instead */
     }
     if(th_zune()){ zsi_build(root, list); return; }
+    if(th_nt()){                                                  /* NTDisk: the cover as a CD in a red ring, the facts below */
+        lv_obj_t *hd = lv_obj_create(root); lv_obj_remove_style_all(hd); lv_obj_set_size(hd, 150, 30); lv_obj_align(hd, LV_ALIGN_TOP_MID, 0, 10);
+        lv_obj_add_flag(hd, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(hd, sleeve_back_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *ht = lv_label_create(hd); lv_label_set_text(ht, "SONG INFO"); lv_obj_set_style_text_font(ht, TF(UI_12), 0);
+        lv_obj_set_style_text_color(ht, TC(TEXT_MUTED), 0); lv_obj_set_style_text_letter_space(ht, 3, 0); lv_obj_align(ht, LV_ALIGN_CENTER, 6, 0);
+        lv_obj_t *dt = lv_obj_create(hd); lv_obj_remove_style_all(dt); lv_obj_set_size(dt, 6, 6);
+        lv_obj_set_style_radius(dt, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(dt, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(dt, LV_OPA_COVER, 0);
+        lv_obj_align_to(dt, ht, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+        lv_obj_set_size(g_ring, 112, 112); lv_obj_align(g_ring, LV_ALIGN_TOP_MID, 0, 40);
+        lv_obj_set_style_arc_width(g_ring, 2, LV_PART_MAIN); lv_obj_set_style_arc_width(g_ring, 2, LV_PART_INDICATOR);
+        lv_obj_set_size(g_cover, 96, 96); lv_obj_align(g_cover, LV_ALIGN_TOP_MID, 0, 48);
+        lv_obj_t *hole = lv_obj_create(root); lv_obj_remove_style_all(hole); lv_obj_set_size(hole, 16, 16); lv_obj_align(hole, LV_ALIGN_TOP_MID, 0, 88);
+        lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(hole, TC(CANVAS), 0); lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(hole, 3, 0); lv_obj_set_style_border_color(hole, TC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(hole, 80, 0);
+        lv_obj_set_width(g_title, 250); lv_obj_set_style_text_font(g_title, ui_font_cjk(20), 0); lv_obj_align(g_title, LV_ALIGN_TOP_MID, 0, 160);
+        lv_obj_set_width(g_artist, 230); lv_obj_set_style_text_font(g_artist, ui_font_cjk(14), 0);
+        lv_obj_set_style_text_color(g_artist, TC(TEXT_MUTED), 0); lv_obj_align(g_artist, LV_ALIGN_TOP_MID, 0, 186);
+        lv_obj_set_pos(list, 70, 214); lv_obj_set_size(list, 220, 120);
+        lv_obj_set_style_pad_row(list, 0, 0); lv_obj_set_style_pad_bottom(list, 36, 0);
+        for(int i = 0; i < F_COUNT; i++){
+            lv_obj_set_width(g_cell[i], 220); lv_obj_set_style_pad_ver(g_cell[i], 7, 0);
+            lv_obj_set_style_border_side(g_cell[i], LV_BORDER_SIDE_BOTTOM, 0); lv_obj_set_style_border_width(g_cell[i], 1, 0);
+            lv_obj_set_style_border_color(g_cell[i], TC(BORDER), 0);
+            lv_obj_set_width(g_key[i], 70); lv_obj_set_style_text_align(g_key[i], LV_TEXT_ALIGN_LEFT, 0);
+            lv_obj_set_style_text_font(g_key[i], TF(UI_10), 0); lv_obj_set_style_text_color(g_key[i], TC(TEXT_MUTED), 0);
+            lv_obj_set_style_text_letter_space(g_key[i], 1, 0);
+            lv_obj_set_width(g_val[i], 140); lv_obj_set_style_text_font(g_val[i], ui_font_cjk(14), 0);
+            lv_label_set_long_mode(g_val[i], LV_LABEL_LONG_WRAP);
+            char up[32]; snprintf(up, sizeof up, "%s", lv_label_get_text(g_key[i]));
+            for(char *c = up; *c; c++) if(*c >= 'a' && *c <= 'z') *c -= 32;
+            lv_label_set_text(g_key[i], up);
+        }
+        return;
+    }
     if(th_disco_family()){
         /* Album back sleeve: a compact artwork stamp and a roomy metadata panel.
          * The existing metadata worker and pinned-track handling stay shared. */
@@ -470,7 +504,7 @@ static void header_update(const track_state_t *st){         /* cover (the playin
     const void *dsc = current ? ui_current_cover_dsc() : NULL;
     lv_image_set_src(g_cover_img, NULL);
     if(dsc){ const lv_image_dsc_t *d = dsc; lv_image_set_src(g_cover_img, dsc);
-             if(d->header.w > 0) lv_image_set_scale(g_cover_img, (uint32_t)(((th_disco_family() || th_null()) ? (th_null()?56:52) : 88) * 256 / d->header.w) + 2);
+             if(d->header.w > 0) lv_image_set_scale(g_cover_img, (uint32_t)((th_nt() ? 96 : (th_disco_family() || th_null()) ? (th_null()?56:52) : 88) * 256 / d->header.w) + 2);
              lv_obj_center(g_cover_img); lv_obj_remove_flag(g_cover_img, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_cover_note, LV_OBJ_FLAG_HIDDEN); }
     else { lv_obj_add_flag(g_cover_img, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(g_cover_note, LV_OBJ_FLAG_HIDDEN); }
 }
@@ -559,9 +593,9 @@ void songinfo_set(const track_state_t *st)
     /* Audiobook: relabel to "Book details" and turn the Album slot into reading progress. */
     int book = mdb_is_book_path(st->path);
     if(g_header){if(th_null()){lv_label_set_text(g_header,book?"BOOK INFO":"TRACK INFO");lv_obj_set_style_text_font(g_header,TF(HEADER),0);}else theme_title_text(g_header, book ? "Book details" : "Song Info");}
-    lv_label_set_text(g_key[F_ARTIST],   th_null()?(book?"AUTHOR":"ARTIST"):(book ? "Author" : "Artist"));
-    lv_label_set_text(g_key[F_ALBUM],    th_null()?(book?"READ":"ALBUM"):(book ? "Progress" : "Album"));
-    lv_label_set_text(g_key[F_DURATION], th_null()?"LENGTH":(book ? "Total length" : "Duration"));
+    lv_label_set_text(g_key[F_ARTIST],   (th_null()||th_nt())?(book?"AUTHOR":"ARTIST"):(book ? "Author" : "Artist"));
+    lv_label_set_text(g_key[F_ALBUM],    (th_null()||th_nt())?(book?"READ":"ALBUM"):(book ? "Progress" : "Album"));
+    lv_label_set_text(g_key[F_DURATION], (th_null()||th_nt())?"LENGTH":(book ? "Total length" : "Duration"));
     if(book){
         char pg[56]="-";
         if(st->duration_ms>0){

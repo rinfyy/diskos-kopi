@@ -304,8 +304,10 @@ static void disco_paint(int slot, int pending){
     }
 }
 static void zmodes_paint(int slot,int pending);
+static void ntmodes_paint(int slot, int pending);
 static void paint(int slot, const char *glyph){
-    if(th_zune()){zmodes_paint(slot,glyph && !strcmp(glyph,LV_SYMBOL_REFRESH));return;}   /* slot = orbit index, or -1 for none */
+    if(th_zune()){zmodes_paint(slot,glyph && !strcmp(glyph,LV_SYMBOL_REFRESH));return;}
+    if(th_nt()){ ntmodes_paint(slot, glyph && !strcmp(glyph, LV_SYMBOL_REFRESH)); return; }   /* slot = orbit index, or -1 for none */
     if((th_disco_family() || th_null())){ disco_paint(slot, glyph && !strcmp(glyph, LV_SYMBOL_REFRESH)); return; }
     int pending = (glyph && !strcmp(glyph, LV_SYMBOL_REFRESH));
     lv_color_t acc = TC(ACCENT_PRIMARY);
@@ -453,8 +455,57 @@ static void zmodes_create(lv_obj_t *root){
  mark_selected();
 }
 
+/* ==== NTDisk: the modes as tiles, two by two - an icon, the name, a line under it; the active one white with a
+ * red dot ("Switching" and turning arrows while it changes) ==== */
+static lv_obj_t *g_nt_ic[N_MODES], *g_nt_nm[N_MODES], *g_nt_sub[N_MODES], *g_nt_dot[N_MODES];
+static const char *const NT_SUB[N_MODES] = { "SD card music", "Computer audio", "Phone to Disc", "Disc to speaker", "Wireless", "Files over USB" };
+static void ntmodes_paint(int slot, int pending){
+    for(int i = 0; i < N_MODES; i++){
+        lv_obj_t *t = g_drow[i]; if(!t) continue;
+        int on = i == slot;
+        lv_color_t bg = on ? TC(TEXT_PRIMARY) : TC(SURFACE), fg = on ? TC(CANVAS) : TC(TEXT_PRIMARY);
+        lv_obj_set_style_bg_color(t, bg, 0);
+        lv_obj_set_style_text_color(g_nt_ic[i], fg, 0); lv_obj_set_style_text_color(g_nt_nm[i], fg, 0);
+        lv_obj_set_style_text_color(g_nt_sub[i], on ? TC(CANVAS) : TC(TEXT_MUTED), 0);
+        lv_obj_set_style_text_opa(g_nt_sub[i], on ? 170 : LV_OPA_COVER, 0);
+        lv_label_set_text(g_nt_sub[i], on ? (pending ? "Switching..." : "Active") : NT_SUB[i]);
+        if(on) lv_obj_remove_flag(g_nt_dot[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(g_nt_dot[i], LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(g_nt_ic[i], on && pending ? LV_SYMBOL_REFRESH : MODES[i].glyph);
+        icon_spin(g_nt_ic[i], on && pending);
+        lv_obj_set_style_bg_color(t, on ? TC(PRIMARY_PRESSED) : TC(SURFACE_PRESSED), LV_STATE_PRESSED);
+    }
+}
+static void ntmodes_create(lv_obj_t *root){
+    static const char *NM[N_MODES] = { "Playback", "USB DAC", "BT DAC", "BT stream", "AirPlay", "USB storage" };
+    lv_obj_remove_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *d = lv_obj_create(root); lv_obj_remove_style_all(d); kit_keep(d); lv_obj_set_size(d, 7, 7);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    lv_obj_t *t = lv_label_create(root); kit_keep(t); lv_label_set_text(t, "WORKING MODE");
+    lv_obj_set_style_text_font(t, TF(UI_14), 0); lv_obj_set_style_text_color(t, TC(TEXT_MUTED), 0); lv_obj_set_style_text_letter_space(t, 3, 0);
+    lv_obj_align(t, LV_ALIGN_TOP_MID, 6, 34); lv_obj_align_to(d, t, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+    memset(g_drow, 0, sizeof g_drow);
+    for(int k = 0; k < N_DISCO; k++){
+        int i = DISCO_ORD[k], row = k / 2, col = k % 2, x = k == 4 ? 116 : 46 + col * 140, y = 66 + row * 86;
+        lv_obj_t *b = lv_obj_create(root); lv_obj_remove_style_all(b); kit_keep(b); g_drow[i] = b;
+        lv_obj_set_pos(b, x, y); lv_obj_set_size(b, 128, 76); lv_obj_set_style_radius(b, 24, 0); lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE); lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        ui_on(b, disco_row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i, "modes.select", UI_CORE);
+        lv_obj_t *ic = g_nt_ic[i] = lv_label_create(b); kit_keep(ic); lv_label_set_text(ic, MODES[i].glyph);
+        lv_obj_set_style_text_font(ic, theme_font_original(18), 0); lv_obj_set_pos(ic, 16, 12);
+        lv_obj_t *nm = g_nt_nm[i] = lv_label_create(b); kit_keep(nm); lv_label_set_text(nm, NM[i]);
+        lv_obj_set_style_text_font(nm, TF(UI_14), 0); lv_obj_set_pos(nm, 16, 37);
+        lv_obj_t *sb = g_nt_sub[i] = lv_label_create(b); kit_keep(sb); lv_label_set_text(sb, NT_SUB[i]);
+        lv_obj_set_style_text_font(sb, TF(UI_10), 0); lv_obj_set_pos(sb, 16, 56); lv_obj_set_width(sb, 106); lv_label_set_long_mode(sb, LV_LABEL_LONG_DOT);
+        lv_obj_t *dt = g_nt_dot[i] = lv_obj_create(b); lv_obj_remove_style_all(dt); kit_keep(dt); lv_obj_set_size(dt, 7, 7);
+        lv_obj_set_pos(dt, 106, 16); lv_obj_set_style_radius(dt, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(dt, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(dt, LV_OPA_COVER, 0);
+    }
+    mark_selected();
+}
+
 void modes_create(lv_obj_t *root){
     if(th_zune()){zmodes_create(root);return;}
+    if(th_nt()){ lv_obj_set_style_bg_color(root, TC(CANVAS), 0); lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0); ntmodes_create(root); return; }
     lv_obj_set_style_bg_color(root, TC(CANVAS), 0);
     lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
 

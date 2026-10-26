@@ -117,6 +117,10 @@ static lv_obj_t *dm_create(lv_obj_t *p, int cell, int dot, lv_color_t c){
 }
 static void dm_commit(lv_obj_t *o){
     dm_t *d = lv_obj_get_user_data(o); if(!d) return;
+    int first = d->cols, last = -1;                                       /* centre what is lit, not the empty columns */
+    for(int x = 0; x < d->cols; x++) for(int y = 0; y < d->rows; y++) if(d->on[y][x]){ if(x < first) first = x; if(x > last) last = x; }
+    if(last >= first && first > 0){ for(int y = 0; y < d->rows; y++){ memmove(d->on[y], d->on[y] + first, (size_t)(d->cols - first)); memset(d->on[y] + d->cols - first, 0, (size_t)first); } }
+    if(last >= first) d->cols = last - first + 1;
     lv_obj_set_size(o, d->cols * d->cell, d->rows * d->cell); lv_obj_invalidate(o);
 }
 /* the clock's digits: an original 5 x 7 face with soft corners (bit 4 = left column) */
@@ -529,8 +533,8 @@ void nt_home_create(lv_obj_t *root){
 
     /* nothing playing: the clock face */
     g_idle_box = plain(g_layer); lv_obj_set_size(g_idle_box, 360, 360);
-    face_build(&g_face, g_idle_box, 52, 126, 156, 236, TF(CLOCK), 9, 1);
-    g_start = plain(g_idle_box); lv_obj_set_size(g_start, 178, 40); lv_obj_align(g_start, LV_ALIGN_TOP_MID, 0, 286);
+    face_build(&g_face, g_idle_box, 46, 118, 148, 228, TF(CLOCK), 9, 1);
+    g_start = plain(g_idle_box); lv_obj_set_size(g_start, 178, 40); lv_obj_align(g_start, LV_ALIGN_TOP_MID, 0, 276);
     lv_obj_set_style_radius(g_start, 20, 0); lv_obj_add_flag(g_start, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(g_start, 8);
     lv_obj_set_style_bg_color(g_start, MC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_start, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(g_start, MC(SURFACE_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(g_start, LV_OPA_COVER, LV_STATE_PRESSED);
