@@ -121,14 +121,18 @@ static void transition(int from, int to, int dir)
     crash_crumb(to);
     if(!th_disco_family()&&!th_null())disco_editor_back();
     if(th_null())null_screen_leaving();
-    if(th_null() && to==SCR_QUICK){
+    if((th_null()||th_nt()) && to==SCR_QUICK){                     /* Null, NTDisk: the panel slides over the screen */
       npmenu_close_transients();songmenu_close();fileops_close();ui_np_close_overlays();
+      if(th_nt())disco_screen_entering(to);
       quicksettings_build();lv_obj_remove_flag(s_roots[to],LV_OBJ_FLAG_HIDDEN);lv_obj_move_foreground(s_roots[to]);
+      if(th_nt()){nt_qs_slide(1);disco_screen_entered(to,s_roots[to]);return;}
       null_qs_slide(1);null_screen_entered(to);return;
     }
-    if(th_null() && from==SCR_QUICK){
+    if((th_null()||th_nt()) && from==SCR_QUICK){
       s_skip=1;transition_core(from,to,dir);root_rest(s_roots[from]);
-      lv_obj_remove_flag(s_roots[from],LV_OBJ_FLAG_HIDDEN);lv_obj_move_foreground(s_roots[from]);null_qs_slide(0);null_screen_entered(to);return;
+      lv_obj_remove_flag(s_roots[from],LV_OBJ_FLAG_HIDDEN);lv_obj_move_foreground(s_roots[from]);
+      if(th_nt()){nt_qs_slide(0);disco_screen_entering(to);disco_screen_entered(to,(to>=0&&to<SCR_COUNT)?s_roots[to]:NULL);return;}
+      null_qs_slide(0);null_screen_entered(to);return;
     }                             /* the crash recorder's trail of screens */
     if (th_disco_family()) disco_screen_entering(to);   /* picker visibility first: the lists curve around it */
     transition_core(from, to, dir);

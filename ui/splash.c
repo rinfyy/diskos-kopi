@@ -98,9 +98,11 @@ static int disc_make(uint32_t bg){
 
 /* ---- the timeline ---- */
 static void zframe(float t);
+static void ntframe(float t);
 static void splash_frame(int ms){
     float t = ms / (float)SP_MS;
     if(th_zune()){ zframe(t); return; }
+    if(th_nt()){ ntframe(t); return; }
     /* spin: up to speed by 0.42, then slowing to a stop at 0.64 (the angle is the integral of the speed) */
     float ang;
     if(t < 0.42f){ float u = t / 0.42f; ang = 2900 * u * u * u; }                  /* degrees, accelerating */
@@ -172,8 +174,10 @@ static lv_obj_t *word_label(lv_obj_t *parent, const char *s, lv_color_t c){
     return l;
 }
 static int zbuild(void);
+static int ntbuild(void);
 static int build(void){
     if(th_zune()) return zbuild();
+    if(th_nt()) return ntbuild();
     if(!disc_make((uint32_t)lv_color_to_u32(TC(FIXED_SPLASH_BG)) & 0xFFFFFF)) return 0;
     g_sp.root = plain(lv_layer_top());
     lv_obj_set_size(g_sp.root, 360, 360);
@@ -303,5 +307,68 @@ static void zframe(float t){
     int a = 270 + (int)(720 * ease(t));                                   /* two turns, easing out */
     int len = 40 + (int)(80 * smooth(seg(t, 0, 0.5f)));
     lv_arc_set_bg_angles(g_zload, a % 360, (a + len) % 360);
+    lv_obj_set_style_opa(g_sp.root, (lv_opa_t)(255 * (1 - seg(t, 0.9f, 1))), 0);
+}
+
+/* ==== NTDisk: black, a ring of dots round the rim lighting up one by one, "NTDISK" spelled in round dots column by
+ * column, a red dot, "snowsky disc" small and spaced under it; then it fades to Home. Monochrome + red. ==== */
+static const uint8_t NTW[6][7] = {                                        /* N T D I S K, 5 x 7 (bit 4 = left) */
+    {0x11,0x19,0x15,0x15,0x13,0x11,0x11}, {0x1F,0x04,0x04,0x04,0x04,0x04,0x04}, {0x1E,0x11,0x11,0x11,0x11,0x11,0x1E},
+    {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}, {0x0F,0x10,0x10,0x0E,0x01,0x01,0x1E}, {0x11,0x12,0x14,0x18,0x14,0x12,0x11},
+};
+#define NT_CELL 7
+#define NT_COLS 35
+#define NT_RIM  40
+static lv_obj_t *g_ntword, *g_ntdot, *g_ntsub, *g_ntrim[NT_RIM];
+static int g_ntcols;                                                       /* columns shown so far */
+static void ntword_draw(lv_event_t *e){
+    lv_layer_t *layer = lv_event_get_layer(e); if(!layer) return;
+    lv_area_t a; lv_obj_get_coords(lv_event_get_target(e), &a);
+    lv_draw_rect_dsc_t r; lv_draw_rect_dsc_init(&r); r.radius = LV_RADIUS_CIRCLE; r.bg_opa = LV_OPA_COVER;
+    for(int col = 0; col < g_ntcols && col < NT_COLS; col++){
+        int letter = col / 6, c = col % 6; if(c == 5) continue;
+        r.bg_color = col == g_ntcols - 1 && g_ntcols < NT_COLS ? TC(ACCENT_PRIMARY) : TC(FIXED_MEDIA_WHITE);   /* the writing head is red */
+        for(int row = 0; row < 7; row++) if(NTW[letter][row] & (0x10 >> c)){
+            lv_area_t d = { a.x1 + col * NT_CELL, a.y1 + row * NT_CELL, 0, 0 }; d.x2 = d.x1 + NT_CELL - 2; d.y2 = d.y1 + NT_CELL - 2;
+            lv_draw_rect(layer, &r, &d);
+        }
+    }
+}
+static int ntbuild(void){
+    g_sp.root = plain(lv_layer_top());
+    lv_obj_set_size(g_sp.root, 360, 360);
+    lv_obj_set_style_bg_color(g_sp.root, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(g_sp.root, LV_OPA_COVER, 0);
+    lv_obj_add_flag(g_sp.root, LV_OBJ_FLAG_CLICKABLE);
+    for(int i = 0; i < NT_RIM; i++){                                       /* the rim: dim dots, lit in turn */
+        float an = (i * 360.0f / NT_RIM - 90) * 0.0174533f;
+        lv_obj_t *d = g_ntrim[i] = plain(g_sp.root); lv_obj_set_size(d, 5, 5);
+        lv_obj_set_pos(d, 180 + (int)lroundf(166 * cosf(an)) - 2, 180 + (int)lroundf(166 * sinf(an)) - 2);
+        lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(d, TC(FIXED_MEDIA_HINT), 0);
+    }
+    g_ntword = plain(g_sp.root); lv_obj_set_size(g_ntword, NT_COLS * NT_CELL, 7 * NT_CELL);
+    lv_obj_set_pos(g_ntword, 180 - (NT_COLS * NT_CELL + 14) / 2, 180 - 7 * NT_CELL / 2 - 8);
+    lv_obj_add_event_cb(g_ntword, ntword_draw, LV_EVENT_DRAW_MAIN, NULL);
+    g_ntdot = plain(g_sp.root); lv_obj_set_size(g_ntdot, 8, 8);           /* the red full stop */
+    lv_obj_set_pos(g_ntdot, 180 - (NT_COLS * NT_CELL + 14) / 2 + NT_COLS * NT_CELL + 6, 180 + 7 * NT_CELL / 2 - 8 - 8);
+    lv_obj_set_style_radius(g_ntdot, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(g_ntdot, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_ntdot, LV_OPA_COVER, 0);
+    g_ntsub = lv_label_create(g_sp.root); kit_keep(g_ntsub); lv_label_set_text(g_ntsub, "SNOWSKY DISC");
+    lv_obj_set_style_text_font(g_ntsub, TF(UI_12), 0); lv_obj_set_style_text_letter_space(g_ntsub, 4, 0);
+    lv_obj_set_style_text_color(g_ntsub, TC(FIXED_MEDIA_HINT), 0); lv_obj_align(g_ntsub, LV_ALIGN_TOP_MID, 0, 214);
+    g_ntcols = 0;
+    return 1;
+}
+static void ntframe(float t){
+    int lit = (int)(NT_RIM * smooth(seg(t, 0.02f, 0.78f)));               /* the rim fills round once */
+    for(int i = 0; i < NT_RIM; i++){
+        lv_color_t c = i < lit ? (i == lit - 1 && lit < NT_RIM ? TC(ACCENT_PRIMARY) : TC(FIXED_MEDIA_WHITE)) : TC(FIXED_MEDIA_HINT);
+        if(!lv_color_eq(lv_obj_get_style_bg_color(g_ntrim[i], 0), c)) lv_obj_set_style_bg_color(g_ntrim[i], c, 0);
+    }
+    int cols = (int)(NT_COLS * seg(t, 0.12f, 0.6f) + 0.5f);              /* the word, a column at a time */
+    if(cols != g_ntcols){ g_ntcols = cols; lv_obj_invalidate(g_ntword); }
+    float blink = seg(t, 0.6f, 0.86f);                                    /* the red dot: blinks twice, then stays */
+    int dot_on = t >= 0.6f && !((blink > 0.15f && blink < 0.3f) || (blink > 0.45f && blink < 0.6f));
+    lv_obj_set_style_opa(g_ntdot, dot_on ? LV_OPA_COVER : LV_OPA_TRANSP, 0);
+    lv_obj_set_style_opa(g_ntsub, (lv_opa_t)(255 * smooth(seg(t, 0.55f, 0.72f))), 0);
     lv_obj_set_style_opa(g_sp.root, (lv_opa_t)(255 * (1 - seg(t, 0.9f, 1))), 0);
 }

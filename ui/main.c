@@ -3673,6 +3673,7 @@ int main(int argc, char **argv){
                    && abs(p.x - sx) > 2 * abs(p.y - sy)) ui_back_hint(p.y, SIDE_DX(p.x - sx));   /* fork: back-swipe feedback */
                 else ui_back_hint(0, 0);
                 if(!woke && !fsart_touch && !sleep_touch && !seek_touch && screen_current()==SCR_HOME && SIDE_DX(p.x-sx)<0
+                   && !(th_nt() && (disco_mirror() ? sx <= 34 : sx >= 326))
                    && abs(p.x-sx)>2*abs(p.y-sy))ui_shortcuts_hint(p.y,-SIDE_DX(p.x-sx));
                 else ui_shortcuts_hint(0,0);
                 if(!woke && !fsart_touch && sy > 320 && screen_current()!=SCR_HOME && screen_current()!=SCR_QUICK && screen_current()!=SCR_SAVER && (screen_current()!=SCR_NOWPLAYING||th_zune()) && !sleep_touch
@@ -3722,7 +3723,9 @@ int main(int argc, char **argv){
                     if(lvgl_owned || ui_np_fsart_active()){
                         /* swallow - LVGL handled (or will handle) the open/close */
                     } else if(!seek_consumed){
-                    if(cur==SCR_QUICK && vert && dy<0 && ady>=g_swipe_thresh && dt<700){
+                    if(th_nt() && (disco_mirror() ? sx <= 34 : sx >= 326) && horiz && SIDE_DX(dx)<0 && adx>=40 && dt<700 && disco_nav_edge_open()){
+                        /* NTDisk: the menu circle has no tab - a swipe in from the right edge opens it */
+                    } else if(cur==SCR_QUICK && vert && dy<0 && ady>=g_swipe_thresh && dt<700){
                         onboarding_discovered(HINT_QUICK);screen_back();                       /* swipe up closes quick settings */
                     } else if(cur!=SCR_HOME && cur!=SCR_SAVER && cur!=SCR_NOWPLAYING && sy>320 &&
                               vert && dy<0 && ady>=g_swipe_thresh*2 && dt<700){

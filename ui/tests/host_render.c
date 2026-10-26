@@ -1408,6 +1408,7 @@ int main(int argc, char **argv){
         if(th_zune())zune_status_refresh();
         if(th_nt()){home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");
             if(getenv("NT_IDLE"))nt_home_now_playing(NULL,NULL,0);nav_wait(60);
+            if(getenv("NT_PROMPT")){void settings_test_nt_prompt(int);settings_test_nt_prompt(atoi(getenv("NT_PROMPT"))==2);nav_wait(80);}
             if(getenv("NT_LYRWAIT"))for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("APPS_OPEN")){if(getenv("APPS_ALL"))simple_cfg_set_int("apps_show_all",atoi(getenv("APPS_ALL")));appshelf_reload();screen_show(SCR_APPSHELF);nav_wait(60);

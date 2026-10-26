@@ -145,6 +145,23 @@ static void load(int preset){
     load_poll();
 }
 
+/* A ready-made curve into a USER slot: the one already carrying its name, else the first unnamed one. The player
+ * stores it like an edit (and selects it once saved); master is the preset's preamp in dB. */
+int eqcustom_install(const char *name, const int hz[NB], const int tenths[NB], double master){
+    if(g_save_busy){ ui_toast("Busy saving - try again"); return -1; }
+    if(!fw_custom_peq_curve_writable(hz, NB)){ ui_toast("This firmware can't store this EQ"); return -1; }
+    int slot = -1; char key[24];
+    for(int p = USER_MIN; p < NPRESET && slot < 0; p++){ snprintf(key, sizeof key, "eq_name%d", p); const char *n = simple_cfg_get_str(key, NULL); if(n && !strcmp(n, name)) slot = p; }
+    for(int p = USER_MIN; p < NPRESET && slot < 0; p++){ snprintf(key, sizeof key, "eq_name%d", p); const char *n = simple_cfg_get_str(key, NULL); if(!n || !*n) slot = p; }
+    if(slot < 0){ ui_toast("All 10 USER presets have names - rename one first"); return -1; }
+    g_preset = slot; g_parametric = g_readfail = g_loading = 0; profile_ticket = 0; g_master = master;
+    for(int i = 0; i < NB; i++){ g_f[i] = hz[i]; g_t[i] = clampi(tenths[i], -GMAX, GMAX); g_q[i] = 0.7; }
+    g_editable = 1; g_changed = 0;
+    simple_cfg_set_int("eq_preset", slot);                               /* selected once the save lands */
+    if(!apply_now()){ g_editable = 0; ui_toast("EQ not saved"); return -1; }
+    snprintf(key, sizeof key, "eq_name%d", slot); simple_cfg_set_str(key, name);
+    return slot;
+}
 /* ------------------------------------------------------------------ drawing */
 
 static float clampf(float v){ return v < 0 ? 0 : v > 1 ? 1 : v; }

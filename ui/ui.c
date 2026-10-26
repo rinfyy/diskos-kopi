@@ -1533,7 +1533,7 @@ static _Atomic int g_zart;       /* Zune: now playing takes its accent from the 
 void ui_zune_art_sync(void){ g_zart = cfg_get_int("zune_accent_art", 0) ? 1 : 0; }
 static lv_color_t np_col(void){ if(theme_disco_kopi() && !ui_accent_is_static()) return TC(ACCENT_PRIMARY); if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY);
                                 if(th_braun()) return TC(ACCENT_PRIMARY); return ((g_np_poster || g_np_ring) && np_acc_set && !ui_accent_is_static()) ? np_acc : accent; }
-lv_color_t ui_media_accent(void){ if(theme_disco_kopi() && !ui_accent_is_static()) return TC(ACCENT_PRIMARY); if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY); if(th_simple())return TC(ACCENT_PRIMARY); if(th_braun()) return TC(ACCENT_PRIMARY); return (np_acc_set && !ui_accent_is_static()) ? np_acc : accent; }   /* theme.h: media surfaces (Braun: orange) */
+lv_color_t ui_media_accent(void){ if(theme_disco_kopi() && !ui_accent_is_static()) return TC(ACCENT_PRIMARY); if(th_zune()) return (g_zart && np_acc_set) ? np_acc : TC(ACCENT_PRIMARY); if(th_simple() || th_nt())return TC(ACCENT_PRIMARY); if(th_braun()) return TC(ACCENT_PRIMARY); return (np_acc_set && !ui_accent_is_static()) ? np_acc : accent; }   /* theme.h: media surfaces (Braun: orange) */
 static void apply_accent(void)
 {
     if(th_zune()){                                    /* Zune media follows the selected/album accent. */
@@ -1596,7 +1596,7 @@ lv_color_t ui_disco_fit_accent(lv_color_t c){
     }
     return c;
 }
-lv_color_t ui_current_accent(void){ if(th_simple() || th_null() || th_zune())return TC(ACCENT_PRIMARY); return th_braun() ? TC(ACCENT_PRIMARY) : ui_disco_fit_accent(accent); }   /* Braun: orange everywhere */
+lv_color_t ui_current_accent(void){ if(th_simple() || th_null() || th_zune() || th_nt())return TC(ACCENT_PRIMARY); return th_braun() ? TC(ACCENT_PRIMARY) : ui_disco_fit_accent(accent); }   /* Braun: orange everywhere */
 
 /* ---- shared standard header (back chevron + centred title) ------------------------------------- */
 static void ui_header_home_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED && screen_press_was_long()) screen_home(); }
@@ -4119,7 +4119,7 @@ void ui_update(const track_state_t *st)
  * instead of hammering the buttons (which double-press into next/prev). */
 static lv_obj_t *g_vol_panel, *g_vol_arc, *g_vol_num;
 static lv_timer_t *g_vol_timer;
-int ui_volume_overlay_visible(void){return th_simple()?simple_volume_visible():th_null()?null_volume_visible():(g_vol_panel && !lv_obj_has_flag(g_vol_panel,LV_OBJ_FLAG_HIDDEN));}
+int ui_volume_overlay_visible(void){return th_simple()?simple_volume_visible():th_null()?null_volume_visible():th_nt()?nt_volume_visible():(g_vol_panel && !lv_obj_has_flag(g_vol_panel,LV_OBJ_FLAG_HIDDEN));}
 static int g_vol_suppress;   /* 1 while we set the arc programmatically (no echo loop) */
 static uint32_t g_vol_last_send;  /* throttle: tick of the last 0715 we sent */
 static int g_vol_pending;         /* 1 if a value changed but was throttled (commit on release) */
@@ -4259,6 +4259,7 @@ void ui_show_volume(int vol)
     onboarding_context(HINT_VOLUME);
     if(th_simple()){simple_volume_show(vol);imm_volume_input_apply(simple_volume_root());return;}
     if(th_null()){null_volume_show(vol);imm_volume_input_apply(null_volume_root());return;}
+    if(th_nt()){nt_volume_show(vol);imm_volume_input_apply(nt_volume_root());return;}
     if(!g_vol_panel){
         /* the rim arc: a level on the right rim filling bottom -> top in the current accent, rounded ends,
          * a white handle, and the value at clock size in a badge beside it. The screen stays visible,

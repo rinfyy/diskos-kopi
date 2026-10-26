@@ -27,12 +27,12 @@
 #include <time.h>
 
 #define DISC_D   300              /* CD + info: the CD's diameter, its centre above the screen's top third */
-#define DISC_CY  46
+#define DISC_CY  50
 #define BIG_D    296              /* Disc only */
-#define WAVE_N   9
 #define LYR_CAP  240
 
 void disco_track_overlay_open(void);
+unsigned ui_art_revision(void);
 
 static void keep_all(lv_obj_t *o){                                       /* styled here: the theme kit leaves it alone */
     kit_keep(o);
@@ -212,7 +212,7 @@ static void face_weather(face_t *f, const char *s){
 
 #define MC(role) th_nt_music_color(THEME_CLR_##role)
 /* ---- Music --------------------------------------------------------------------------------------------------------- */
-static lv_obj_t *g_layer, *g_disc, *g_art, *g_hub, *g_hole, *g_state, *g_ring, *g_wave, *g_bar[WAVE_N];
+static lv_obj_t *g_layer, *g_disc, *g_art, *g_hub, *g_hole, *g_state, *g_ring;
 static lv_obj_t *g_info, *g_artist, *g_title, *g_lyric, *g_line, *g_line_fill, *g_el, *g_tot, *g_idle_box, *g_start;
 static face_t g_face;
 static lv_timer_t *g_tm;
@@ -222,14 +222,110 @@ static lyr_line_t *g_lyr; static int g_lyr_n; static unsigned g_lyr_rev = ~0u;
 static int g_drag;
 
 static void fmt_time(long ms, char *o, size_t n){ long s = ms > 0 ? ms / 1000 : 0; snprintf(o, n, "%ld:%02ld", s / 60, s % 60); }
-static void art_apply(void){
+/* The CD turns while music plays (about one turn every 8 s). The cover is resampled once per album into a square
+ * buffer; each frame rotates it into a round ARGB image (bilinear, antialiased edge) - only the rows that are on screen,
+ * and only while Music is showing and playing. No clip mask, so LVGL just blends one image. */
+#define SPIN_MS   66
+#define SPIN_TURN 8000
+static uint32_t *g_src, *g_out; static uint8_t *g_mask; static int g_sd;   /* d x d */
+static lv_image_dsc_t g_spin_dsc; static int g_angle10, g_src_ok, g_row0;   /* angle in tenths of a degree */
+static unsigned g_src_rev = ~0u; static lv_timer_t *g_spin_tm;
+static uint32_t px_of(lv_color_t c){ return 0xFF000000u | ((uint32_t)c.red << 16) | ((uint32_t)c.green << 8) | c.blue; }
+static void spin_alloc(int d){
+    if(g_sd == d) return;
+    free(g_src); free(g_out); free(g_mask);
+    g_src = malloc((size_t)d * d * 4); g_out = calloc((size_t)d * d, 4); g_mask = malloc((size_t)d * d);
+    g_sd = (g_src && g_out && g_mask) ? d : 0;
+    if(!g_sd) return;
+    float c = d / 2.0f, r = d / 2.0f - 0.5f;
+    for(int y = 0; y < d; y++) for(int x = 0; x < d; x++){
+        float dx = x + 0.5f - c, dy = y + 0.5f - c, cov = r - sqrtf(dx * dx + dy * dy) + 0.5f;
+        g_mask[y * d + x] = cov <= 0 ? 0 : cov >= 1 ? 255 : (uint8_t)(cov * 255);
+    }
+    memset(&g_spin_dsc, 0, sizeof g_spin_dsc);
+    g_spin_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_spin_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    g_spin_dsc.header.w = g_spin_dsc.header.h = (uint32_t)d; g_spin_dsc.header.stride = (uint32_t)d * 4;
+    g_spin_dsc.data = (const uint8_t *)g_out; g_spin_dsc.data_size = (uint32_t)d * d * 4;
+}
+/* the album into g_src (or, with no cover, a plain disc with grooves and a red mark so the turn is visible) */
+static void spin_source(void){
+    int d = g_sd; if(!d) return;
+    const lv_image_dsc_t *a = g_have ? ui_current_sharp_img() : NULL;
+    int ok = a && a->data && a->header.w > 0 &&
+             (a->header.cf == LV_COLOR_FORMAT_RGB888 || a->header.cf == LV_COLOR_FORMAT_XRGB8888 || a->header.cf == LV_COLOR_FORMAT_ARGB8888);
+    if(ok){
+        int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
+        int st = a->header.stride ? (int)a->header.stride : w * bpp;
+        for(int y = 0; y < d; y++){                                       /* area-averaged (a box of source pixels) */
+            int y0 = y * h / d, y1 = (y + 1) * h / d; if(y1 <= y0) y1 = y0 + 1; if(y1 > h) y1 = h;
+            for(int x = 0; x < d; x++){
+                int x0 = x * w / d, x1 = (x + 1) * w / d; if(x1 <= x0) x1 = x0 + 1; if(x1 > w) x1 = w;
+                unsigned r = 0, g = 0, b = 0, n = 0;
+                for(int yy = y0; yy < y1; yy++){ const uint8_t *p = a->data + (size_t)yy * st + (size_t)x0 * bpp;
+                    for(int xx = x0; xx < x1; xx++, p += bpp){ b += p[0]; g += p[1]; r += p[2]; n++; } }
+                g_src[y * d + x] = 0xFF000000u | (r / n) << 16 | (g / n) << 8 | (b / n);
+            }
+        }
+    } else {
+        uint32_t bg = px_of(MC(SURFACE)), gr = px_of(MC(BORDER_STRONG)), red = px_of(MC(ACCENT_PRIMARY));
+        float c = d / 2.0f;
+        for(int y = 0; y < d; y++) for(int x = 0; x < d; x++){
+            float dx = x + 0.5f - c, dy = y + 0.5f - c, r = sqrtf(dx * dx + dy * dy);
+            uint32_t v = bg;
+            for(int i = 0; i < 4; i++){ float gr0 = (d - 30 - i * 34) / 2.0f; if(fabsf(r - gr0) < 0.6f) v = gr; }
+            float mx = dx, my = dy + (d / 2.0f - 22);                  /* a red mark near the top edge */
+            if(mx * mx + my * my < 16) v = red;
+            g_src[y * d + x] = v;
+        }
+    }
+    g_src_ok = 1; g_src_rev = ui_art_revision();
+}
+static void spin_render(void){
+    int d = g_sd; if(!d || !g_src_ok) return;
+    float rad = g_angle10 * 0.1f * 0.01745329f;
+    int32_t cs = (int32_t)(cosf(rad) * 65536), sn = (int32_t)(sinf(rad) * 65536), c16 = d * 32768;   /* centre, 16.16 */
+    for(int y = g_row0; y < d; y++){
+        int32_t yy = y * 65536 + 32768 - c16;
+        uint32_t *o = g_out + (size_t)y * d; const uint8_t *m = g_mask + (size_t)y * d;
+        for(int x = 0; x < d; x++){
+            if(!m[x]){ o[x] = 0; continue; }
+            int32_t xx = x * 65536 + 32768 - c16;
+            /* inverse rotation: where this pixel comes from in the unrotated cover */
+            int32_t sx = (int32_t)(((int64_t)xx * cs + (int64_t)yy * sn) >> 16) + c16 - 32768;
+            int32_t sy = (int32_t)((-(int64_t)xx * sn + (int64_t)yy * cs) >> 16) + c16 - 32768;
+            int ix = sx >> 16, iy = sy >> 16; unsigned fx = (unsigned)(sx >> 8) & 255, fy = (unsigned)(sy >> 8) & 255;
+            if(ix < 0){ ix = 0; fx = 0; } if(iy < 0){ iy = 0; fy = 0; }
+            if(ix >= d - 1){ ix = d - 2; fx = 255; } if(iy >= d - 1){ iy = d - 2; fy = 255; }
+            const uint32_t *p = g_src + (size_t)iy * d + ix;
+            uint32_t a = p[0], b = p[1], c = p[d], e = p[d + 1];
+            unsigned w00 = (256 - fx) * (256 - fy) >> 8, w10 = fx * (256 - fy) >> 8, w01 = (256 - fx) * fy >> 8, w11 = fx * fy >> 8;
+            uint32_t rb = (((a & 0xFF00FF) * w00 + (b & 0xFF00FF) * w10 + (c & 0xFF00FF) * w01 + (e & 0xFF00FF) * w11) >> 8) & 0xFF00FF;
+            uint32_t g = (((a & 0x00FF00) * w00 + (b & 0x00FF00) * w10 + (c & 0x00FF00) * w01 + (e & 0x00FF00) * w11) >> 8) & 0x00FF00;
+            o[x] = (uint32_t)m[x] << 24 | rb | g;
+        }
+    }
+    if(g_art) lv_obj_invalidate(g_art);
+}
+static void spin_tick(lv_timer_t *t){
+    (void)t;
+    if(!g_playing || !g_have || screen_current() != SCR_HOME){ lv_timer_pause(g_spin_tm); return; }
+    g_angle10 = (g_angle10 + 3600 * SPIN_MS / SPIN_TURN) % 3600;
+    spin_render();
+}
+static void spin_run(void){                                              /* start or stop the turning */
+    if(!g_spin_tm) return;
+    if(g_playing && g_have && screen_current() == SCR_HOME) lv_timer_resume(g_spin_tm); else lv_timer_pause(g_spin_tm);
+}
+static void art_apply(int force){
     if(!g_art) return;
-    const void *src = ui_current_sharp_img();
-    if(src && g_have){ lv_image_set_src(g_art, src); lv_obj_remove_flag(g_art, LV_OBJ_FLAG_HIDDEN); }
-    else lv_obj_add_flag(g_art, LV_OBJ_FLAG_HIDDEN);
-    int d = g_mode ? BIG_D : DISC_D;
-    lv_image_set_scale(g_art, (uint32_t)(d * 256 / 364));
-    lv_obj_center(g_art);
+    static int last_have = -1;
+    spin_alloc(g_mode ? BIG_D : DISC_D);
+    if(!g_sd){ lv_obj_add_flag(g_art, LV_OBJ_FLAG_HIDDEN); return; }
+    if(!force && g_src_ok && last_have == g_have && g_src_rev == ui_art_revision()) return;   /* nothing new */
+    last_have = g_have;
+    spin_source(); spin_render();
+    lv_image_set_src(g_art, NULL); lv_image_set_src(g_art, &g_spin_dsc);   /* same buffer, new pixels */
+    lv_obj_remove_flag(g_art, LV_OBJ_FLAG_HIDDEN); lv_obj_center(g_art);
 }
 static void lyrics_refresh(long pos){
     if(!g_lyric) return;
@@ -262,20 +358,10 @@ static void progress_paint(void){
     if(g_el){ lv_label_set_text(g_el, e); char tt[32]; snprintf(tt, sizeof tt, " / %s", t); lv_label_set_text(g_tot, tt); }
     lyrics_refresh(pos);
 }
-static void wave_paint(void){
-    static uint32_t seed = 12345; static const unsigned char REST[WAVE_N] = { 4, 4, 4, 10, 18, 10, 4, 4, 4 };
-    for(int i = 0; i < WAVE_N; i++){
-        if(!g_bar[i]) continue;
-        int h = REST[i];
-        if(g_playing && g_have){ seed = seed * 1103515245u + 12345u; int m = i == 4 ? 22 : 20 - abs(i - 4) * 3; h = 4 + (int)((seed >> 16) % (unsigned)(m > 4 ? m - 3 : 2)); }
-        lv_obj_set_height(g_bar[i], h < 4 ? 4 : h);
-    }
-}
 static void tick_cb(lv_timer_t *t){
     (void)t;
     if(screen_current() != SCR_HOME) return;
-    progress_paint();
-    if(!g_mode) wave_paint();
+    progress_paint(); spin_run();
 }
 static void view_apply(void){
     if(!g_layer) return;
@@ -284,8 +370,8 @@ static void view_apply(void){
     else { lv_obj_remove_flag(g_disc, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_idle_box, LV_OBJ_FLAG_HIDDEN);
            if(g_mode) lv_obj_add_flag(g_info, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(g_info, LV_OBJ_FLAG_HIDDEN); }
     lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
-    art_apply(); progress_paint(); wave_paint();
-    if(g_tm) lv_timer_set_period(g_tm, g_playing && !g_mode ? 140 : 500);
+    art_apply(0); progress_paint();
+    spin_run();
 }
 
 /* touch */
@@ -337,16 +423,11 @@ void nt_home_create(lv_obj_t *root){
     int d = g_mode ? BIG_D : DISC_D;
     g_disc = plain(g_layer); lv_obj_set_size(g_disc, d, d);
     if(g_mode) lv_obj_center(g_disc); else lv_obj_set_pos(g_disc, 180 - d / 2, DISC_CY - d / 2);
-    lv_obj_set_style_radius(g_disc, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_clip_corner(g_disc, true, 0);
+    lv_obj_set_style_radius(g_disc, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(g_disc, MC(SURFACE), 0); lv_obj_set_style_bg_opa(g_disc, LV_OPA_COVER, 0);
     lv_obj_add_flag(g_disc, LV_OBJ_FLAG_CLICKABLE); lv_obj_remove_flag(g_disc, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(g_disc, disc_cb, LV_EVENT_ALL, NULL);
-    for(int i = 0; i < 4; i++){                                          /* grooves, seen when there is no cover */
-        lv_obj_t *g = plain(g_disc); int gd = d - 30 - i * 34; lv_obj_set_size(g, gd, gd); lv_obj_center(g);
-        lv_obj_set_style_radius(g, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_border_width(g, 1, 0);
-        lv_obj_set_style_border_color(g, MC(BORDER_STRONG), 0); lv_obj_set_style_border_opa(g, LV_OPA_60, 0);
-    }
-    g_art = lv_image_create(g_disc); lv_obj_remove_flag(g_art, LV_OBJ_FLAG_CLICKABLE); lv_image_set_pivot(g_art, 182, 182);
+    g_art = lv_image_create(g_disc); lv_obj_remove_flag(g_art, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_t *rim = plain(g_disc); lv_obj_set_size(rim, d, d); lv_obj_center(rim);             /* a fine edge */
     lv_obj_set_style_radius(rim, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_border_width(rim, 2, 0);
     lv_obj_set_style_border_color(rim, MC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(rim, LV_OPA_20, 0);
@@ -365,28 +446,22 @@ void nt_home_create(lv_obj_t *root){
     }
 
     /* the information under the CD */
-    g_info = plain(g_layer); lv_obj_set_size(g_info, 360, 170); lv_obj_set_pos(g_info, 0, 192);
-    g_wave = plain(g_info); lv_obj_set_size(g_wave, WAVE_N * 10, 26); lv_obj_align(g_wave, LV_ALIGN_TOP_MID, 0, 0);
-    for(int i = 0; i < WAVE_N; i++){
-        g_bar[i] = plain(g_wave); lv_obj_set_size(g_bar[i], 4, 4); lv_obj_align(g_bar[i], LV_ALIGN_LEFT_MID, i * 10 + 3, 0);
-        lv_obj_set_style_radius(g_bar[i], 2, 0); lv_obj_set_style_bg_opa(g_bar[i], LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(g_bar[i], i == 4 ? MC(ACCENT_PRIMARY) : MC(TEXT_MUTED), 0);
-    }
-    lv_obj_t *hit = plain(g_info); lv_obj_set_size(hit, 280, 64); lv_obj_align(hit, LV_ALIGN_TOP_MID, 0, 26);   /* the text: actions */
+    g_info = plain(g_layer); lv_obj_set_size(g_info, 360, 160); lv_obj_set_pos(g_info, 0, 200);
+    lv_obj_t *hit = plain(g_info); lv_obj_set_size(hit, 280, 64); lv_obj_align(hit, LV_ALIGN_TOP_MID, 0, 14);   /* the text: actions */
     lv_obj_add_flag(hit, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(hit, info_cb, LV_EVENT_ALL, NULL);
     g_artist = text(hit, ui_font_cjk(16), MC(TEXT_MUTED), 250); lv_obj_align(g_artist, LV_ALIGN_TOP_MID, 0, 0);
     g_title = text(hit, ui_font_cjk(22), MC(TEXT_PRIMARY), 270); lv_obj_align(g_title, LV_ALIGN_TOP_MID, 0, 22);
     g_lyric = text(hit, ui_font_cjk(18), MC(TEXT_PRIMARY), 0); lv_obj_set_width(g_lyric, 280);
     lv_label_set_long_mode(g_lyric, LV_LABEL_LONG_DOT); lv_obj_set_height(g_lyric, 2 * lv_font_get_line_height(ui_font_cjk(18)));
     lv_obj_align(g_lyric, LV_ALIGN_TOP_MID, 0, 20); lv_obj_add_flag(g_lyric, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *seek = plain(g_info); lv_obj_set_size(seek, 160, 26); lv_obj_align(seek, LV_ALIGN_TOP_MID, 0, 92);   /* the line: seek */
+    lv_obj_t *seek = plain(g_info); lv_obj_set_size(seek, 160, 26); lv_obj_align(seek, LV_ALIGN_TOP_MID, 0, 82);   /* the line: seek */
     lv_obj_add_flag(seek, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(seek, seek_cb, LV_EVENT_ALL, NULL);
     g_line = plain(seek); lv_obj_set_size(g_line, 120, 3); lv_obj_center(g_line);
     lv_obj_set_style_radius(g_line, 2, 0); lv_obj_set_style_bg_color(g_line, MC(CONTROL_TRACK), 0); lv_obj_set_style_bg_opa(g_line, LV_OPA_COVER, 0);
     g_line_fill = plain(g_line); lv_obj_set_size(g_line_fill, 0, 3);
     lv_obj_set_style_radius(g_line_fill, 2, 0); lv_obj_set_style_bg_color(g_line_fill, MC(TEXT_PRIMARY), 0); lv_obj_set_style_bg_opa(g_line_fill, LV_OPA_COVER, 0);
     lv_obj_t *times = plain(g_info); lv_obj_set_size(times, LV_SIZE_CONTENT, LV_SIZE_CONTENT); lv_obj_set_flex_flow(times, LV_FLEX_FLOW_ROW);
-    lv_obj_align(times, LV_ALIGN_TOP_MID, 0, 116);
+    lv_obj_align(times, LV_ALIGN_TOP_MID, 0, 106);
     g_el = text(times, TF(UI_16), MC(TEXT_PRIMARY), 0); g_tot = text(times, TF(UI_16), MC(TEXT_MUTED), 0);
 
     /* nothing playing: the clock face */
@@ -401,21 +476,25 @@ void nt_home_create(lv_obj_t *root){
 
     keep_all(g_layer);
     if(g_tm) lv_timer_delete(g_tm);                                     /* built again (a screen rebuild) */
+    if(g_spin_tm) lv_timer_delete(g_spin_tm);
+    g_spin_tm = lv_timer_create(spin_tick, SPIN_MS, NULL); lv_timer_pause(g_spin_tm);
+    g_row0 = g_mode ? 0 : (DISC_D / 2 - DISC_CY);                       /* CD + info: the rows above the screen are never drawn */
     g_tm = lv_timer_create(tick_cb, 500, NULL);
     face_clock(&g_face, g_clock[0] ? g_clock : NULL, g_sub[0] ? g_sub : NULL);
     face_weather(&g_face, g_wx);
     view_apply();
 }
 void nt_home_now_playing(const char *title, const char *artist, int playing){
-    g_have = title && title[0];
-    g_playing = playing;
+    int have = title && title[0];
+    int changed = have != g_have || !!playing != g_playing || strcmp(g_t, title ? title : "") || strcmp(g_a, artist ? artist : "");
+    g_have = have; g_playing = !!playing;                                 /* (called on every position frame: work only on a change) */
     snprintf(g_t, sizeof g_t, "%s", title ? title : ""); snprintf(g_a, sizeof g_a, "%s", artist ? artist : "");
-    if(!g_layer) return;
+    if(!g_layer || !changed) return;
     if(strcmp(lv_label_get_text(g_title), g_t)) lv_label_set_text(g_title, g_t);
     if(strcmp(lv_label_get_text(g_artist), g_a)) lv_label_set_text(g_artist, g_a);
     view_apply();
 }
-void nt_home_art_changed(void){ art_apply(); }
+void nt_home_art_changed(void){ art_apply(1); }
 void nt_home_lyrics_apply(int on){ g_lyr_on = on; g_lyr_rev = ~0u; if(g_layer) progress_paint(); }
 void nt_home_clock(const char *t, const char *sub){
     if(t) snprintf(g_clock, sizeof g_clock, "%s", t);
@@ -428,7 +507,7 @@ int nt_home_owns_point(int x, int y){
     if(!g_layer || !g_have) return 0;
     int cx = 180, cy = g_mode ? 180 : DISC_CY, r = (g_mode ? BIG_D : DISC_D) / 2;
     if((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) return 1;
-    return !g_mode && y >= 192 + 88 && y <= 192 + 122 && x >= 90 && x <= 270;
+    return !g_mode && y >= 200 + 78 && y <= 200 + 112 && x >= 90 && x <= 270;
 }
 
 /* ---- standby ------------------------------------------------------------------------------------------------------- */

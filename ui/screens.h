@@ -489,6 +489,11 @@ void dhome_art_changed(void);
 void dhome_set_accent(lv_color_t accent);
 void dhome_show_clock(int on);
 void disco_open_np_immersive(void);
+int disco_nav_edge_open(void);
+/* nt_panels.c: NTDisk's Quick Settings and volume */
+void nt_qs_create(lv_obj_t *root); void nt_qs_build(void); void nt_qs_refresh(void); void nt_qs_art(const void *cover);
+void nt_qs_battery(int pct, int charging); void nt_qs_slide(int open);
+void nt_volume_show(int vol); int nt_volume_visible(void); lv_obj_t *nt_volume_root(void);   /* NTDisk: the edge swipe that opens the menu circle */
 /* nt_home.c: NTDisk's Music and standby screens */
 void nt_home_create(lv_obj_t *root); void nt_home_now_playing(const char *title, const char *artist, int playing);
 void nt_home_art_changed(void); void nt_home_clock(const char *t, const char *sub); void nt_home_weather(const char *s);

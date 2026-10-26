@@ -547,7 +547,7 @@ static void nav_show(void){                                             /* show 
     if(want && g_open){ lv_obj_remove_flag(g_catch, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_catch);
                         lv_obj_remove_flag(g_pk, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_pk); }
     else { lv_obj_add_flag(g_catch, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_pk, LV_OBJ_FLAG_HIDDEN); }
-    if(want && !g_open){ lv_obj_remove_flag(g_tab, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_tab); }
+    if(want && !g_open && !th_nt()){ lv_obj_remove_flag(g_tab, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_tab); }   /* NTDisk: no tab, an edge swipe */
     else lv_obj_add_flag(g_tab, LV_OBJ_FLAG_HIDDEN);
 }
 /* open / close: the oval slides out of the right edge and back in (a plain move, no scaling: cheap to draw) */
@@ -584,6 +584,11 @@ void disco_nav_set_open(int open){
     }
 }
 static void catch_cb(lv_event_t *e){ (void)e; disco_nav_set_open(0); }
+/* main.c: NTDisk's swipe in from the edge opens the menu circle where it would have had its tab */
+int disco_nav_edge_open(void){
+    if(!th_nt() || !g_pk || g_open || g_cur_scr < 0 || !picker_wanted(g_cur_scr)) return 0;
+    disco_nav_set_open(1); onboarding_discovered(HINT_MENU); return 1;
+}
 static void tab_cb(lv_event_t *e){ (void)e; disco_nav_set_open(1); onboarding_discovered(HINT_MENU); onboarding_screen(g_cur_scr,g_open); }
 static void picker_create(void){
     g_pk = lv_obj_create(g_parent);

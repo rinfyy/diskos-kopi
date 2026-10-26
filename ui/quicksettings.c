@@ -51,9 +51,9 @@ static const qs_item_t CATALOG[Q_COUNT]={
     {"p","Play mode",LV_SYMBOL_LOOP},
     {"g","Gain",LV_SYMBOL_CHARGE},{"j","Shuffle",LV_SYMBOL_SHUFFLE},{"t","Sleep","\xEF\x86\x86"}
 };
-static const char *qs_config_key(void){return th_zune()?"zune_qs_items":th_null()?"null_qs_items":th_disco_family()?"disco_qs_items":"qs_items";}
+static const char *qs_config_key(void){return th_zune()?"zune_qs_items":th_null()?"null_qs_items":th_nt()?"nt_qs_items":th_disco_family()?"disco_qs_items":"qs_items";}
 int quicksettings_item_count(void){return Q_COUNT;}
-int quicksettings_item_limit(void){return (th_null()||th_simple())?8:th_disco()?7:6;}
+int quicksettings_item_limit(void){return (th_null()||th_simple()||th_nt())?8:th_disco()?7:6;}
 int quicksettings_playback_item(void){return Q_PLAYBACK;}
 int quicksettings_equalizer_item(void){return Q_EQ;}
 int ui_sleep_state(int *secs_left);
@@ -70,7 +70,7 @@ int quicksettings_items_load(int *out){
         break;
     }
     if(!code || (code[0] && !n)){
-        if(th_null()||th_simple()){static const int nd[]={T_WIFI,T_BT,T_MODE,Q_EQ,T_RESCAN,Q_SEARCH,Q_WEATHER,T_SET};memcpy(out,nd,sizeof nd);return 8;}
+        if(th_null()||th_simple()||th_nt()){static const int nd[]={T_WIFI,T_BT,T_MODE,Q_EQ,T_RESCAN,Q_SEARCH,Q_WEATHER,T_SET};memcpy(out,nd,sizeof nd);return 8;}
         if(th_zune()){static const int zd[]={T_WIFI,T_BT,Q_GAIN,Q_SHUFFLE,Q_SLEEP,T_MODE};memcpy(out,zd,sizeof zd);return 6;}
         if(!th_disco_family()){for(int i=0;i<T_N;i++)out[i]=i;return T_N;}
         static const int defaults[]={T_WIFI,T_BT,T_MODE,T_LIB,Q_EQ,Q_SEARCH,T_SET};
@@ -398,6 +398,7 @@ void quicksettings_create(lv_obj_t *root)
     if(th_zune()){ zqs_create(root); return; }
     if(th_simple()){simple_qs_create(root);return;}
     if(th_null()){null_qs_create(root);return;}
+    if(th_nt()){nt_qs_create(root);return;}
     lv_obj_set_style_bg_color(root, TC(CANVAS), 0);
     lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
 
@@ -529,6 +530,7 @@ void quicksettings_create(lv_obj_t *root)
 void quicksettings_set_art(const void *cover_dsc, const void *backdrop_src)
 {
     if(th_simple()){simple_qs_art(cover_dsc);return;}
+    if(th_nt()){nt_qs_art(cover_dsc);return;}
     if(!g_cover_img) return;
     lv_image_set_src(g_cover_img, NULL);
     if(cover_dsc){
@@ -552,6 +554,7 @@ void quicksettings_set_battery(int pct, int charging)
 {
     if(th_simple()){simple_qs_battery(pct,charging);return;}
     if(th_null()){null_qs_battery(pct,charging);return;}
+    if(th_nt()){nt_qs_battery(pct,charging);return;}
     if(!g_batt) return;
     if(pct < 0) return;
     if(pct > 100) pct = 100;
@@ -577,6 +580,7 @@ void quicksettings_refresh(int playing)
 {
     if(th_simple()){simple_qs_refresh(playing);return;}
     if(th_null()){null_qs_refresh();return;}
+    if(th_nt()){nt_qs_refresh();return;}
     if(th_zune()){ zqs_track(NULL,NULL,playing);zqs_paint(); return; }
     if(!g_prog)return;
     if(g_pp_glyph) lv_label_set_text(g_pp_glyph, playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY);
@@ -593,6 +597,7 @@ void quicksettings_refresh(int playing)
 void quicksettings_build(void){
     if(th_simple()){simple_qs_build();return;}
     if(th_null()){null_qs_build();return;}
+    if(th_nt()){nt_qs_build();return;}
     if(!g_root)return;
     if(th_zune()){zqs_items_build();zqs_paint();return;}
     if(!th_disco_family()){base_build();return;}

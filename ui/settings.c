@@ -173,13 +173,62 @@ static lv_timer_t *g_reload_tm; static char g_reload_key[32]; static int g_reloa
 static void reload_go(lv_timer_t *t){
     (void)t; g_reload_tm = NULL;
     if(ui_theme_reload("settings") == 0) return;        /* not reached on success: the exec replaced us */
-    simple_cfg_set_int(g_reload_key, g_reload_prev);
+    if(g_reload_key[0]) simple_cfg_set_int(g_reload_key, g_reload_prev);
     lv_async_call(detail_refresh_async, NULL);
 }
+/* NTDisk: a change that needs a restart asks first - Restart now, or Later (the change is saved and applies at the
+ * next restart; Settings shows "Restart to apply" until then). */
+static int g_nt_pending; static lv_obj_t *g_rs_dlg; static char g_rs_key[32]; static int g_rs_prev;
+static void reload_start(const char *key, int prev);
+static void rs_close(void){ if(g_rs_dlg){ lv_obj_delete_async(g_rs_dlg); g_rs_dlg = NULL; } }
+static void rs_now_cb(lv_event_t *e){ (void)e; rs_close(); reload_start(g_rs_key, g_rs_prev); }
+static void rs_later_cb(lv_event_t *e){
+    (void)e; rs_close(); g_nt_pending = 1;
+    ui_toast("Saved - it applies the next time the screen restarts");
+    setlist_refresh();
+}
+static lv_obj_t *rs_btn(lv_obj_t *p, const char *t, int x, int primary, lv_event_cb_t cb){
+    lv_obj_t *b = lv_obj_create(p); lv_obj_remove_style_all(b); lv_obj_set_size(b, 118, 44); lv_obj_align(b, LV_ALIGN_BOTTOM_MID, x, -22);
+    lv_obj_set_style_radius(b, 22, 0); lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(b, primary ? TC(ACCENT_PRIMARY) : TC(SURFACE_RAISED), 0);
+    lv_obj_set_style_bg_color(b, primary ? TC(PRIMARY_PRESSED) : TC(SURFACE_PRESSED), LV_STATE_PRESSED);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE); lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *l = lv_label_create(b); lv_label_set_text(l, t); lv_obj_set_style_text_font(l, TF(UI_16), 0);
+    lv_obj_set_style_text_color(l, primary ? TC(ON_ACCENT) : TC(TEXT_PRIMARY), 0); lv_obj_center(l);
+    kit_keep(b); kit_keep(l);
+    return b;
+}
+static void restart_prompt(const char *key){
+    snprintf(g_rs_key, sizeof g_rs_key, "%s", key); g_rs_prev = g_set_prev;
+    if(g_rs_dlg) return;
+    g_rs_dlg = lv_obj_create(lv_layer_top()); lv_obj_remove_style_all(g_rs_dlg); lv_obj_set_size(g_rs_dlg, 360, 360);
+    lv_obj_set_style_bg_color(g_rs_dlg, TC(SCRIM), 0); lv_obj_set_style_bg_opa(g_rs_dlg, 160, 0);
+    lv_obj_add_flag(g_rs_dlg, LV_OBJ_FLAG_CLICKABLE); lv_obj_remove_flag(g_rs_dlg, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *c = lv_obj_create(g_rs_dlg); lv_obj_remove_style_all(c); lv_obj_set_size(c, 290, 176); lv_obj_center(c);
+    lv_obj_set_style_radius(c, 32, 0); lv_obj_set_style_bg_color(c, TC(SURFACE), 0); lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(c, 1, 0); lv_obj_set_style_border_color(c, TC(BORDER), 0);
+    lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE); lv_obj_add_flag(c, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_t *d = lv_obj_create(c); lv_obj_remove_style_all(d); lv_obj_set_size(d, 8, 8); lv_obj_align(d, LV_ALIGN_TOP_MID, 0, 18);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    lv_obj_t *t = lv_label_create(c); lv_label_set_text(t, "Restart to apply?");
+    lv_obj_set_style_text_font(t, TF(UI_18), 0); lv_obj_set_style_text_color(t, TC(TEXT_PRIMARY), 0); lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 34);
+    lv_obj_t *s2 = lv_label_create(c); lv_label_set_text(s2, "Only the screen restarts.\nYour music keeps playing.");
+    lv_obj_set_style_text_align(s2, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(s2, TF(UI_12), 0); lv_obj_set_style_text_color(s2, TC(TEXT_MUTED), 0); lv_obj_align(s2, LV_ALIGN_TOP_MID, 0, 62);
+    rs_btn(c, "Later", -64, 0, rs_later_cb); rs_btn(c, "Restart", 64, 1, rs_now_cb);
+    kit_keep(g_rs_dlg); kit_keep(c); kit_keep(d); kit_keep(t); kit_keep(s2);
+}
+static void apply_nt_restart(int v){ (void)v; reload_start("", 0); }
+void settings_test_nt_prompt(int later){ restart_prompt("nt_style"); if(later) rs_later_cb(NULL); }   /* host renders */
 static void theme_reload_or_revert(const char *key){
+    if(th_nt() && strcmp(key, "theme_preset") && !(g_reload_tm && !strcmp(g_reload_key, key))){ restart_prompt(key); return; }
+    reload_start(key, g_set_prev);
+}
+static void reload_start(const char *key, int prev){
     if(g_reload_tm && !strcmp(g_reload_key, key)){ lv_timer_reset(g_reload_tm); return; }
     if(g_reload_tm){ lv_timer_delete(g_reload_tm); g_reload_tm = NULL; }
-    snprintf(g_reload_key, sizeof g_reload_key, "%s", key); g_reload_prev = g_set_prev;
+    snprintf(g_reload_key, sizeof g_reload_key, "%s", key); g_reload_prev = prev;
     ui_toast("Restarting the screen - your music keeps playing");
     g_reload_tm = lv_timer_create(reload_go, !strcmp(key,"theme_preset") ? 200 : 900, NULL);
     if(g_reload_tm) lv_timer_set_repeat_count(g_reload_tm, 1); else reload_go(NULL);
@@ -973,6 +1022,8 @@ static const setting_t TABLE[] = {
       "Buttons, Auto-fade after 5 s (tap to reveal), or Gestures: double-tap play/pause; swipe right next, left previous.", NULL },
     { "Disco Colours", "Palette", ST_CYCLER, "disco_palette", 0,0,1, OPT_DISCOPAL, 2, NULL, apply_disco_palette, 0,
       "Original cyan, or Kopi Ungu: espresso brown, dark plum and an amethyst accent. Restarts the UI; music continues.", NULL },
+    { "Disco Colours", "Restart to Apply", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_REFRESH, apply_nt_restart, 0,
+      "Some NTDisk changes are waiting for a restart. Tap to restart the screen now; your music keeps playing.", NULL },
     { "Disco Colours", "Style", ST_CYCLER, "nt_style", 0,0,0, OPT_NTSTYLE, 4, NULL, apply_nt_style, 0,
       "Mix dark: dark menus, a light Music screen. Mix light: the reverse. Or all Dark or all Light.", NULL },
     { "Disco Colours", "Font", ST_CYCLER, "nt_font", 0,0,0, OPT_NTFONT, 3, NULL, apply_nt_font, 0,

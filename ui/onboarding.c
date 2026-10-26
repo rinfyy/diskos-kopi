@@ -32,6 +32,7 @@ const char *onboarding_gesture_text(int id){
     if(th_simple()&&id==HINT_MUSIC_GESTURES)return "Double-tap track text: play/pause. Swipe right: next; left: previous.";
     if(id==HINT_BACK)return disco_mirror()?"Swipe left from the right edge to go back.":"Swipe right from the left edge to go back.";
     if(id==HINT_QUICK)return th_null()?"Pull down from the top for QS. Swipe up beside the panel, tap outside, or tap its bottom arrow to close.":"Pull down from the top for QS; swipe up to close.";
+    if(th_nt()&&id==HINT_NAV)return "Swipe in from the side edge for the menu. Arrows browse; centre icon opens.";
     if(id==HINT_NAV)return th_null()?"Tap the side arrow for the menu. Drag text or the handle to browse; tap an item to open.":"Tap the side tab for the menu. Arrows browse; centre icon opens. Double-tap / hold shortcuts are configurable.";
     if(id==HINT_HANDLE){
         static const char *names[]={"Music","Search","Queue","Up Next","Shortcuts","Quick Settings","Volume","Screen off","Play/Pause","Next track","Nothing","Shuffle!"};
@@ -130,9 +131,11 @@ static void show_pill(int id){
     if(id==HINT_MUSIC){y=104;x=82;w=196;
         if(simple_cfg_get_int(th_null()?"null_title_hold":"disco_title_hold",0)==0)message="Tap title for more\nHold it for full screen";}   /* Title Hold: Immersive */
     if(id==HINT_SHORTCUTS){y=104;x=82;w=196;message=disco_mirror()?"Swipe right for shortcuts":"Swipe left for shortcuts";}
+    if(th_nt()&&id==HINT_SHORTCUTS)message=disco_mirror()?"Swipe right from the middle for shortcuts":"Swipe left from the middle for shortcuts";
     if(th_null() && id==HINT_NAV)message="Drag text to browse\nHandle: double tap / hold";
     if(th_null() && id==HINT_MENU){x=disco_mirror()?54:148;message=disco_mirror()?LV_SYMBOL_LEFT " Open drawer":"Open drawer " LV_SYMBOL_RIGHT;}
     if(th_simple()&&id==HINT_MENU){x=90;y=205;w=180;h=50;message="Tap D! below for menu";}
+    if(th_nt()&&id==HINT_MENU){w=196;x=disco_mirror()?40:124;message=disco_mirror()?LV_SYMBOL_RIGHT " Swipe from edge":"Swipe from edge " LV_SYMBOL_LEFT;}
     if(th_simple()&&id==HINT_NAV)message="Drag wheel to browse.\nTap icon to open.";
     if(id==HINT_LOCK){y=262;x=60;w=240;}
     if(id==HINT_MENU){lv_obj_add_flag(pill,LV_OBJ_FLAG_CLICKABLE);lv_obj_add_event_cb(pill,menu_hint_cb,LV_EVENT_CLICKED,NULL);}

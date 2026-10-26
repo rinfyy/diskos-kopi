@@ -12,6 +12,7 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"null_custom_on",NULL,"Appearance","Custom main"},
     {"null_custom_off",NULL,"Appearance","Custom detail"},
     {"null_custom_bg",NULL,"Appearance","Custom background"},
+    {NULL,apply_nt_restart,"Appearance","Restart to apply"},
     {"nt_style",NULL,"Appearance","Style"},
     {"nt_font",NULL,"Appearance","Font"},
     {"nt_music",NULL,"Music screen","Layout"},
@@ -114,12 +115,13 @@ static int display_variant_hidden(const setting_t *s){
     if(!th_disco()&&(s->apply==apply_lock_next||(s->cfg_key&&!strncmp(s->cfg_key,"dlock_",6))))return 1;
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
     if(s->cfg_key&&!th_nt()&&!strncmp(s->cfg_key,"nt_",3))return 1;
+    if(s->apply==apply_nt_restart&&!(th_nt()&&g_nt_pending))return 1;   /* only while a change waits */
     if(th_nt()&&(s->apply==apply_grp_musicinfo||s->apply==apply_grp_musicprogress||s->apply==apply_grp_musictext))return 1;                  /* NTDisk's own rows */
     if(th_nt()&&(s->apply==apply_lock_next||(s->cfg_key&&(!strncmp(s->cfg_key,"dlock_",6)||!strcmp(s->cfg_key,"disco_palette")||
        !strcmp(s->cfg_key,"disco_sheen")||!strcmp(s->cfg_key,"disco_controls")||!strcmp(s->cfg_key,"disco_title_al")||
        !strcmp(s->cfg_key,"np_font")||!strcmp(s->cfg_key,"disco_progress")||!strcmp(s->cfg_key,"disco_prog_shape")||
        !strcmp(s->cfg_key,"disco_times")||!strcmp(s->cfg_key,"disco_clock")||!strcmp(s->cfg_key,"disco_trackno")||
-       !strcmp(s->cfg_key,"theme_auto")))))return 1;   /* Disco's Music/lock styling: NTDisk draws its own */
+       !strcmp(s->cfg_key,"theme_auto")||!strcmp(s->cfg_key,"disco_qs_style")))))return 1;   /* Disco's Music/lock styling: NTDisk draws its own */
     if(s->cfg_key&&!th_zune()&&!strncmp(s->cfg_key,"zune_",5))return 1;
     if(s->cfg_key&&!th_zune()&&(!strcmp(s->cfg_key,"zune_nav_hold")||!strncmp(s->cfg_key,"zlock_",6)))return 1;
     static const struct{const char *common,*null_key;} pairs[]={
