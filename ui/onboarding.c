@@ -135,6 +135,7 @@ static void show_pill(int id){
     if(th_null() && id==HINT_NAV)message="Drag text to browse\nHandle: double tap / hold";
     if(th_null() && id==HINT_MENU){x=disco_mirror()?54:148;message=disco_mirror()?LV_SYMBOL_LEFT " Open drawer":"Open drawer " LV_SYMBOL_RIGHT;}
     if(th_simple()&&id==HINT_MENU){x=90;y=205;w=180;h=50;message="Tap D! below for menu";}
+    if(th_nt()&&id==HINT_MUSIC){y=150;message="Tap the title for more\nTap the CD to play / pause";}
     if(th_nt()&&id==HINT_MENU){w=196;x=disco_mirror()?40:124;message=disco_mirror()?LV_SYMBOL_RIGHT " Swipe from edge":"Swipe from edge " LV_SYMBOL_LEFT;}
     if(th_simple()&&id==HINT_NAV)message="Drag wheel to browse.\nTap icon to open.";
     if(id==HINT_LOCK){y=262;x=60;w=240;}
@@ -167,7 +168,7 @@ static void show_pill(int id){
     hide_timer=lv_timer_create(timeout,id==HINT_LOCK?5000:6500,NULL);
     if(!hide_timer){lv_obj_delete(pill);pill=NULL;return;}
     shown|=1u<<id;
-    if(id>=HINT_BACK)onboarding_discovered_quiet(id);
+    onboarding_discovered_quiet(id);   /* every tip counts as seen when it shows, so none keeps coming back */
 }
 static void schedule(void){
     if(!started || (!th_disco_family() && !th_null()) || simple_cfg_get_int(hint_key("disco_hints"),0)==2)return;

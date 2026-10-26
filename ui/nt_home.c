@@ -17,6 +17,7 @@
 #include "theme.h"
 #include "config.h"
 #include "theme_kit.h"
+#include "onboarding.h"
 #include "ipc.h"
 #include <ctype.h>
 #include <math.h>
@@ -391,7 +392,7 @@ static void disc_cb(lv_event_t *e){
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
-    if(c == LV_EVENT_SHORT_CLICKED) disco_track_overlay_open();
+    if(c == LV_EVENT_SHORT_CLICKED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }
     else if(c == LV_EVENT_LONG_PRESSED){
         int h = cfg_get_int("disco_title_hold", 0);
         if(h == 0) disco_open_np_immersive(); else if(h == 1) ui_np_fav_toggle();
