@@ -542,8 +542,16 @@ static void picker_cb(lv_event_t *e){
         if(!g_single_tap)go_section(g_cur,+1);
     }
 }
+static void ntm_show(int open);
 static void nav_show(void){                                             /* show the right state for the current screen */
     int want = g_cur_scr >= 0 && picker_wanted(g_cur_scr);
+    if(th_nt()){                                                         /* NTDisk: a side panel instead of the circle */
+        lv_obj_add_flag(g_pk, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_tab, LV_OBJ_FLAG_HIDDEN);
+        if(!want && g_open){ g_open = 0; ntm_show(0); }
+        if(want && g_open){ lv_obj_remove_flag(g_catch, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_catch); }
+        else lv_obj_add_flag(g_catch, LV_OBJ_FLAG_HIDDEN);
+        return;
+    }
     if(want && g_open){ lv_obj_remove_flag(g_catch, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_catch);
                         lv_obj_remove_flag(g_pk, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_pk); }
     else { lv_obj_add_flag(g_catch, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_pk, LV_OBJ_FLAG_HIDDEN); }
@@ -561,6 +569,7 @@ void disco_nav_set_open(int open){
     if(th_simple()){simple_nav_open(open);return;}
     if(!open)nav_cancel_tap();
     if(!g_pk || g_open == !!open) return;
+    if(th_nt()){ g_open = !!open; nav_show(); ntm_show(g_open); onboarding_screen(g_cur_scr, g_open); return; }
     int visible = !lv_obj_has_flag(g_pk, LV_OBJ_FLAG_HIDDEN);
     int start = visible ? lv_obj_get_x(g_pk) : PK_OFF_X;
     lv_anim_delete(g_pk, slide_cb);
@@ -584,6 +593,85 @@ void disco_nav_set_open(int open){
     }
 }
 static void catch_cb(lv_event_t *e){ (void)e; disco_nav_set_open(0); }
+/* ---- NTDisk's side menu: a panel that slides in from the edge (like its Quick Settings slides down), the menu's
+ * sections as a scrolling list of pills, the current one white; tap one to go there. Edit menu at the foot. ---- */
+#define NTM_W 292
+static lv_obj_t *g_ntm, *g_ntm_list;
+static void ntm_row_cb(lv_event_t *e){
+    int i = (int)(intptr_t)lv_event_get_user_data(e);
+    disco_nav_set_open(0); go_section(i, +1);
+}
+static void ntm_edit_cb(lv_event_t *e){ (void)e; disco_nav_set_open(0); disco_menu_open(); }
+static void ntm_x(void *o, int32_t v){ lv_obj_set_x(o, v); }
+static void ntm_hidden(lv_anim_t *a){ (void)a; if(!g_open && g_ntm) lv_obj_add_flag(g_ntm, LV_OBJ_FLAG_HIDDEN); }
+static int ntm_open_x(void){ return disco_mirror() ? 0 : 360 - NTM_W; }
+static int ntm_off_x(void){ return disco_mirror() ? -NTM_W : 360; }
+static lv_obj_t *ntm_plain(lv_obj_t *p){ lv_obj_t *o = lv_obj_create(p); lv_obj_remove_style_all(o); kit_keep(o); lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE); return o; }
+static void ntm_build(void){
+    lv_obj_clean(g_ntm_list);
+    lv_obj_t *cur = NULL;
+    for(int i = 0; i < g_nmenu; i++){
+        const dsec_t sec = menu_section(g_menu[i]); int on = i == g_cur;
+        lv_obj_t *r = ntm_plain(g_ntm_list); lv_obj_set_size(r, 204, 48);
+        lv_obj_set_style_radius(r, 24, 0); lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(r, on ? TC(TEXT_PRIMARY) : TC(SURFACE), 0);
+        lv_obj_set_style_bg_color(r, on ? TC(PRIMARY_PRESSED) : TC(SURFACE_PRESSED), LV_STATE_PRESSED);
+        lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_ON_FOCUS); lv_obj_add_event_cb(r, ntm_row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *ic = lv_label_create(r); kit_keep(ic); lv_label_set_text(ic, sec.icon);
+        lv_obj_set_style_text_font(ic, (!strcmp(sec.icon, "EQ") || !strcmp(sec.icon, "MA")) ? TF(UI_14) : !strcmp(sec.icon, IC_MIC) ? TF(ICON_20) : (!strcmp(sec.icon, TH_IC_SEARCH) ? &font_theme_20 : theme_font_original(18)), 0);
+        roulette_icon(ic, sec.icon, 18);
+        lv_obj_set_style_text_color(ic, on ? TC(CANVAS) : TC(TEXT_PRIMARY), 0); lv_obj_align(ic, LV_ALIGN_LEFT_MID, 16, 0);
+        lv_obj_t *nm = lv_label_create(r); kit_keep(nm); lv_label_set_text(nm, sec.name);
+        lv_obj_set_style_text_font(nm, TF(UI_16), 0); lv_obj_set_style_text_color(nm, on ? TC(CANVAS) : TC(TEXT_PRIMARY), 0);
+        lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT); lv_obj_set_width(nm, 132); lv_obj_align(nm, LV_ALIGN_LEFT_MID, 54, 0);
+        if(on){ lv_obj_t *d = ntm_plain(r); lv_obj_set_size(d, 6, 6); lv_obj_align(d, LV_ALIGN_RIGHT_MID, -16, 0);
+                lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0); cur = r; }
+    }
+    lv_obj_update_layout(g_ntm_list);
+    if(cur) lv_obj_scroll_to_view(cur, LV_ANIM_OFF);
+}
+static void ntm_create(void){
+    g_ntm = ntm_plain(g_parent); lv_obj_set_size(g_ntm, NTM_W, 360); lv_obj_set_pos(g_ntm, ntm_off_x(), 0);
+    lv_obj_set_style_bg_color(g_ntm, TC(CANVAS), 0); lv_obj_set_style_bg_opa(g_ntm, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(g_ntm, 40, 0);
+    lv_obj_set_style_border_width(g_ntm, 1, 0); lv_obj_set_style_border_color(g_ntm, TC(BORDER), 0);
+    lv_obj_set_style_border_side(g_ntm, disco_mirror() ? LV_BORDER_SIDE_RIGHT : LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_add_flag(g_ntm, LV_OBJ_FLAG_CLICKABLE);                       /* taps on the panel stay on it */
+    int in = disco_mirror() ? 60 : 16;                                   /* the content stays inside the round screen */
+    lv_obj_t *t = lv_label_create(g_ntm); kit_keep(t); lv_label_set_text(t, "MENU");
+    lv_obj_set_style_text_font(t, TF(UI_14), 0); lv_obj_set_style_text_color(t, TC(TEXT_MUTED), 0);
+    lv_obj_set_style_text_letter_space(t, 3, 0); lv_obj_set_pos(t, in + 30, 34);
+    lv_obj_t *d = ntm_plain(g_ntm); lv_obj_set_size(d, 7, 7); lv_obj_set_pos(d, in + 18, 40);
+    lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    g_ntm_list = ntm_plain(g_ntm); lv_obj_set_size(g_ntm_list, 216, 236); lv_obj_set_pos(g_ntm_list, in, 62);
+    lv_obj_add_flag(g_ntm_list, LV_OBJ_FLAG_SCROLLABLE); lv_obj_set_scroll_dir(g_ntm_list, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(g_ntm_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(g_ntm_list, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(g_ntm_list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_row(g_ntm_list, 8, 0); lv_obj_set_style_pad_ver(g_ntm_list, 4, 0); lv_obj_set_style_pad_left(g_ntm_list, 6, 0);
+    lv_obj_t *ed = ntm_plain(g_ntm); lv_obj_set_size(ed, 120, 34); lv_obj_set_pos(ed, in + 48, 306);
+    lv_obj_set_style_radius(ed, 17, 0); lv_obj_set_style_border_width(ed, 1, 0); lv_obj_set_style_border_color(ed, TC(BORDER_STRONG), 0);
+    lv_obj_set_style_bg_color(ed, TC(SURFACE_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(ed, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_add_flag(ed, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(ed, ntm_edit_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *el = lv_label_create(ed); kit_keep(el); lv_label_set_text(el, "Edit menu");
+    lv_obj_set_style_text_font(el, TF(UI_12), 0); lv_obj_set_style_text_color(el, TC(TEXT_SECONDARY), 0); lv_obj_center(el);
+    lv_obj_add_flag(g_ntm, LV_OBJ_FLAG_HIDDEN);
+}
+static void ntm_show(int open){
+    if(!g_parent) return;
+    if(!g_ntm) ntm_create();
+    lv_anim_delete(g_ntm, ntm_x);
+    if(open){
+        ntm_build();
+        lv_obj_set_style_bg_color(g_catch, TC(SCRIM), 0); lv_obj_set_style_bg_opa(g_catch, 120, 0);
+        lv_obj_remove_flag(g_ntm, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_ntm);
+    }
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_ntm); lv_anim_set_exec_cb(&a, ntm_x);
+    lv_anim_set_values(&a, lv_obj_get_x(g_ntm), open ? ntm_open_x() : ntm_off_x());
+    lv_anim_set_duration(&a, screen_get_anim() ? (open ? 200 : 150) : 1);
+    lv_anim_set_path_cb(&a, open ? lv_anim_path_ease_out : lv_anim_path_ease_in);
+    if(!open) lv_anim_set_completed_cb(&a, ntm_hidden);
+    lv_anim_start(&a);
+}
 /* main.c: NTDisk's swipe in from the edge opens the menu circle where it would have had its tab */
 int disco_nav_edge_open(void){
     if(!th_nt() || !g_pk || g_open || g_cur_scr < 0 || !picker_wanted(g_cur_scr)) return 0;
@@ -698,6 +786,7 @@ static void np_immersive_now(void){
     g_np_want = 1; screen_show(SCR_NOWPLAYING); g_np_want = 0;
 }
 void disco_open_np_immersive(void){
+    if(th_nt()){ nt_lyrics_open(); return; }                           /* NTDisk: full-screen lyrics over the cover */
     if(th_disco_family() && !th_simple() && screen_current() == SCR_HOME && screen_get_anim()) dhome_imm_leave(np_immersive_now);   /* Music's pieces step aside first */
     else np_immersive_now();
 }
@@ -730,6 +819,7 @@ int screen_popping(void);
 void disco_screen_entering(int which){
     if(th_simple()){onboarding_dismiss();if(which==SCR_SEARCH&&!screen_popping())search_landing_reset();simple_nav_screen(which);dhome_overlay_close();ed_close();return;}
     onboarding_dismiss();
+    if(th_nt()) nt_lyrics_close();                                       /* NTDisk's lyrics never outlive their screen */
     nav_cancel_tap();
     if(which == SCR_SEARCH && !screen_popping()) search_landing_reset();  /* Menu > Search: the landing page first; back keeps results */
     dhome_overlay_close(); ed_close();                                    /* top-layer panels never outlive their screen (standby, keys) */

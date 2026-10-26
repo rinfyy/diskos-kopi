@@ -34,6 +34,7 @@ LV_FONT_DECLARE(font_zune_regular_14)
 const lv_font_t *zune_font(const lv_font_t *base);
 
 #define NB       10
+#define PRE      NB                       /* g_sel == PRE: the preset's preamp (its master gain) */
 #define NPRESET  21                       /* 0 Off, 1..10 built-in, 11..20 USER1..10 */
 #define USER_MIN 11
 #define CX 180
@@ -59,6 +60,7 @@ static void *save_worker(void *unused){
     atomic_store_explicit(&g_save_done,1,memory_order_release);return NULL;
 }
 static int g_sel = -1, g_mode_freq = 0, g_dirty_draw, g_changed;
+static lv_obj_t *g_pre, *g_pre_lbl;
 static lv_obj_t *g_root, *g_canvas, *g_hit, *g_rim[NB], *g_pill_lbl, *g_flbl, *g_glbl, *g_minus, *g_plus, *g_modecap, *g_note, *g_lock;
 static uint8_t *g_buf;
 static lv_timer_t *g_draw_tmr;
@@ -216,7 +218,7 @@ static void braun_faders_paint(void){
         lv_obj_set_style_bg_color(g_fcap[i], g_editable ? TC(CONTROL_KNOB) : TC(EQ_CAP_DISABLED), 0);
         lv_obj_set_style_bg_color(g_fline[i], i == g_sel && g_editable ? TC(ACCENT_PRIMARY) : g_editable ? TC(EQ_FADER) : TC(EQ_FADER_DISABLED), 0);
     }
-    if(g_sel >= 0 && g_editable){ lv_obj_set_pos(g_flamp, fx(g_sel) - 3, FTOP - 12); lv_obj_remove_flag(g_flamp, LV_OBJ_FLAG_HIDDEN); }
+    if(g_sel >= 0 && g_sel < NB && g_editable){ lv_obj_set_pos(g_flamp, fx(g_sel) - 3, FTOP - 12); lv_obj_remove_flag(g_flamp, LV_OBJ_FLAG_HIDDEN); }
     else lv_obj_add_flag(g_flamp, LV_OBJ_FLAG_HIDDEN);
 }
 /* ---- Disco: rainbow faders - ten rounded glass sliders on a gentle smile, each filled from 0 dB in its own CD colour ---- */
@@ -259,7 +261,7 @@ static void disco_faders_paint(void){
     for(int i = 0; i < NB; i++){
         int x = dxp(i), o = doff(i), mid = DMID + o, t = clampi(g_t[i], -GMAX, GMAX), s = (i == g_sel && g_editable);
         int y = (int)lroundf(mid - t / 10.0f * DKPX);
-        lv_color_t c = !g_editable ? TC(TEXT_SECONDARY) : (th_null() || simple_cfg_get_int("disco_eq", 0)) ? (th_null()?TC(TEXT_PRIMARY):ui_current_accent()) : theme_color_from_rgb(IRI[i]);   /* Display > Equalizer: Disco / Accent */
+        lv_color_t c = !g_editable ? TC(TEXT_SECONDARY) : (th_null() || th_nt() || simple_cfg_get_int("disco_eq", 0)) ? ((th_null() || th_nt())?TC(TEXT_PRIMARY):ui_current_accent()) : theme_color_from_rgb(IRI[i]);   /* Display > Equalizer: Disco / Accent */
         int a = y < mid ? y : mid, b = y < mid ? mid : y; if(b - a < 2){ a = mid - 1; b = mid + 1; }
         lv_obj_set_pos(g_dfill[i], x - 7, a); lv_obj_set_size(g_dfill[i], 14, b - a);
         lv_obj_set_style_bg_color(g_dfill[i], c, 0);
@@ -394,9 +396,22 @@ static void refresh_labels(void){
     int show_edit = g_editable && g_sel >= 0;
     lv_obj_t *edit_objs[5] = { g_flbl, g_glbl, g_minus, g_plus, g_modecap };
     for(int k = 0; k < 5; k++){ if(show_edit) lv_obj_remove_flag(edit_objs[k], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(edit_objs[k], LV_OBJ_FLAG_HIDDEN); }
-    if(show_edit){
+    if(g_pre){                                                       /* the preamp pill: its value; lit while it's chosen */
+        int t = (int)lround(g_master * 10); char pb[32]; snprintf(pb, sizeof pb, "Preamp %s%d.%d", t < 0 ? "-" : "+", abs(t) / 10, abs(t) % 10);
+        if(strcmp(lv_label_get_text(g_pre_lbl), pb)) lv_label_set_text(g_pre_lbl, pb);
+        if(g_editable) lv_obj_remove_flag(g_pre, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(g_pre, LV_OBJ_FLAG_HIDDEN);
+        int on = g_sel == PRE;
+        lv_obj_set_style_border_color(g_pre, on ? (th_null() ? TC(TEXT_PRIMARY) : ui_current_accent()) : TC(BORDER_STRONG), 0);
+        lv_obj_set_style_text_color(g_pre_lbl, on ? (th_null() ? TC(TEXT_PRIMARY) : ui_current_accent()) : TC(TEXT_SECONDARY), 0);
+    }
+    if(show_edit && g_sel == PRE){ g_mode_freq = 0;
+        if(strcmp(lv_label_get_text(g_flbl), "Preamp")) lv_label_set_text(g_flbl, "Preamp");
+        int t = (int)lround(g_master * 10); fmt_gain(b, sizeof b, t); if(strcmp(lv_label_get_text(g_glbl), b)) lv_label_set_text(g_glbl, b);
+    } else if(show_edit){
         fmt_freq(b, sizeof b, g_f[g_sel], 1); if(strcmp(lv_label_get_text(g_flbl), b)) lv_label_set_text(g_flbl, b);
         fmt_gain(b, sizeof b, clampi(g_t[g_sel], -GMAX, GMAX)); if(strcmp(lv_label_get_text(g_glbl), b)) lv_label_set_text(g_glbl, b);   /* old +-12 presets show at the edge */
+    }
+    if(show_edit){
         int br = th_braun();                                        /* Braun: the big value in black, the other in grey */
         lv_obj_set_style_text_font(g_flbl, g_mode_freq ? (br ? br_font(22, 1) : TH_F_TITLE) : (br ? br_font(14, 0) : TF(UI_14)), 0);
         lv_obj_set_style_text_color(g_flbl, g_mode_freq ? (br ? TC(TEXT_PRIMARY) : (th_null()?TC(TEXT_PRIMARY):ui_current_accent())) : br ? TC(TEXT_SECONDARY) : TC(TEXT_SECONDARY), 0);
@@ -406,7 +421,7 @@ static void refresh_labels(void){
         if((th_disco_family() || th_null() || th_zune())){                                  /* bigger text, bigger touch areas (the active value on the lower line) */
             lv_obj_set_style_text_font(g_flbl, g_mode_freq ? TF(UI_32) : TF(UI_22), 0);
             lv_obj_set_style_text_font(g_glbl, g_mode_freq ? TF(UI_22) : TF(UI_32), 0);
-            lv_obj_align(g_flbl, LV_ALIGN_TOP_MID, 0, g_mode_freq ? 290 : 252); lv_obj_align(g_glbl, LV_ALIGN_TOP_MID, 0, g_mode_freq ? 252 : 290);
+            lv_obj_align(g_flbl, LV_ALIGN_TOP_MID, 0, g_mode_freq ? 280 : 246); lv_obj_align(g_glbl, LV_ALIGN_TOP_MID, 0, g_mode_freq ? 246 : 280);
             lv_obj_set_ext_click_area(g_flbl, 22); lv_obj_set_ext_click_area(g_glbl, 22);   /* two well-separated lines, each easy to hit */
         }
         if(th_zune()){                                              /* the active value big at the top, the other small under it */
@@ -416,7 +431,7 @@ static void refresh_labels(void){
             lv_obj_align(big, LV_ALIGN_TOP_MID, 0, 30); lv_obj_align(small, LV_ALIGN_TOP_MID, 0, 72);
             lv_obj_set_ext_click_area(g_flbl, 10); lv_obj_set_ext_click_area(g_glbl, 10);
         }
-        lv_label_set_text(g_modecap, g_mode_freq ? "FREQ" : "GAIN");
+        lv_label_set_text(g_modecap, g_sel == PRE ? "PREAMP" : g_mode_freq ? "FREQ" : "GAIN");
     }
     const char *note = NULL;
     if(g_save_busy) note="Saving...";
@@ -462,6 +477,10 @@ static void commit(void){
 }
 static void step(int dir){
     if(!g_editable || g_sel < 0) return;
+    if(g_sel == PRE){                                                /* 0.5 dB a step, -12 .. +6 */
+        double m = g_master + dir * 0.5; if(m < -12) m = -12; if(m > 6) m = 6;
+        m = floor(m * 2 + 0.5) / 2; if(m != g_master){ g_master = m; g_changed = 1; } redraw(); return;
+    }
     if(g_mode_freq){
         float f = g_f[g_sel] * powf(2.0f, dir / 12.0f);
         int nf = clampi((int)(f + 0.5f), band_lo(g_sel), band_hi(g_sel));
@@ -571,7 +590,7 @@ static void pad_cancel_cb(lv_event_t *e){ (void)e; pad_close(); }
 static void pad_set_cb(lv_event_t *e){
     (void)e;
     double v = atof(g_pad_txt[0] ? g_pad_txt : "0");
-    if(g_sel >= 0 && g_editable && g_pad_txt[0]){
+    if(g_sel >= 0 && g_sel < NB && g_editable && g_pad_txt[0]){
         if(g_mode_freq){ int hz = (int)lround(v * (g_pad_khz ? 1000.0 : 1.0)); g_f[g_sel] = clampi(hz, band_lo(g_sel), band_hi(g_sel)); }
         else { int t = (int)lround(v * 10.0); if(g_pad_neg) t = -t; g_t[g_sel] = clampi(t, -GMAX, GMAX); }
         g_changed = 1; commit(); redraw();
@@ -594,7 +613,7 @@ static lv_obj_t *pad_btn(lv_obj_t *p, const char *txt, int x, int y, int w, int 
     return b;
 }
 static void pad_open(void){
-    if(!g_editable || g_sel < 0) return;
+    if(!g_editable || g_sel < 0 || g_sel >= NB) return;
     pad_close();
     g_pad = lv_obj_create(lv_layer_top());
     lv_obj_remove_style_all(g_pad);
@@ -641,6 +660,7 @@ static void pad_open(void){
 /* tapping a value: the inactive one becomes active; the active one opens the pad */
 static void flbl_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
+    if(g_sel == PRE) return;                                          /* the preamp has no frequency */
     if(c == LV_EVENT_LONG_PRESSED){                                   /* reset this band's frequency */
         if(g_editable && g_sel >= 0){ g_f[g_sel] = clampi(STDF[g_sel], band_lo(g_sel), band_hi(g_sel)); g_changed = 1; commit(); redraw(); }
         return;
@@ -649,12 +669,13 @@ static void flbl_cb(lv_event_t *e){
     if(g_mode_freq) pad_open(); else { g_mode_freq = 1; refresh_labels(); }
 }
 static void glbl_cb(lv_event_t *e){
-    if(lv_event_get_code(e) != LV_EVENT_SHORT_CLICKED) return;
+    if(lv_event_get_code(e) != LV_EVENT_SHORT_CLICKED || g_sel == PRE) return;
     if(!g_mode_freq) pad_open(); else { g_mode_freq = 0; refresh_labels(); }
 }
 
 /* ------------------------------------------------------------------ building the screen */
 static void editor_back_cb(lv_event_t *e){ (void)e; screen_back(); }
+static void pre_cb(lv_event_t *e){ (void)e; if(!g_editable) return; g_sel = g_sel == PRE ? -1 : PRE; g_mode_freq = 0; redraw(); }
 static lv_obj_t *round_btn(lv_obj_t *p, const char *sym, int dx, int dir){
     lv_obj_t *b = lv_button_create(p);
     lv_obj_remove_style_all(b);
@@ -802,15 +823,22 @@ void eqcustom_create(lv_obj_t *root){
         lv_obj_set_style_text_font(back_label, TF(UI_18), 0); lv_obj_set_style_text_color(back_label, TC(TEXT_PRIMARY), 0); lv_obj_center(back_label);
         ui_on(back, editor_back_cb, LV_EVENT_CLICKED, NULL, "eq.editor.back", UI_CORE);
         lv_obj_t *pm[2] = { g_minus, g_plus };
-        for(int k = 0; k < 2; k++){ lv_obj_set_size(pm[k], 52, 52); lv_obj_align(pm[k], LV_ALIGN_TOP_MID, k ? (th_null()?112:94) : (th_null()?-112:-94), th_null()?248:268); lv_obj_set_ext_click_area(pm[k], 8);
+        for(int k = 0; k < 2; k++){ lv_obj_set_size(pm[k], 52, 52); lv_obj_align(pm[k], LV_ALIGN_TOP_MID, k ? (th_null()?112:94) : (th_null()?-112:-94), th_null()?244:260); lv_obj_set_ext_click_area(pm[k], 8);
             lv_obj_set_style_bg_color(pm[k], TC(SURFACE), 0); lv_obj_set_style_bg_opa(pm[k], 190, 0);
             lv_obj_set_style_border_width(pm[k], 1, 0); lv_obj_set_style_border_color(pm[k], (th_null()?TC(TEXT_PRIMARY):ui_current_accent()), 0); lv_obj_set_style_border_opa(pm[k], 150, 0);
             kit_keep(pm[k]); lv_obj_add_flag(pm[k], LV_OBJ_FLAG_USER_2); }
         lv_obj_align(g_modecap, LV_ALIGN_TOP_MID, -4, 232);   /* right under the band labels */ lv_obj_set_style_text_color(g_modecap, TC(TEXT_SECONDARY), 0);
         lv_obj_set_style_text_font(g_modecap, TF(UI_12), 0);
-        lv_obj_align(g_note, LV_ALIGN_TOP_MID, 0, 290); lv_obj_set_style_text_color(g_note, TC(TEXT_PRIMARY), 0);
+        lv_obj_align(g_note, LV_ALIGN_TOP_MID, 0, 276); lv_obj_set_style_text_color(g_note, TC(TEXT_PRIMARY), 0);
         lv_obj_set_style_text_font(g_note, TF(UI_20), 0);
     }
+    g_pre = lv_button_create(root); lv_obj_remove_style_all(g_pre);                   /* the preamp: tap, then - / + */
+    lv_obj_set_size(g_pre, 124, 26); lv_obj_align(g_pre, LV_ALIGN_TOP_MID, 0, (th_disco_family() || th_null() || th_zune()) ? 318 : 300);
+    lv_obj_set_style_radius(g_pre, th_null() ? 0 : 13, 0); lv_obj_set_style_border_width(g_pre, 1, 0);
+    lv_obj_set_style_bg_color(g_pre, TC(SURFACE_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(g_pre, LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_ext_click_area(g_pre, 6); lv_obj_add_event_cb(g_pre, pre_cb, LV_EVENT_CLICKED, NULL);
+    g_pre_lbl = lv_label_create(g_pre); lv_label_set_text(g_pre_lbl, ""); lv_obj_set_style_text_font(g_pre_lbl, TF(UI_12), 0); lv_obj_center(g_pre_lbl);
+    kit_keep(g_pre); kit_keep(g_pre_lbl); lv_obj_add_flag(g_pre, LV_OBJ_FLAG_HIDDEN);
     if(th_zune()) zune_editor_style(root, pill, chev);
     if(!g_draw_tmr) g_draw_tmr = lv_timer_create(draw_tmr_cb, 50, NULL);
     /* No profile reads/verification for a hidden editor at startup. */
@@ -819,4 +847,4 @@ void eqcustom_create(lv_obj_t *root){
 void eqcustom_refresh(void){ if(fw_os_ver()==257)eq_rate_request(); pad_close(); load(simple_cfg_get_int("eq_preset", 0)); if(!g_editable) g_sel = -1; g_mode_freq = 0; redraw(); }
 void eqcustom_style_apply(void){ if((th_disco_family() || th_null() || th_zune()) && g_dfill[0]) redraw(); }   /* Settings > Display > Equalizer */
 /* host renders only: select a band */
-void eqcustom_test_select(int b){ if(b >= 0 && b < NB){ g_sel = b; redraw(); } }
+void eqcustom_test_select(int b){ if(b >= 0 && b <= NB){ g_sel = b; redraw(); } }

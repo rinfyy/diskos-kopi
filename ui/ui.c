@@ -3398,12 +3398,10 @@ static lv_font_t s_intl20, s_intl18, s_intl16, s_intl14;      /* intl link (fall
 extern const lv_font_t font_inter_medium_14, font_inter_medium_16, font_inter_bold_18, font_inter_bold_22;
 static void ui_fonts_nt(void){                                        /* NTDisk: its own face heads the chain */
     /* (again whenever the theme's fonts changed under us: the first call can come before the theme picked its face) */
-    if(!th_nt() || !s_font20.get_glyph_dsc || s_font22.dsc == TF(UI_22)->dsc) return;
-    const lv_font_t *f22 = s_font22.fallback, *f18 = s_font18.fallback, *f16 = s_font16.fallback, *f14 = s_font14.fallback;
-    s_font28 = *TF(UI_28); s_font28.fallback = f22; s_font24 = *TF(UI_24); s_font24.fallback = f22;
-    s_font22 = *TF(UI_22); s_font22.fallback = f22; s_font20 = *TF(UI_20); s_font20.fallback = f22;
-    s_font18 = *TF(UI_18); s_font18.fallback = f18; s_font16 = *TF(UI_16); s_font16.fallback = f16;
-    s_font14 = *TF(UI_14); s_font14.fallback = f14;
+    if(!th_nt() || !s_font20.get_glyph_dsc) return;
+    lv_font_t *h[7] = { &s_font28, &s_font24, &s_font22, &s_font20, &s_font18, &s_font16, &s_font14 };
+    const lv_font_t *f[7] = { TF(UI_28), TF(UI_24), TF(UI_22), TF(UI_20), TF(UI_18), TF(UI_16), TF(UI_14) };
+    for(int i = 0; i < 7; i++) if(h[i]->dsc != f[i]->dsc){ const lv_font_t *fb = h[i]->fallback; *h[i] = *f[i]; h[i]->fallback = fb; }
 }
 static void ui_fonts_init(void)
 {

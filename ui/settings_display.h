@@ -121,7 +121,7 @@ static int display_variant_hidden(const setting_t *s){
        !strcmp(s->cfg_key,"disco_sheen")||!strcmp(s->cfg_key,"disco_controls")||!strcmp(s->cfg_key,"disco_title_al")||
        !strcmp(s->cfg_key,"np_font")||!strcmp(s->cfg_key,"disco_progress")||!strcmp(s->cfg_key,"disco_prog_shape")||
        !strcmp(s->cfg_key,"disco_times")||!strcmp(s->cfg_key,"disco_clock")||!strcmp(s->cfg_key,"disco_trackno")||
-       !strcmp(s->cfg_key,"theme_auto")||!strcmp(s->cfg_key,"disco_qs_style")))))return 1;   /* Disco's Music/lock styling: NTDisk draws its own */
+       !strcmp(s->cfg_key,"theme_auto")||!strcmp(s->cfg_key,"disco_qs_style")||!strcmp(s->cfg_key,"disco_eq")||!strcmp(s->cfg_key,"disco_vol")))))return 1;   /* Disco's Music/lock styling: NTDisk draws its own */
     if(s->cfg_key&&!th_zune()&&!strncmp(s->cfg_key,"zune_",5))return 1;
     if(s->cfg_key&&!th_zune()&&(!strcmp(s->cfg_key,"zune_nav_hold")||!strncmp(s->cfg_key,"zlock_",6)))return 1;
     static const struct{const char *common,*null_key;} pairs[]={
