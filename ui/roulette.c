@@ -90,6 +90,23 @@ static lv_obj_t *dot(lv_obj_t *parent, int d){
 }
 static void land_art(const char *name, int boom){
     lv_obj_clean(g_land_art);
+    if(boom == 6){                                               /* Pip: a round little body with two eyes */
+        lv_obj_t *b = lv_obj_create(g_land_art); lv_obj_remove_style_all(b);
+        lv_obj_set_size(b, 66, 56); lv_obj_align(b, LV_ALIGN_CENTER, 0, 8); lv_obj_set_style_radius(b, 22, 0);
+        lv_obj_set_style_bg_color(b, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+        lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        for(int i = 0; i < 2; i++){
+            lv_obj_t *ear = lv_obj_create(g_land_art); lv_obj_remove_style_all(ear);
+            lv_obj_set_size(ear, 12, 18); lv_obj_align(ear, LV_ALIGN_CENTER, i ? 22 : -22, -24); lv_obj_set_style_radius(ear, 5, 0);
+            lv_obj_set_style_bg_color(ear, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(ear, LV_OPA_COVER, 0);
+            lv_obj_remove_flag(ear, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_t *eye = lv_obj_create(g_land_art); lv_obj_remove_style_all(eye);
+            lv_obj_set_size(eye, 7, 12); lv_obj_align(eye, LV_ALIGN_CENTER, i ? 12 : -12, 2); lv_obj_set_style_radius(eye, 3, 0);
+            lv_obj_set_style_bg_color(eye, TC(SURFACE), 0); lv_obj_set_style_bg_opa(eye, LV_OPA_COVER, 0);
+            lv_obj_remove_flag(eye, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+        }
+        return;
+    }
     if(boom == 4){                                               /* Echo: four quarter-pads, one lit */
         for(int i = 0; i < 4; i++){
             lv_obj_t *b = lv_obj_create(g_land_art); lv_obj_remove_style_all(b);
@@ -216,7 +233,7 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
     }
     land_art(name, !strcmp(g_land_exec, APP_BUILTIN_BOOMSHINE) ? 1 : !strcmp(g_land_exec, APP_BUILTIN_STATS) ? 2 :
                    !strcmp(g_land_exec, APP_BUILTIN_SNAKE) ? 3 : !strcmp(g_land_exec, APP_BUILTIN_ECHO) ? 4 :
-                   !strcmp(g_land_exec, APP_BUILTIN_GLIDE) ? 5 : 0);
+                   !strcmp(g_land_exec, APP_BUILTIN_GLIDE) ? 5 : !strcmp(g_land_exec, APP_BUILTIN_PET) ? 6 : 0);
     if(g_land_icon[0] && strncmp(g_land_exec, "builtin:", 8) && !access(g_land_icon, R_OK)){   /* the app's own icon */
         static lv_image_dsc_t *ic;
         lv_image_dsc_t *nw = app_icon_load(g_land_icon, 88);
@@ -231,6 +248,9 @@ void applanding_show(const char *name, const char *tagline, const char *about, c
     lv_label_set_text(g_land_btn_l, button && button[0] ? button : "Launch");
     lv_obj_center(g_land_btn_l);
     screen_show(SCR_APPLAND);
+}
+void pet_landing(void){
+    applanding_show("Pip", "A little friend to look after.", "Feed it, play, keep it clean.", "Visit", APP_BUILTIN_PET);
 }
 void echo_landing(void){
     applanding_show("Echo", "Watch. Then repeat.", "Repeat the lit pads.", "Play", APP_BUILTIN_ECHO);

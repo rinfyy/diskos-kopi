@@ -306,6 +306,7 @@ void screen_back(void)
     if (s_current == SCR_STATS && stats_back_consumed()) return;
     if (s_current == SCR_SHELF && discshelf_back_consumed()) return;
     if (s_current == SCR_SPHERE && sphere_ui_back_consumed()) return;   /* SongSphere: up one page */          /* Stats: Wrapped / top 15 -> the list */   /* Disco Options -> Display */
+    if (s_current == SCR_BROWSER && browser_back_consumed()) return;   /* Browser: the previous page first */
     if (s_sp <= 0) return;
     int from = s_current;
     int prev = s_stack[--s_sp];
@@ -410,6 +411,8 @@ void screens_init(void)
     s_roots[SCR_SPHERE]    = screen_make_root(parent);
     s_roots[SCR_SHELF] = screen_make_root(parent);
     s_roots[SCR_IMAGE] = screen_make_root(parent);
+    s_roots[SCR_STOPWATCH] = screen_make_root(parent);
+    s_roots[SCR_BROWSER] = screen_make_root(parent);
     s_roots[SCR_UPNEXT] = screen_make_root(parent);
     s_roots[SCR_DATETIME] = screen_make_root(parent);
 
@@ -462,6 +465,8 @@ void screens_init(void)
     debug_create(s_roots[SCR_DEBUG]);
     folderbrowser_create(s_roots[SCR_FOLDER]);
     { void imageview_create(lv_obj_t *); imageview_create(s_roots[SCR_IMAGE]); }
+    stopwatch_create(s_roots[SCR_STOPWATCH]);
+    browser_create(s_roots[SCR_BROWSER]);
     books_create(s_roots[SCR_BOOKS]);
     chapters_create(s_roots[SCR_CHAPTERS]);
     upnext_create(s_roots[SCR_UPNEXT]);

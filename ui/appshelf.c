@@ -7,7 +7,8 @@
  * folder: a BMP, any size, shown at 44 px); otherwise the built-ins draw theirs and any other app gets a tile with
  * its first letter. The five choices are kept by the app's id (its folder), as apps_p1..apps_p5; until you choose,
  * the first five apps are shown. "Choose apps" (the pill under the list) opens the picker: tap to add or remove,
- * the number says the order. */
+ * the number says the order. "All apps" (beside it) lists every app under your five, so nothing is out of reach;
+ * the choice is remembered (apps_show_all). */
 #include "screens.h"
 #include "discshelf.h"
 #include "theme.h"
@@ -48,6 +49,9 @@ static void scan(void){
     g_nall = 0;
     add_builtin("boomshine", "Boomshine", "One tap. A chain reaction.", "Set off a single blast and\ncatch as many dots as you can.",
                 "Play", APP_BUILTIN_BOOMSHINE, "@boom");
+    add_builtin("builtin:browser", "Browser", "Read the web as text.", "", "Open", APP_BUILTIN_BROWSER, NULL);
+    add_builtin("builtin:stopwatch", "Stopwatch", "Time anything, with laps.", "", "Open", APP_BUILTIN_STOPWATCH, NULL);
+    add_builtin("builtin:pet", "Pip", "A little friend to look after.", "Feed it, play, keep it clean.", "Visit", APP_BUILTIN_PET, NULL);
     add_builtin("builtin:echo", "Echo", "Watch. Then repeat.", "Four pads light up in turn.\nTap them back in order.",
                 "Play", APP_BUILTIN_ECHO, NULL);
     add_builtin("builtin:glide", "Glide", "One tap to rise.", "Fly the orb through the gaps.\nThe edge is the wall.",
@@ -221,10 +225,23 @@ static void open_cb(lv_event_t *e){
     if(!strcmp(a->exec, APP_BUILTIN_SHELF)){discshelf_landing();return;}
     if(!strcmp(a->exec, APP_BUILTIN_SPHERE)){ sphere_ui_landing(); return; }   /* Static guard; initialize SongSphere only after Open. */
     if(!strcmp(a->exec, APP_BUILTIN_ROULETTE)){ screen_show(SCR_ROULETTE); return; }   /* its own vinyl landing page */
+    if(!strcmp(a->exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }          /* tools open straight away */
+    if(!strcmp(a->exec, APP_BUILTIN_BROWSER)){ browser_open(NULL); return; }
     applanding_icon(a->icon);
     applanding_show(a->name, a->tagline, a->about, a->button, a->exec);
 }
 static void choose_cb(lv_event_t *e){ (void)e; appshelf_pick_open(); }
+static void shelf_build(void);
+static void all_cb(lv_event_t *e){
+    (void)e;
+    simple_cfg_set_int("apps_show_all", !simple_cfg_get_int("apps_show_all", 0));
+    shelf_build();
+}
+static lv_obj_t *section(lv_obj_t *list, const char *s){                    /* a quiet heading between the groups */
+    lv_obj_t *b = block(list, 40);
+    label(b, s, 80, 12, 200, TF(UI_16), TC(TEXT_SECONDARY), LV_TEXT_ALIGN_CENTER);
+    return b;
+}
 static void shelf_build(void){
     if(!g_shelf_list) return;
     lv_obj_clean(g_shelf_list); icons_forget(0);
@@ -238,7 +255,18 @@ static void shelf_build(void){
         lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0); lv_obj_align(l, LV_ALIGN_CENTER, 0, 10);
     }
     for(int s = 0; s < g_npin; s++) row(g_shelf_list, &g_all[g_pin[s]], open_cb, g_pin[s]);
-    if(g_nall){ lv_obj_t *b = block(g_shelf_list, 62); pill(b, 12, "Choose apps", LV_SYMBOL_EDIT, choose_cb); }
+    int all = simple_cfg_get_int("apps_show_all", 0) && g_nall > g_npin;
+    if(all){
+        section(g_shelf_list, "All apps");
+        for(int i = 0; i < g_nall; i++){
+            int pinned = 0; for(int s = 0; s < g_npin; s++) if(g_pin[s] == i) pinned = 1;
+            if(!pinned) row(g_shelf_list, &g_all[i], open_cb, i);
+        }
+    }
+    if(g_nall){
+        if(g_nall > g_npin){ lv_obj_t *b = block(g_shelf_list, 54); pill(b, 6, all ? "Fewer apps" : "All apps", all ? LV_SYMBOL_UP : LV_SYMBOL_LIST, all_cb); }
+        lv_obj_t *b = block(g_shelf_list, 62); pill(b, 6, "Choose apps", LV_SYMBOL_EDIT, choose_cb);
+    }
     lv_obj_update_layout(g_shelf_list);
     lv_obj_scroll_to_y(g_shelf_list, 0, LV_ANIM_OFF);
     curvelist_update(&g_scl);

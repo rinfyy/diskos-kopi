@@ -82,7 +82,7 @@ void tagfix_current_album(void);      /* NP menu: the same for every track of it
 void tagfix_auto_tick(const track_state_t *st, int playing);   /* Auto-tag (Settings > Playback) */
 void ui_np_tags_changed(void);        /* tags were rewritten: lyrics views reload */
 #include <stdbool.h>
-enum { SCR_HOME, SCR_LIBRARY, SCR_NOWPLAYING, SCR_SETTINGS, SCR_SETTING_DETAIL, SCR_SEARCH, SCR_SAVER, SCR_QUICK, SCR_SONGINFO, SCR_NPMENU, SCR_TUNE, SCR_EQ, SCR_APPS, SCR_NPHUB, SCR_PLPICK, SCR_PLVIEW, SCR_WIFI, SCR_WIFI_INFO, SCR_BT, SCR_BT_INFO, SCR_WEATHER, SCR_LYRICS, SCR_COLORPICK, SCR_LASTFM, SCR_WORKMODE, SCR_DEBUG, SCR_FOLDER, SCR_BOOKS, SCR_CHAPTERS, SCR_SETLIST, SCR_QSCONFIG, SCR_ALBUMWALL, SCR_USAGE, SCR_QUEUE, SCR_SCCONFIG, SCR_MODEINFO, SCR_UPNEXT, SCR_DATETIME, SCR_EQ_EDITOR, SCR_MA, SCR_ROULETTE, SCR_APPLAND, SCR_STATS, SCR_APPSHELF, SCR_APPPICK, SCR_SPHERE, SCR_ROULETTE_SPIN, SCR_SHELF, SCR_IMAGE, SCR_COUNT };
+enum { SCR_HOME, SCR_LIBRARY, SCR_NOWPLAYING, SCR_SETTINGS, SCR_SETTING_DETAIL, SCR_SEARCH, SCR_SAVER, SCR_QUICK, SCR_SONGINFO, SCR_NPMENU, SCR_TUNE, SCR_EQ, SCR_APPS, SCR_NPHUB, SCR_PLPICK, SCR_PLVIEW, SCR_WIFI, SCR_WIFI_INFO, SCR_BT, SCR_BT_INFO, SCR_WEATHER, SCR_LYRICS, SCR_COLORPICK, SCR_LASTFM, SCR_WORKMODE, SCR_DEBUG, SCR_FOLDER, SCR_BOOKS, SCR_CHAPTERS, SCR_SETLIST, SCR_QSCONFIG, SCR_ALBUMWALL, SCR_USAGE, SCR_QUEUE, SCR_SCCONFIG, SCR_MODEINFO, SCR_UPNEXT, SCR_DATETIME, SCR_EQ_EDITOR, SCR_MA, SCR_ROULETTE, SCR_APPLAND, SCR_STATS, SCR_APPSHELF, SCR_APPPICK, SCR_SPHERE, SCR_ROULETTE_SPIN, SCR_SHELF, SCR_IMAGE, SCR_STOPWATCH, SCR_BROWSER, SCR_COUNT };
 void screens_init(void);
 void screen_show(int which);
 void screen_back(void);
@@ -240,6 +240,15 @@ void boomshine_landing(void);
 #define APP_BUILTIN_GLIDE "builtin:glide"           /* Glide, the one-tap flying game (mq_ui --glide, games/glide.c) */
 void snake_landing(void);
 void echo_landing(void);
+#define APP_BUILTIN_STOPWATCH "builtin:stopwatch"   /* Stopwatch (SCR_STOPWATCH, stopwatch.c): opens straight away */
+#define APP_BUILTIN_BROWSER "builtin:browser"       /* Browser (SCR_BROWSER, browser.c): a text web reader */
+#define APP_BUILTIN_PET "builtin:pet"               /* Pip, the virtual pet (mq_ui --pet, games/pet.c) */
+void stopwatch_create(lv_obj_t *root);
+void stopwatch_open(void);
+void browser_create(lv_obj_t *root);
+void browser_open(const char *url);     /* NULL: where it was; a web address or an SD-card path: that page */
+int  browser_back_consumed(void);
+void pet_landing(void);
 void glide_landing(void);
 #define APP_BUILTIN_SPHERE "builtin:songsphere"     /* SongSphere: built in since 2.2.0 (sphere_ui.c) */
 #define APP_BUILTIN_STATS "builtin:stats"           /* Listening Stats: a screen of mq_ui, opened from its landing page */

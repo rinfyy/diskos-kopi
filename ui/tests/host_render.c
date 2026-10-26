@@ -1403,6 +1403,12 @@ int main(int argc, char **argv){
         screen_show(scr);
         if(th_zune())zune_status_refresh();
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
+        if(getenv("APPS_OPEN")){if(getenv("APPS_ALL"))simple_cfg_set_int("apps_show_all",atoi(getenv("APPS_ALL")));appshelf_reload();screen_show(SCR_APPSHELF);nav_wait(60);
+            if(getenv("APPS_SCROLL")){lv_obj_t*appshelf_scroller(void);lv_obj_scroll_to_y(appshelf_scroller(),atoi(getenv("APPS_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}
+        if(getenv("STOPWATCH")){long long ms=0;int run=0,laps=0;sscanf(getenv("STOPWATCH"),"%lld,%d,%d",&ms,&run,&laps);void stopwatch_test_state(int64_t,int,int);
+            stopwatch_open();stopwatch_test_state(ms,run,laps);nav_wait(60);}
+        if(getenv("BROWSER")){int browser_test_wait(int);browser_open(strcmp(getenv("BROWSER"),"start")?getenv("BROWSER"):NULL);assert(browser_test_wait(8000));nav_wait(80);
+            if(getenv("BROWSER_SCROLL")){lv_obj_t*r=screen_get_root(SCR_BROWSER);lv_obj_scroll_to_y(lv_obj_get_child(r,0),atoi(getenv("BROWSER_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}
         if(getenv("GAME_LANDING")){if(!strcmp(getenv("GAME_LANDING"),"echo"))echo_landing();else glide_landing();nav_wait(60);}
         if(getenv("IMAGE_VIEW")){   /* "dir|a.jpg,b.png,..|index|fill": open the picture viewer and wait for the decode */
             char spec[1024];snprintf(spec,sizeof spec,"%s",getenv("IMAGE_VIEW"));char *dir=strtok(spec,"|"),*list=strtok(NULL,"|"),*ix=strtok(NULL,"|"),*fl=strtok(NULL,"|");
