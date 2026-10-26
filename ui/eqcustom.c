@@ -115,34 +115,35 @@ static void persist_saved(void){                                 /* a mirror in 
     cfg_flush();
 }
 static unsigned profile_ticket;
-static int g_loading;
+static int g_loading, g_retry;
 static void load_poll(void){
     eq_profile_t p;
     if(!profile_ticket || !eq_profile_take(profile_ticket,&p))return;
     profile_ticket=0;g_loading=0;
     if(p.preset!=g_preset)return;
     g_readfail=p.read<0;g_editable=g_parametric=0;
+    if(g_readfail && g_retry < 3){ g_retry++; profile_ticket = eq_profile_request(g_preset); g_loading = profile_ticket != 0; return; }   /* the card was busy: ask again */
     if(g_readfail){g_dirty_draw=1;return;}
     g_master=p.master;memcpy(g_t,p.gains,sizeof g_t);memcpy(g_f,p.hz,sizeof g_f);memcpy(g_q,p.q,sizeof g_q);
+    /* Peaking bands don't depend on their order: show them low to high (a slot saved elsewhere may list them in
+     * another order), so the dial can edit it. The sound is unchanged. */
+    for(int i=1;i<NB;i++)for(int j=i;j>0 && g_f[j-1]>g_f[j];j--){
+        int f=g_f[j];g_f[j]=g_f[j-1];g_f[j-1]=f; int t=g_t[j];g_t[j]=g_t[j-1];g_t[j-1]=t; double q=g_q[j];g_q[j]=g_q[j-1];g_q[j-1]=q; }
     int ed=p.graphic;
     if(g_preset >= USER_MIN){
         if(!ed) g_parametric = 1;                           /* filters we can't represent: show, don't overwrite */
         else g_editable = fw_custom_peq_curve_writable(g_f,NB);
     }
-    /* Display constraints must never mutate the saved curve. Unsupported order
-     * or spacing is view-only, including on older firmware with custom editing. */
-    for(int i=0;i<NB;i++)if(g_f[i]<band_lo(i) || g_f[i]>band_hi(i)){
-        g_editable=0;g_parametric=1;
-    }
     if(g_save_busy)g_editable=0;
     g_dirty_draw=1;
 }
+static int user_locked(void);
 static void load(int preset){
     g_preset=clampi(preset,0,NPRESET-1);
     g_editable=g_parametric=g_readfail=g_loading=0;g_master=0;profile_ticket=0;
     for(int i=0;i<NB;i++){g_t[i]=0;g_f[i]=STDF[i];g_q[i]=0.7;}
     if(g_preset==0)return;
-    profile_ticket=eq_profile_request(g_preset);
+    g_retry=0;profile_ticket=eq_profile_request(g_preset);
     g_loading=profile_ticket!=0;g_readfail=1;
     load_poll();
 }
@@ -436,6 +437,7 @@ static void refresh_labels(void){
     const char *note = NULL;
     if(g_save_busy) note="Saving...";
     else if(g_loading)note="Loading profile...";
+    else if(user_locked()) note = g_readfail ? "Can't read - tap to reset" : "Locked curve - tap to reset";
     else if(!g_editable) note = g_preset == 0 ? "EQ off" : g_readfail ? "Couldn't read this preset" : g_parametric ? "Advanced preset" : g_preset >= USER_MIN ? "Custom editing unavailable" : th_braun() ? "Built-in preset" : "built-in preset";
     else if(g_sel < 0) note = (th_disco_family() || th_null() || th_zune()) ? "Choose a band" : "tap a band";
     if(note && th_zune()){ snprintf(b, sizeof b, "%s", note); for(char *c = b; *c; c++) if(*c >= 'A' && *c <= 'Z') *c += 32; note = b; }
@@ -445,6 +447,23 @@ static void refresh_labels(void){
     lv_obj_add_flag(g_lock, LV_OBJ_FLAG_HIDDEN);   /* no lock glyph in the fonts: the grey + caption say it */
 }
 static void redraw(void){ paint(); refresh_labels(); }
+/* A USER preset that can't be edited (a curve from elsewhere, or one that couldn't be read): tap the note to start it
+ * over as a flat curve. Asks first - the old curve is replaced. */
+static int user_locked(void){ return g_preset >= USER_MIN && !g_editable && !g_save_busy && !g_loading && (g_parametric || g_readfail); }
+static void reset_flat(void){
+    if(!user_locked()) return;
+    for(int i = 0; i < NB; i++){ g_f[i] = STDF[i]; g_t[i] = 0; g_q[i] = 0.7; }
+    g_master = 0; g_parametric = g_readfail = 0; g_sel = -1;
+    g_editable = fw_custom_peq_curve_writable(g_f, NB);
+    if(!g_editable){ ui_toast("This firmware can't store this EQ"); load(g_preset); redraw(); return; }
+    if(!apply_now()){ ui_toast("EQ not saved"); load(g_preset); }
+    redraw();
+}
+static void note_cb(lv_event_t *e){
+    (void)e; if(!user_locked()) return;
+    char t[48], n[40]; preset_name(g_preset, n, sizeof n); snprintf(t, sizeof t, "Reset %s?", n);
+    fileops_confirm(t, "Start this preset over as a flat curve you can edit. The curve it has now is replaced.", "Reset", reset_flat);
+}
 static void draw_tmr_cb(lv_timer_t *t){
     (void)t;
     load_poll();
@@ -782,6 +801,8 @@ void eqcustom_create(lv_obj_t *root){
     g_note = lv_label_create(root);
     lv_obj_set_style_text_font(g_note, TH_F_CAPTION, 0); lv_obj_set_style_text_color(g_note, TC(TEXT_DISABLED), 0);
     lv_obj_align(g_note, LV_ALIGN_CENTER, 0, 4);
+    lv_obj_add_flag(g_note, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(g_note, 12);
+    lv_obj_add_event_cb(g_note, note_cb, LV_EVENT_CLICKED, NULL);
     if(th_braun()){
         br_face(root); lv_obj_move_to_index(br_segment(root, 240), 1);
         if(g_canvas) lv_obj_add_flag(g_canvas, LV_OBJ_FLAG_HIDDEN);

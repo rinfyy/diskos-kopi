@@ -2191,6 +2191,7 @@ void library_create(lv_obj_t *root){
     lv_obj_center(g_lhint_lbl);
     g_position=lv_obj_create(root);lv_obj_remove_style_all(g_position);
     lv_obj_set_size(g_position,108,24);lv_obj_align(g_position,LV_ALIGN_TOP_MID,0,th_null()?70:42);
+    if(th_nt())lv_obj_align(g_position,LV_ALIGN_BOTTOM_MID,0,-18);   /* NTDisk: its title row sits where the count would be */
     lv_obj_set_style_bg_color(g_position,TC(SURFACE),0);lv_obj_set_style_bg_opa(g_position,LV_OPA_COVER,0);
     lv_obj_set_style_radius(g_position,LV_RADIUS_CIRCLE,0);lv_obj_clear_flag(g_position,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
     g_position_label=lv_label_create(g_position);lv_label_set_text(g_position_label,"");

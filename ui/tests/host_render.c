@@ -943,7 +943,7 @@ int main(int argc, char **argv){
 
         if(getenv("REVIEW_SIMPLE_SEARCH")){
             assert(th_simple());lv_obj_update_layout(root);lv_obj_t*button=ui_action_find("search.go");assert(button);assert(lv_color_eq(lv_obj_get_style_text_color(lv_obj_get_child(button,0),0),TC(TEXT_PRIMARY)));
-            lv_obj_t*a=find_text(root,"H"),*b=find_text(root,"I");assert(a&&b);lv_area_t aa,bb;lv_obj_get_coords(lv_obj_get_parent(a),&aa);lv_obj_get_coords(lv_obj_get_parent(b),&bb);assert(aa.x2<bb.x1);
+            lv_obj_t*a=find_text(root,"U"),*b=find_text(root,"I");assert(a&&b);lv_area_t aa,bb;lv_obj_get_coords(lv_obj_get_parent(a),&aa);lv_obj_get_coords(lv_obj_get_parent(b),&bb);assert(aa.x2<bb.x1);
             puts("PASS: Squash typed search has readable ink and separated keyboard targets");
         }
         if(go){ int before=send_count; lv_obj_send_event(ui_action_find("search.go"),LV_EVENT_CLICKED,NULL);

@@ -13,37 +13,42 @@
  * field and big keyboard. */
 
 /* ---- the big keyboard (Search's look: big keys in the wide middle of the circle) ------------------------
- * Four rows of 7/8/7/6 keys, 46 px tall, alphabetical like Search's. Pages: abc, ABC (Aa), 123 and #+= - between
+ * Four QWERTY rows (10/9/8 keys and a space bar), 46 px tall, like Search. Pages: abc, ABC (Aa), 123 and #+= - between
  * them every printable ASCII character, so any Wi-Fi password can be typed. The last row ends in space and
  * Backspace (hold = clear all); Aa and 123 sit at the bottom like Search's mode key. */
 #define BK_H 46
 #define BK_P 50
 #define BK_Y 116
-static const int BKN[4] = { 7, 8, 7, 6 };
-static const int BKW[4] = { 42, 39, 40, 36 };
+#define BKMAX 10                                      /* QWERTY: up to 10 keys a row, sized to the circle at that height */
+static const int BKLIM[4] = { 326, 334, 312, 240 };
+static int bk_w(int r, const char *row){
+    int cnt = (int)strlen(row);
+    if(cnt == 1 && row[0] == ' ') return 170;                       /* the space bar on its own row */
+    int w = (BKLIM[r] - (cnt - 1) * 3) / cnt; return w > 44 ? 44 : w;
+}
 #define BK_BKSP '\b'
-static const char *const BK_LOW[4] = { "abcdefg", "hijklmno", "pqrstuv", "wxyz \b" };
-static const char *const BK_UP [4] = { "ABCDEFG", "HIJKLMNO", "PQRSTUV", "WXYZ \b" };
+static const char *const BK_LOW[4] = { "qwertyuiop", "asdfghjkl", "zxcvbnm\b", " " };
+static const char *const BK_UP [4] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM\b", " " };
 static const char *const BK_NUM[4] = { "1234567", "890'&-.!", "?,:()/+", "#@\"* \b" };
 static const char *const BK_SYM[4] = { "[]{}%^=", "_\\|~<>;$", "`'.,!?-", "@#* \b" };
-typedef struct { lv_obj_t *ta, *key[4][8], *lbl[4][8], *shift_lbl, *mode_lbl, *shift_btn; int page; void (*submit)(void); } bkb_t;
+typedef struct { lv_obj_t *ta, *key[4][BKMAX], *lbl[4][BKMAX], *shift_lbl, *mode_lbl, *shift_btn; int page; void (*submit)(void); } bkb_t;
 static bkb_t g_bk;                                    /* one keyboard at a time (the modal) */
 static const char *const *bk_set(void){ return g_bk.page == 1 ? BK_UP : g_bk.page == 2 ? BK_NUM : g_bk.page == 3 ? BK_SYM : BK_LOW; }
 static void bk_paint(void){
     const char *const *set = bk_set();
     for(int r = 0; r < 4; r++){
-        int cnt = (int)strlen(set[r]), x = 180 - (cnt * BKW[r] + (cnt - 1) * 4) / 2;
-        for(int c = 0; c < 8; c++){
+        int cnt = (int)strlen(set[r]), kw = bk_w(r, set[r]), x = 180 - (cnt * kw + (cnt - 1) * 3) / 2;
+        for(int c = 0; c < BKMAX; c++){
             lv_obj_t *k = g_bk.key[r][c]; if(!k) continue;
             if(c >= cnt){ lv_obj_add_flag(k, LV_OBJ_FLAG_HIDDEN); continue; }
             char ch = set[r][c];
             lv_obj_remove_flag(k, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_user_data(k, (void *)(uintptr_t)(unsigned char)ch);
-            lv_obj_set_pos(k, x, BK_Y + r * BK_P); x += BKW[r] + 4;
+            lv_obj_set_pos(k, x, BK_Y + r * BK_P); lv_obj_set_width(k, kw); x += kw + 3;
             lv_obj_t *l = g_bk.lbl[r][c]; char t[2] = { ch, 0 };
             if(ch == ' '){ lv_label_set_text(l, "space"); lv_obj_set_style_text_font(l, TF(UI_12), 0); lv_obj_set_style_text_color(l, TC(TEXT_SECONDARY), 0); }
             else if(ch == BK_BKSP){ lv_label_set_text(l, LV_SYMBOL_BACKSPACE); lv_obj_set_style_text_font(l, TF(UI_18), 0); lv_obj_set_style_text_color(l, TC(TEXT_SECONDARY), 0); }
-            else { lv_label_set_text(l, t); lv_obj_set_style_text_font(l, TF(UI_24), 0); lv_obj_set_style_text_color(l, TC(TEXT_PRIMARY), 0); }
+            else { lv_label_set_text(l, t); lv_obj_set_style_text_font(l, kw < 36 ? TF(UI_20) : TF(UI_24), 0); lv_obj_set_style_text_color(l, TC(TEXT_PRIMARY), 0); }
         }
     }
     int sym = g_bk.page >= 2;
@@ -87,10 +92,10 @@ static lv_obj_t *bk_small(lv_obj_t *parent, int x, int w, lv_event_cb_t cb, lv_o
 static void bkb_create(lv_obj_t *parent, lv_obj_t *ta, void (*submit)(void)){
     memset(&g_bk, 0, sizeof g_bk);
     g_bk.ta = ta; g_bk.submit = submit;
-    for(int r = 0; r < 4; r++) for(int c = 0; c < BKN[r]; c++){
+    for(int r = 0; r < 4; r++) for(int c = 0; c < BKMAX; c++){
         lv_obj_t *k = lv_button_create(parent);
         bk_style(k, 12);
-        lv_obj_set_size(k, BKW[r], BK_H);
+        lv_obj_set_size(k, 36, BK_H);
         lv_obj_add_event_cb(k, bk_key_cb, LV_EVENT_SHORT_CLICKED, NULL);
         lv_obj_add_event_cb(k, bk_key_cb, LV_EVENT_LONG_PRESSED, NULL);
         g_bk.key[r][c] = k;

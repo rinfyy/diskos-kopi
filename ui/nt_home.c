@@ -526,6 +526,30 @@ static void scrub_show(long ms){
     lv_anim_delete(g_state, hub_opa); lv_obj_set_style_opa(g_state, LV_OPA_COVER, 0);
     lv_obj_set_style_text_font(g_state, TF(UI_12), 0); lv_label_set_text(g_state, b);
 }
+/* Double-tap anywhere on Music: the right half skips to the next song, the left half goes back. A single tap waits
+ * DTAP_MS to be sure it isn't the first of two, then does its own job (the CD: play / pause; the text: track actions). */
+#define DTAP_MS 280
+static lv_timer_t *g_dtap_tm; static int g_dtap_kind = -1; static uint32_t g_dtap_t;
+static void dtap_fire(lv_timer_t *t){
+    (void)t; int k = g_dtap_kind; g_dtap_kind = -1; lv_timer_pause(g_dtap_tm);
+    if(k == 0) ui_transport_command("0201000C0000");
+    else if(k == 1){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }
+}
+static void dtap(int kind){                                               /* kind: 0 CD, 1 text, 2 elsewhere */
+    lv_indev_t *in = lv_indev_active(); lv_point_t p = { 180, 180 };
+    if(in) lv_indev_get_point(in, &p);
+    if(!g_dtap_tm){ g_dtap_tm = lv_timer_create(dtap_fire, DTAP_MS, NULL); lv_timer_pause(g_dtap_tm); }
+    if(g_dtap_kind >= 0 && lv_tick_elaps(g_dtap_t) < DTAP_MS + 120){        /* the second tap */
+        g_dtap_kind = -1; lv_timer_pause(g_dtap_tm);
+        if(!g_have) return;
+        if(p.x >= 180){ ui_transport_command("0201000C0001"); ui_toast_icon(LV_SYMBOL_NEXT, MC(ACCENT_PRIMARY), "Next"); }
+        else { ui_transport_command("0201000C0002"); ui_toast_icon(LV_SYMBOL_PREV, MC(ACCENT_PRIMARY), "Previous"); }
+        return;
+    }
+    g_dtap_kind = kind; g_dtap_t = lv_tick_get();
+    lv_timer_reset(g_dtap_tm); lv_timer_resume(g_dtap_tm);
+}
+static void layer_cb(lv_event_t *e){ if(lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED && g_have) dtap(2); }
 static void disc_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p = { 0, 0 };
     if(in) lv_indev_get_point(in, &p);
@@ -567,12 +591,12 @@ static void disc_cb(lv_event_t *e){
         g_g_mode = 0;
         return;
     }
-    if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved) ui_transport_command("0201000C0000");
+    if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved) dtap(0);
     else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode != 2) disco_track_overlay_open();
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
-    if(c == LV_EVENT_SHORT_CLICKED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }
+    if(c == LV_EVENT_SHORT_CLICKED) dtap(1);
     else if(c == LV_EVENT_LONG_PRESSED){
         int h = cfg_get_int("disco_title_hold", 0);
         if(h == 0) disco_open_np_immersive(); else if(h == 1) ui_np_fav_toggle();
@@ -599,6 +623,7 @@ void nt_home_create(lv_obj_t *root){
     g_layer = plain(root); lv_obj_set_size(g_layer, 360, 360);
     lv_obj_set_style_bg_color(g_layer, MC(CANVAS), 0); lv_obj_set_style_bg_opa(g_layer, LV_OPA_COVER, 0);
     lv_obj_add_flag(g_layer, LV_OBJ_FLAG_CLICKABLE);                      /* nothing underneath takes a touch */
+    lv_obj_add_event_cb(g_layer, layer_cb, LV_EVENT_SHORT_CLICKED, NULL);
 
     /* the CD */
     int d = g_mode ? BIG_D : DISC_D;
@@ -660,6 +685,7 @@ void nt_home_create(lv_obj_t *root){
 
     keep_all(g_layer);
     if(g_tm) lv_timer_delete(g_tm);                                     /* built again (a screen rebuild) */
+    if(g_dtap_tm){ lv_timer_delete(g_dtap_tm); g_dtap_tm = NULL; } g_dtap_kind = -1;
     if(g_spin_tm) lv_timer_delete(g_spin_tm);
     g_spin_tm = lv_timer_create(spin_tick, SPIN_MS, NULL); lv_timer_pause(g_spin_tm);
     g_row0 = g_mode ? 0 : (DISC_D / 2 - DISC_CY);                       /* CD + info: the rows above the screen are never drawn */
@@ -712,6 +738,33 @@ int nt_home_owns_point(int x, int y){
  * The cover fills the screen under a dark veil; the song's lines run over it, the current one bright and kept in the
  * middle. Scroll to read ahead (it follows again 4 s later); tap a line to jump there; tap the top handle, or hold
  * anywhere, to close. A song without synced lyrics shows its title and artist. */
+/* the cover behind the lyrics, pixelated: 24 x 24 blocks of 15 px, each the average colour of its patch */
+#define PX_N 24
+static uint32_t *g_pix; static lv_image_dsc_t g_pix_dsc; static const void *g_pix_from; static unsigned g_pix_rev = ~0u;
+static const void *pixelate(const lv_image_dsc_t *a){
+    if(!a || !a->data || !a->header.w || !a->header.h) return NULL;
+    if(a->header.cf != LV_COLOR_FORMAT_RGB888 && a->header.cf != LV_COLOR_FORMAT_XRGB8888 && a->header.cf != LV_COLOR_FORMAT_ARGB8888) return a;
+    if(g_pix_from == a && g_pix_rev == ui_art_revision()) return &g_pix_dsc;   /* made already */
+    if(!g_pix && !(g_pix = malloc(360 * 360 * 4))) return a;
+    int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
+    int st = a->header.stride ? (int)a->header.stride : w * bpp, B = 360 / PX_N;
+    for(int by = 0; by < PX_N; by++) for(int bx = 0; bx < PX_N; bx++){
+        int y0 = by * h / PX_N, y1 = (by + 1) * h / PX_N, x0 = bx * w / PX_N, x1 = (bx + 1) * w / PX_N;
+        if(y1 <= y0) y1 = y0 + 1;
+        if(x1 <= x0) x1 = x0 + 1;
+        unsigned r = 0, g = 0, b = 0, n = 0;
+        for(int yy = y0; yy < y1 && yy < h; yy += 2){ const uint8_t *q = a->data + (size_t)yy * st + (size_t)x0 * bpp;
+            for(int xx = x0; xx < x1 && xx < w; xx += 2, q += 2 * bpp){ b += q[0]; g += q[1]; r += q[2]; n++; } }
+        uint32_t v = 0xFF000000u | (n ? (r / n) << 16 | (g / n) << 8 | (b / n) : 0);
+        for(int y = by * B; y < (by + 1) * B; y++){ uint32_t *o = g_pix + y * 360 + bx * B; for(int x = 0; x < B; x++) o[x] = v; }
+    }
+    memset(&g_pix_dsc, 0, sizeof g_pix_dsc);
+    g_pix_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_pix_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888;
+    g_pix_dsc.header.w = g_pix_dsc.header.h = 360; g_pix_dsc.header.stride = 360 * 4;
+    g_pix_dsc.data = (const uint8_t *)g_pix; g_pix_dsc.data_size = 360 * 360 * 4;
+    g_pix_from = a; g_pix_rev = ui_art_revision();
+    return &g_pix_dsc;
+}
 static lv_obj_t *l_root, *l_cover, *l_list, *l_none, *l_time, **l_lab; static int l_n, l_cur = -1; static unsigned l_rev = ~0u;
 static lv_timer_t *l_tm; static uint32_t l_touch; static lyr_line_t *l_lines;
 static void l_close_cb(lv_event_t *e){ (void)e; nt_lyrics_close(); }
@@ -818,7 +871,8 @@ void nt_lyrics_open(void){
     }
     const lv_image_dsc_t *c = g_have ? ui_current_sharp_img() : NULL;
     lv_image_set_src(l_cover, NULL);
-    if(c){ lv_image_set_src(l_cover, c); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (c->header.w ? c->header.w : 360)) + 1); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
+    const lv_image_dsc_t *px = pixelate(c);
+    if(px){ lv_image_set_src(l_cover, px); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (px->header.w ? px->header.w : 360)) + (px == &g_pix_dsc ? 0 : 1)); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
     else lv_obj_add_flag(l_cover, LV_OBJ_FLAG_HIDDEN);
     l_rev = ~0u; l_touch = 0; lv_label_set_text(l_none, ""); l_build();
     lv_obj_remove_flag(l_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(l_root);

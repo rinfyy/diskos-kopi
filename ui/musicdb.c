@@ -3603,16 +3603,19 @@ static int mdb_get_peq_on(sqlite3 *d, int style_preset, double *master_out, int 
                         if(peq_key_is(js, k, "filterType")){ if((seen&1) || val->type!=JSMN_PRIMITIVE || !peq_tok_int(js, val, &v) || v != 0) ed = 0; seen|=1; }
                         else if(peq_key_is(js, k, "frequency")){ if(!(seen&2) && val->type==JSMN_PRIMITIVE && peq_tok_int(js, val, &v) && v >= 20 && v <= 20000){ if(freq_out) freq_out[band] = (int)v; } else ed = 0; seen|=2; }
                         else if(peq_key_is(js, k, "qValue")){
-                            int len=val->end-val->start;
-                            double q=(len==3 && !strncmp(js+val->start,"0.7",3)) || (len==4 && !strncmp(js+val->start,"0.70",4)) ? 0.7 :
-                                len==4 && !strncmp(js+val->start,"0.71",4) ? 0.71 : 0;
-                            if((seen&4) || val->type!=JSMN_STRING || !q)ed=0;
+                            /* any plain Q the player wrote ("0.7", "0.707", 1...): kept as it is and written back the same */
+                            int len=val->end-val->start; char qb[16]; double q=0; char *qe=NULL;
+                            if(len>0 && len<(int)sizeof qb && (val->type==JSMN_STRING || val->type==JSMN_PRIMITIVE)){
+                                memcpy(qb,js+val->start,(size_t)len);qb[len]=0;q=strtod(qb,&qe);
+                                if(!qe || *qe || !(q>=0.1 && q<=20))q=0;
+                            }
+                            if((seen&4) || !q)ed=0;
                             else if(q_out)q_out[band]=q;
                             seen|=4;
                         }
                         else if(peq_key_is(js, k, "gain")){ if(!(seen&8) && val->type==JSMN_STRING && peq_tok_tenths(js, val, &tv) && tv >= -120 && tv <= 120){ if(tenths_out) tenths_out[band] = tv; } else ed = 0; seen|=8; }
-                        else if(peq_key_is(js,k,"position")){if((seen&16) || !peq_tok_int(js,val,&v) || v!=band)ed=0;seen|=16;}
-                        else ed=0; /* Do not discard an unrecognized filter parameter on edit. */
+                        else if(peq_key_is(js,k,"position")){if((seen&16) || !peq_tok_int(js,val,&v))ed=0;seen|=16;}   /* 0- or 1-based: rewritten in order on save */
+                        /* other flat fields (an on/off flag and the like) don't change a peaking band: ignored */
                         ti += 2;
                     }
                     if((seen&15)!=15)ed=0;

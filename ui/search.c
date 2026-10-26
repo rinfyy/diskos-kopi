@@ -4,7 +4,7 @@
 /* Search, laid out for the round panel (fork rework):
  *   - the query field at the top,
  *   - a Search (check) button between the field and the keyboard: nothing is searched until it is pressed,
- *   - a big alphabetical keyboard with its own Backspace key (tap = one character, hold = clear),
+ *   - a big QWERTY keyboard with its own Backspace key (tap = one character, hold = clear),
  *   - the results on their own page with a back header that returns to the keyboard, query kept.
  * Tap a result to play it, hold it for the track menu. "123" swaps the letters for digits and punctuation.
  * Other text entry (Wi-Fi passwords, playlist names) keeps the full QWERTY keyboard in kbinput.c. */
@@ -25,14 +25,19 @@
 #define GRID_Y 116
 #define RES_W 268
 #define RES_ROW_H 56
-/* keys per row, key width and gap: every key sits fully inside the circle (rows 2-4 narrow downwards) */
-static const int KN[4] = { 7, 8, 7, 6 };
-static const int KW[4] = { 42, 39, 40, 36 };
-static const int KG[4] = {  4,  4,  4,  4 };
+/* up to 10 keys a row; each row's keys share the width that fits inside the circle at that height (KLIM) */
+#define KMAX 10
+static const int KLIM[4] = { 326, 334, 312, 240 };
+static const int KG[4] = {  3,  3,  3,  4 };
+static int key_w(int r, const char *row){
+    int cnt = (int)strlen(row);
+    if(cnt == 1 && row[0] == '_') return 170;                       /* the space bar on its own row */
+    int w = (KLIM[r] - (cnt - 1) * KG[r]) / cnt; return w > 44 ? 44 : w;
+}
 #define BKSP '\b'                                   /* the Backspace key's code in the key tables */
 
 static lv_obj_t *g_root, *g_field, *g_query_lbl, *g_caret, *g_go, *g_go_lbl, *g_mode_btn, *g_mode_lbl;
-static lv_obj_t *g_keys[4][8], *g_key_lbl[4][8];
+static lv_obj_t *g_keys[4][KMAX], *g_key_lbl[4][KMAX];
 static lv_obj_t *g_res_page, *g_res_list, *g_res_count;
 static curvelist_t g_rcl;
 static library_song_click_cb_t g_song_cb;
@@ -43,7 +48,7 @@ void search_landing_reset(void);
 static int g_digits;                                       /* 0 = letters, 1 = digits & punctuation */
 
 /* '_' is the space key, '\b' Backspace */
-static const char *const LET[4] = { "ABCDEFG", "HIJKLMNO", "PQRSTUV", "WXYZ_\b" };
+static const char *const LET[4] = { "QWERTYUIOP", "ASDFGHJKL", "ZXCVBNM\b", "_" };
 static const char *const DIG[4] = { "1234567", "890'&-.!", "?,:()/+", "#@\"*_\b" };
 
 void search_set_song_click_cb(library_song_click_cb_t cb){ g_song_cb = cb; }
@@ -291,20 +296,20 @@ static void go_cb(lv_event_t *e){
 static void paint_keys(void){
     const char *const *set = g_digits ? DIG : LET;
     for(int r = 0; r < 4; r++){
-        int cnt = (int)strlen(set[r]), kw = KW[r], g = KG[r];
+        int cnt = (int)strlen(set[r]), kw = key_w(r, set[r]), g = KG[r];
         int x = 180 - (cnt * kw + (cnt - 1) * g) / 2;
-        for(int c = 0; c < 8; c++){
+        for(int c = 0; c < KMAX; c++){
             lv_obj_t *k = g_keys[r][c]; if(!k) continue;
             if(c >= cnt){ lv_obj_add_flag(k, LV_OBJ_FLAG_HIDDEN); continue; }
             char ch = set[r][c];
             lv_obj_remove_flag(k, LV_OBJ_FLAG_HIDDEN);
             lv_obj_set_user_data(k, (void*)(uintptr_t)(unsigned char)ch);
-            lv_obj_set_pos(k, x, GRID_Y + r * ROW_P); x += kw + g;
+            lv_obj_set_pos(k, x, GRID_Y + r * ROW_P); lv_obj_set_width(k, kw); x += kw + g;
             char s[2] = { ch, 0 };
             lv_obj_t *l = g_key_lbl[r][c];
             if(ch == '_'){ lv_label_set_text(l, "space"); lv_obj_set_style_text_font(l, TF(UI_12), 0); lv_obj_set_style_text_color(l, TC(TEXT_SECONDARY), 0); }
             else if(ch == BKSP){ lv_label_set_text(l, LV_SYMBOL_BACKSPACE); lv_obj_set_style_text_font(l, TF(UI_18), 0); lv_obj_set_style_text_color(l, TC(TEXT_SECONDARY), 0); }
-            else { lv_label_set_text(l, s); lv_obj_set_style_text_font(l, TF(UI_24), 0); lv_obj_set_style_text_color(l, TC(TEXT_PRIMARY), 0); }
+            else { lv_label_set_text(l, s); lv_obj_set_style_text_font(l, kw < 36 ? TF(UI_20) : TF(UI_24), 0); lv_obj_set_style_text_color(l, TC(TEXT_PRIMARY), 0); }
         }
     }
     lv_label_set_text(g_mode_lbl, g_digits ? "ABC" : "123");
@@ -413,10 +418,10 @@ void search_create(lv_obj_t *root){
     lv_obj_set_style_text_font(g_go_lbl, TF(UI_18), 0);
     lv_obj_center(g_go_lbl);
     /* the keyboard: big keys in the wide middle of the circle */
-    for(int r = 0; r < 4; r++) for(int c = 0; c < KN[r]; c++){
+    for(int r = 0; r < 4; r++) for(int c = 0; c < KMAX; c++){
         lv_obj_t *k = lv_button_create(root);
         key_style(k, 12);
-        lv_obj_set_size(k, KW[r], KEY_H);
+        lv_obj_set_size(k, 36, KEY_H);
         lv_obj_add_event_cb(k, keyev_cb, LV_EVENT_SHORT_CLICKED, NULL);
         lv_obj_add_event_cb(k, keyev_cb, LV_EVENT_LONG_PRESSED, NULL);
         g_keys[r][c] = k;
