@@ -1406,13 +1406,16 @@ int main(int argc, char **argv){
         if(th_null()&&!strcmp(page,"scr43"))appshelf_open();
         screen_show(scr);
         if(th_zune())zune_status_refresh();
-        if(th_nt()){home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");
+        if(th_nt()){home_set_status(getenv("NT_BATT")?atoi(getenv("NT_BATT")):67,getenv("NT_CHG")!=NULL,1,1);home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");
             if(getenv("NT_IDLE"))nt_home_now_playing(NULL,NULL,0);nav_wait(60);
             if(getenv("NT_PROMPT")){void settings_test_nt_prompt(int);settings_test_nt_prompt(atoi(getenv("NT_PROMPT"))==2);nav_wait(80);}
             if(getenv("NT_LYRWAIT"))for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}
             if(getenv("NT_EQSEL")){void eqcustom_test_select(int);nav_wait(300);eqcustom_test_select(atoi(getenv("NT_EQSEL")));nav_wait(60);}
+            if(getenv("NT_PK")){void settings_test_playkey(void);settings_test_playkey();nav_wait(100);}
+            if(getenv("NT_OV")){disco_track_overlay_open();nav_wait(200);}
             if(getenv("NT_MENU")){disco_nav_set_open(1);nav_wait(300);}
-            if(getenv("NT_IMM")){nt_lyrics_open();for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}}}
+            if(getenv("NT_IMM")){nt_lyrics_open();for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}
+                if(getenv("NT_JUMP")){void nt_lyrics_test_jump(int);nt_lyrics_test_jump(atoi(getenv("NT_JUMP")));nav_wait(100);}}}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("APPS_OPEN")){if(getenv("APPS_ALL"))simple_cfg_set_int("apps_show_all",atoi(getenv("APPS_ALL")));appshelf_reload();screen_show(SCR_APPSHELF);nav_wait(60);
             if(getenv("APPS_SCROLL")){lv_obj_t*appshelf_scroller(void);lv_obj_scroll_to_y(appshelf_scroller(),atoi(getenv("APPS_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}

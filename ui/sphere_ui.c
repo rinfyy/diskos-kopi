@@ -11,6 +11,7 @@
  * SongSphere turns the whole thing off (the menu actions, the mood pill, the app in Apps). */
 #include "screens.h"
 #include "theme.h"
+#include "theme_kit.h"
 #include "config.h"
 #include "musicdb.h"
 #include "songsphere/sphere.h"
@@ -91,6 +92,10 @@ static void fonts_init(void){
     B16 = font_inter_bold_16;   B16.fallback = TF(UI_16);
     B18 = font_inter_bold_18;   B18.fallback = TF(UI_18);
     B22 = font_inter_bold_22;   B22.fallback = TF(UI_22);
+    if(th_nt()){                                                        /* NTDisk: its own type (the mood colours stay) */
+        F12 = *ui_font_cjk(12); F14 = *ui_font_cjk(14); F16 = *ui_font_cjk(16); F20 = *ui_font_cjk(20);
+        B16 = *ui_font_cjk(16); B18 = *ui_font_cjk(18); B22 = *ui_font_cjk(22);
+    }
 }
 static lv_obj_t *box(lv_obj_t *p, int x, int y, int w, int h, int r, lv_color_t c, lv_opa_t o){
     lv_obj_t *b = lv_obj_create(p); lv_obj_remove_style_all(b);
@@ -146,7 +151,8 @@ static void build_land(lv_obj_t *s){
         lv_obj_t *o = box(s, M[i].px - M[i].d / 2, M[i].py - M[i].d / 2, M[i].d, M[i].d, LV_RADIUS_CIRCLE, c, LV_OPA_80);
         lv_obj_set_style_shadow_width(o, M[i].d + 8, 0); lv_obj_set_style_shadow_color(o, c, 0); lv_obj_set_style_shadow_opa(o, LV_OPA_30, 0);
     }
-    ctext(s, "SongSphere", 44, 220, &B22, TC(TEXT_PRIMARY));
+    lv_obj_t *ttl = ctext(s, th_nt() ? "SONGSPHERE" : "SongSphere", 44, 220, &B22, TC(TEXT_PRIMARY));
+    if(th_nt()){ lv_obj_set_y(ttl, 40); nt_title_style(ttl); kit_keep(ttl); }
     ctext(s, "Place your music by mood.", 78, 270, &F16, TC(TEXT_PRIMARY));
     ctext(s, "Play what fits the moment.", 100, 270, &F16, TC(TEXT_SECONDARY));
     int placed = 0, albums = 0; ssdb_coverage(&placed, &albums);

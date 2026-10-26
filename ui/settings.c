@@ -219,6 +219,71 @@ static void restart_prompt(const char *key){
     rs_btn(c, "Later", -64, 0, rs_later_cb); rs_btn(c, "Restart", 64, 1, rs_now_cb);
     kit_keep(g_rs_dlg); kit_keep(c); kit_keep(d); kit_keep(t); kit_keep(s2);
 }
+/* ---- Controls > Teach play button: find which GPIO pin is the play button (main.c reads it for its shortcuts) ----
+ * Watch every port while nothing is pressed (bits that move on their own are ignored), then wait for one bit to change
+ * and stay changed while the button is held; Vol-Up (GPB13) and power (GPE31) are never taken. */
+int ui_gpio_sample(uint32_t out[6]);
+static lv_obj_t *g_pk_dlg, *g_pk_msg; static lv_timer_t *g_pk_tm;
+static uint32_t g_pk_base[6], g_pk_noise[6]; static int g_pk_phase, g_pk_n, g_pk_port, g_pk_bit, g_pk_hits;
+static void pk_close(void){ if(g_pk_tm){ lv_timer_delete(g_pk_tm); g_pk_tm = NULL; } if(g_pk_dlg){ lv_obj_delete_async(g_pk_dlg); g_pk_dlg = NULL; } }
+static void pk_cancel_cb(lv_event_t *e){ (void)e; pk_close(); }
+static void pk_tick(lv_timer_t *t){
+    (void)t; uint32_t v[6];
+    if(!ui_gpio_sample(v)){ lv_label_set_text(g_pk_msg, "Can't read the buttons on this Disc."); return; }
+    g_pk_n++;
+    if(g_pk_phase == 0){                                                 /* 0.6 s of nothing pressed */
+        if(g_pk_n == 1) memcpy(g_pk_base, v, sizeof v);
+        for(int i = 0; i < 6; i++) g_pk_noise[i] |= v[i] ^ g_pk_base[i];
+        if(g_pk_n >= 15){ g_pk_phase = 1; g_pk_n = 0; lv_label_set_text(g_pk_msg, "Now press and hold\nthe play button"); }
+        return;
+    }
+    if(g_pk_phase == 1){
+        int port = -1, bit = 0;
+        for(int i = 0; i < 6 && port < 0; i++){
+            uint32_t ch = (v[i] ^ g_pk_base[i]) & ~g_pk_noise[i];
+            if(i == 1) ch &= ~(1u << 13);
+            if(i == 4) ch &= ~(1u << 31);
+            for(int b = 0; b < 32; b++) if(ch & (1u << b)){ port = i; bit = b; break; }
+        }
+        if(port < 0){ g_pk_hits = 0; if(g_pk_n > 300){ lv_label_set_text(g_pk_msg, "No button found.\nTry again."); g_pk_phase = 3; } return; }
+        if(port == g_pk_port && bit == g_pk_bit) g_pk_hits++; else { g_pk_port = port; g_pk_bit = bit; g_pk_hits = 1; }
+        if(g_pk_hits >= 5){ g_pk_phase = 2; lv_label_set_text(g_pk_msg, "Got it - let go"); }
+        return;
+    }
+    if(g_pk_phase == 2){                                                 /* released: the bit is back */
+        if(((v[g_pk_port] ^ g_pk_base[g_pk_port]) >> g_pk_bit & 1u) == 0){
+            cfg_begin();
+            simple_cfg_set_int_deferred("pk_port", g_pk_port); simple_cfg_set_int_deferred("pk_bit", g_pk_bit);
+            simple_cfg_set_int_deferred("pk_low", (g_pk_base[g_pk_port] >> g_pk_bit) & 1u);   /* idle high = pressed low */
+            cfg_commit();
+            lv_label_set_text(g_pk_msg, "Play button learned.\nDouble-click and hold now work.");
+            g_pk_phase = 3; setlist_refresh();
+        }
+    }
+}
+static void apply_playkey_learn(int v){
+    (void)v; pk_close();
+    g_pk_phase = 0; g_pk_n = 0; g_pk_hits = 0; g_pk_port = -1; memset(g_pk_noise, 0, sizeof g_pk_noise);
+    g_pk_dlg = lv_obj_create(lv_layer_top()); lv_obj_remove_style_all(g_pk_dlg); lv_obj_set_size(g_pk_dlg, 360, 360);
+    lv_obj_set_style_bg_color(g_pk_dlg, TC(CANVAS), 0); lv_obj_set_style_bg_opa(g_pk_dlg, LV_OPA_COVER, 0);
+    lv_obj_add_flag(g_pk_dlg, LV_OBJ_FLAG_CLICKABLE); lv_obj_remove_flag(g_pk_dlg, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *h = lv_label_create(g_pk_dlg); lv_label_set_text(h, th_nt() ? "PLAY BUTTON" : "Play button");
+    lv_obj_set_style_text_font(h, TF(UI_18), 0); lv_obj_set_style_text_color(h, TC(TEXT_PRIMARY), 0); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 60);
+    if(th_nt()){ lv_obj_align(h, LV_ALIGN_TOP_MID, 6, 60); nt_title_style(h); }
+    g_pk_msg = lv_label_create(g_pk_dlg); lv_label_set_text(g_pk_msg, "Don't touch any button...");
+    lv_obj_set_width(g_pk_msg, 260); lv_obj_set_style_text_align(g_pk_msg, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_style_text_font(g_pk_msg, TF(UI_20), 0); lv_obj_set_style_text_color(g_pk_msg, TC(TEXT_PRIMARY), 0); lv_obj_align(g_pk_msg, LV_ALIGN_CENTER, 0, -10);
+    lv_obj_t *b = lv_obj_create(g_pk_dlg); lv_obj_remove_style_all(b); lv_obj_set_size(b, 120, 44); lv_obj_align(b, LV_ALIGN_BOTTOM_MID, 0, -54);
+    lv_obj_set_style_radius(b, 22, 0); lv_obj_set_style_bg_color(b, TC(SURFACE_RAISED), 0); lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(b, TC(SURFACE_PRESSED), LV_STATE_PRESSED);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(b, pk_cancel_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *bl = lv_label_create(b); lv_label_set_text(bl, "Done"); lv_obj_set_style_text_font(bl, TF(UI_16), 0);
+    lv_obj_set_style_text_color(bl, TC(TEXT_PRIMARY), 0); lv_obj_center(bl);
+    kit_keep(g_pk_dlg); kit_keep(h); kit_keep(g_pk_msg); kit_keep(b); kit_keep(bl);
+    g_pk_tm = lv_timer_create(pk_tick, 40, NULL);
+}
+void settings_test_playkey(void){ apply_playkey_learn(0); }   /* host renders */
+static const char *OPT_PKACT[] = { "Nothing", "Library", "Music", "Search", "Quick settings", "Shortcuts", "Settings", "Play mode", "Working mode", "Lyrics" };
 static void apply_nt_restart(int v){ (void)v; reload_start("", 0); }
 void settings_test_nt_prompt(int later){ restart_prompt("nt_style"); if(later) rs_later_cb(NULL); }   /* host renders */
 static void theme_reload_or_revert(const char *key){
@@ -1086,6 +1151,12 @@ static const setting_t TABLE[] = {
       "Re-scan the SD card for new or removed music.", NULL },
     { "Library",   "Import Playlists", ST_ACTION, NULL, 0,0,0, NULL,0, "Import", apply_import_m3u, 0,
       "Import .m3u / .m3u8 playlists found on the SD card.", NULL },
+    { "Controls",   "Teach Play Button", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_playkey_learn, 0,
+      "Shows diskOS which button is play, once, so it can use it as a shortcut: press and hold it when asked.", NULL },
+    { "Controls",   "Play Double-click", ST_CYCLER, "pk_double", 0,0,0, OPT_PKACT, 10, NULL, NULL, 1,
+      "Two quick presses of the play button open this (the player still plays / pauses on each press).", NULL },
+    { "Controls",   "Play Hold", ST_CYCLER, "pk_hold", 0,0,0, OPT_PKACT, 10, NULL, NULL, 7,
+      "Holding the play button does this. Play mode steps through repeat and shuffle.", NULL },
     { "Controls",   "Volume Keys", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_volkeys_group, 0,
       "Choose volume-key actions for press, double-press and hold: volume or track change.", NULL },
     { "Controls",   "Default UI",  ST_CYCLER, "boot_default", 0,0,0, OPT_BOOTDEF, 2, NULL, apply_boot_default, 0,

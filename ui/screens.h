@@ -499,6 +499,7 @@ void nt_volume_show(int vol); int nt_volume_visible(void); lv_obj_t *nt_volume_r
 void nt_home_create(lv_obj_t *root); void nt_home_now_playing(const char *title, const char *artist, int playing);
 void nt_home_art_changed(void); void nt_home_clock(const char *t, const char *sub); void nt_home_weather(const char *s);
 int nt_home_owns_point(int x, int y); void nt_home_lyrics_apply(int on);
+void nt_home_status(int batt, int charging, int wifi, int bt);
 void nt_lyrics_open(void); void nt_lyrics_close(void); int nt_lyrics_visible(void);
 void nt_saver_create(lv_obj_t *root); void nt_saver_clock(const char *t); void nt_saver_weather(const char *s);
 void nt_saver_track(const char *title, const char *artist);

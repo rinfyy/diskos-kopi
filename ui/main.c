@@ -1800,6 +1800,36 @@ static volatile uint32_t *gpio_gpb_pin(void){
     }
     return pin;
 }
+/* ---- the play button as a shortcut (fork) ----
+ * The player owns the keys (it grabs event0), so - as with Vol-Up and power - the button is read from its GPIO pin.
+ * Which pin the play button uses isn't known from the outside, so Settings > Controls > Teach play button learns it:
+ * every port's PIN register is watched while you hold the button, and the one bit that follows it is kept. The player
+ * still sees the button too (one press = play / pause as always); a double-click and a hold are diskOS shortcuts. */
+static volatile uint32_t *gpio_ports(void){                     /* GPA..GPF PIN registers, 0x100 apart */
+    static volatile uint32_t *base; static int tried;
+    if(!tried){ tried = 1; int m = open("/dev/mem", O_RDONLY | O_SYNC | O_CLOEXEC);
+        if(m >= 0){ void *mp = mmap(NULL, 4096, PROT_READ, MAP_SHARED, m, 0x10010000); close(m); if(mp != MAP_FAILED) base = (volatile uint32_t *)mp; } }
+    return base;
+}
+int ui_gpio_sample(uint32_t out[6]){
+    volatile uint32_t *b = gpio_ports(); if(!b) return 0;
+    for(int i = 0; i < 6; i++) out[i] = b[i * 0x100 / 4];
+    return 1;
+}
+static void playkey_action(int a){
+    switch(a){
+    case 1: screen_show(SCR_LIBRARY); break;
+    case 2: screen_show(SCR_HOME); break;
+    case 3: screen_show(SCR_SEARCH); break;
+    case 4: screen_show(SCR_QUICK); quicksettings_refresh(ui_is_playing()); break;
+    case 5: apps_reload(); screen_show(SCR_APPS); break;
+    case 6: screen_show(SCR_SETTINGS); break;
+    case 7: ui_np_mode_next(); break;                              /* toasts the new play mode */
+    case 8: modes_open(); break;
+    case 9: if(th_disco_family() || th_null()) disco_open_np_immersive(); else { screen_show(SCR_NOWPLAYING); ui_np_fsart_open(); } break;
+    default: break;
+    }
+}
 static int volup_held(void){
     volatile uint32_t *pin = gpio_gpb_pin();
     return pin ? (((*pin >> 13) & 1u) ? 0 : 1) : 0;
@@ -3847,6 +3877,33 @@ int main(int argc, char **argv){
             }
         }
 
+        {   /* fork: the play button's shortcuts (double-click, hold) - see playkey_action */
+            static uint32_t pk_last; static int pk_dn, pk_fired, pk_taps; static uint32_t pk_t0, pk_up;
+            int port = -1, bit = 0, low = 1, dbl = 0, hold = 0;
+            if(lv_tick_elaps(pk_last) >= 30){ pk_last = lv_tick_get();
+                port = simple_cfg_get_int("pk_port", -1); bit = simple_cfg_get_int("pk_bit", 0); low = simple_cfg_get_int("pk_low", 1);
+                dbl = simple_cfg_get_int("pk_double", 1); hold = simple_cfg_get_int("pk_hold", 7); }
+            if(port >= 0 && port < 6 && bit >= 0 && bit < 32 && (dbl || hold)){
+                volatile uint32_t *g = gpio_ports();
+                int d = g ? ((((g[port * 0x100 / 4] >> bit) & 1u) == 0) == !!low) : 0;
+                int a = -1;
+                if(d && !pk_dn){ pk_dn = 1; pk_fired = 0; pk_t0 = lv_tick_get(); }
+                else if(d && pk_dn && !pk_fired && hold && lv_tick_elaps(pk_t0) >= 700){ pk_fired = 1; pk_taps = 0; a = hold; }
+                else if(!d && pk_dn){
+                    pk_dn = 0;
+                    if(!pk_fired && lv_tick_elaps(pk_t0) < 500){
+                        if(pk_taps && lv_tick_elaps(pk_up) < 450){ pk_taps = 0; a = dbl; } else { pk_taps = 1; pk_up = lv_tick_get(); }
+                    }
+                }
+                if(a > 0){
+                    power_note_input();
+                    if(bl_state){ ui_backlight(ui_effective_brightness()); bl_state = 0; }
+                    last_activity = lv_tick_get();
+                    if(screen_current() == SCR_SAVER) screen_back();
+                    playkey_action(a);
+                }
+            }
+        }
         {   /* fork: the power key held - the player owns the key and starts its own shutdown, so show the themed
              * screen while that runs. The level is read from the GPIO pin (X2000 GPE bit 31, active low) because the
              * input layer never delivers this key to us. Released early and still running 3.5 s later: a false

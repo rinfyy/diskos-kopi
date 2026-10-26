@@ -116,6 +116,7 @@ static int display_variant_hidden(const setting_t *s){
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
     if(s->cfg_key&&!th_nt()&&!strncmp(s->cfg_key,"nt_",3))return 1;
     if(s->apply==apply_nt_restart&&!(th_nt()&&g_nt_pending))return 1;   /* only while a change waits */
+    if(!th_nt()&&(s->apply==apply_playkey_learn||(s->cfg_key&&(!strcmp(s->cfg_key,"pk_double")||!strcmp(s->cfg_key,"pk_hold")))))return 1;   /* NTDisk's play-button shortcuts */
     if(th_nt()&&(s->apply==apply_grp_musicinfo||s->apply==apply_grp_musicprogress||s->apply==apply_grp_musictext))return 1;                  /* NTDisk's own rows */
     if(th_nt()&&(s->apply==apply_lock_next||(s->cfg_key&&(!strncmp(s->cfg_key,"dlock_",6)||!strcmp(s->cfg_key,"disco_palette")||
        !strcmp(s->cfg_key,"disco_sheen")||!strcmp(s->cfg_key,"disco_controls")||!strcmp(s->cfg_key,"disco_title_al")||
