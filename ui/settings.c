@@ -424,6 +424,13 @@ static void apply_lock_next(int v){
 }
 static void apply_lock_src(int v){ if(v == 1) lockcover_request(); }
 static void apply_disco_palette(int v){ (void)v; theme_reload_or_revert("disco_palette"); }
+static const char *OPT_NTSTYLE[] = { "Mix dark", "Mix light", "Dark", "Light" };
+static const char *OPT_NTFONT[] = { "Dot + Mono", "Dot + Sans", "Mono" };
+static const char *OPT_NTMUSIC[] = { "CD + info", "Disc only" };
+static void apply_nt_style(int v){ (void)v; theme_reload_or_revert("nt_style"); }
+static void apply_nt_font(int v){ (void)v; theme_reload_or_revert("nt_font"); }
+static void apply_nt_music(int v){ (void)v; theme_reload_or_revert("nt_music"); }
+static void apply_nt_lyrics(int v){ nt_home_lyrics_apply(v); }
 static const char *OPT_DSHAPE[] = { "Linear", "Arc" };
 static const char *OPT_DTAL[] = { "Centred", "Left" };
 static const char *OPT_SIMPLE_BG[]={"Plain","Blur","Cover"};
@@ -966,6 +973,14 @@ static const setting_t TABLE[] = {
       "Buttons, Auto-fade after 5 s (tap to reveal), or Gestures: double-tap play/pause; swipe right next, left previous.", NULL },
     { "Disco Colours", "Palette", ST_CYCLER, "disco_palette", 0,0,1, OPT_DISCOPAL, 2, NULL, apply_disco_palette, 0,
       "Original cyan, or Kopi Ungu: espresso brown, dark plum and an amethyst accent. Restarts the UI; music continues.", NULL },
+    { "Disco Colours", "Style", ST_CYCLER, "nt_style", 0,0,0, OPT_NTSTYLE, 4, NULL, apply_nt_style, 0,
+      "Mix dark: dark menus, a light Music screen. Mix light: the reverse. Or all Dark or all Light.", NULL },
+    { "Disco Colours", "Font", ST_CYCLER, "nt_font", 0,0,0, OPT_NTFONT, 3, NULL, apply_nt_font, 0,
+      "A dot-matrix clock with Space Mono or Space Grotesk text, or Space Mono throughout.", NULL },
+    { "Music Screen", "Layout", ST_CYCLER, "nt_music", 0,0,0, OPT_NTMUSIC, 2, NULL, apply_nt_music, 0,
+      "The CD with the audio form, title and time; or just the CD with a red ring.", NULL },
+    { "Music Screen", "Lyrics as Title", ST_TOGGLE, "nt_lyrics", 0,1,1, NULL,0, NULL, apply_nt_lyrics, 1,
+      "Synced lyrics replace the title on Music while the song plays.", NULL },
     { "Disco Colours", "Rim Sheen", ST_TOGGLE, "disco_sheen", 0,1,1, NULL,0, NULL, apply_disco_sheen, 1,
       "The faint CD rainbow around the edge of Music and playlists.", NULL },
     { "Disco Colours", "Equalizer", ST_CYCLER, "disco_eq", 0,0,0, OPT_DEQ, 2, NULL, apply_disco_eq, 0,
@@ -1639,7 +1654,7 @@ void setting_detail_refresh(void){
         int is_theme = !strcmp(s->cfg_key, "theme_preset");
         /* Themes: Disco first, then Ring, Braun and Stone; the other presets stay in the code and keep working if
          * already selected, but are not offered here for now. Rows still carry the real preset index. */
-        int THEME_SHOWN[7] = { THEME_PRESET_DISCO, THEME_PRESET_NULL, THEME_PRESET_SIMPLE, THEME_PRESET_ZUNE, THEME_PRESET_RING, THEME_PRESET_BRAUN, THEME_PRESET_STONE }, nshown = 7;
+        int THEME_SHOWN[8] = { THEME_PRESET_DISCO, THEME_PRESET_NTDISK, THEME_PRESET_NULL, THEME_PRESET_SIMPLE, THEME_PRESET_ZUNE, THEME_PRESET_RING, THEME_PRESET_BRAUN, THEME_PRESET_STONE }, nshown = 8;
         int nrows = is_theme ? nshown : s->nopts;
         for(int r = 0; r < nrows; r++){
             int i = is_theme ? THEME_SHOWN[r] : r;

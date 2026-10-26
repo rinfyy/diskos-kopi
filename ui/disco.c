@@ -234,6 +234,7 @@ static lv_image_dsc_t g_bd_dsc;
 static int g_bd_ok;
 static lv_obj_t *g_parent;
 static int no_backdrop(int which){
+    if(th_nt()) return 1;                                              /* NTDisk: flat canvas everywhere, no blurred cover */
     return which == SCR_HOME || which == SCR_NOWPLAYING || which == SCR_SAVER || which == SCR_QUICK || which == SCR_SPHERE || which == SCR_IMAGE;   /* SongSphere: its ball is drawn on the plain canvas */
 }
 static void backdrop_apply(void){
@@ -334,7 +335,7 @@ static lv_obj_t *g_sheen;
 static int g_sheen_scr = -1;
 void disco_sheen_apply(void){                                          /* Settings > Display > Rim Sheen */
     if(!g_sheen) return;
-    if((g_sheen_scr == SCR_HOME || g_sheen_scr == SCR_PLVIEW) && simple_cfg_get_int("disco_sheen", 1)){ lv_obj_remove_flag(g_sheen, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_sheen); }
+    if(!th_nt() && (g_sheen_scr == SCR_HOME || g_sheen_scr == SCR_PLVIEW) && simple_cfg_get_int("disco_sheen", 1)){ lv_obj_remove_flag(g_sheen, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(g_sheen); }
     else lv_obj_add_flag(g_sheen, LV_OBJ_FLAG_HIDDEN);
 }
 /* The sheen is drawn ONCE into eight small images (one per 45-degree slice of the rim, each just the size of its

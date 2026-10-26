@@ -489,6 +489,12 @@ void dhome_art_changed(void);
 void dhome_set_accent(lv_color_t accent);
 void dhome_show_clock(int on);
 void disco_open_np_immersive(void);
+/* nt_home.c: NTDisk's Music and standby screens */
+void nt_home_create(lv_obj_t *root); void nt_home_now_playing(const char *title, const char *artist, int playing);
+void nt_home_art_changed(void); void nt_home_clock(const char *t, const char *sub); void nt_home_weather(const char *s);
+int nt_home_owns_point(int x, int y); void nt_home_lyrics_apply(int on);
+void nt_saver_create(lv_obj_t *root); void nt_saver_clock(const char *t); void nt_saver_weather(const char *s);
+void nt_saver_track(const char *title, const char *artist);
 int  disco_mirror(void);
 const void *disco_idle_art(void);         /* disco_home.c: the generated CD shown while nothing plays */
 int  dhome_idle(void);                    /* Music is idle (nothing playing): "Go to Library" + the CD */                   /* Disco > Side = Left: the hub and everything around it on the left (read once; OK restarts the UI) */

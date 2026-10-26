@@ -493,6 +493,7 @@ static void pa_paint(int m){                                          /* m: 1 Ac
 }
 /* main.c asks at the press: is this finger on Music's seek line or ring? (so a backwards drag isn't a swipe to Apps) */
 int dhome_owns_point(int x, int y){
+    if(th_nt()) return screen_current() == SCR_HOME && nt_home_owns_point(x, y);   /* NTDisk: its own Music layer */
     if(g_ul_fill && th_disco_family() && screen_current() == SCR_HOME && gz_owns(x, y)) return 1;
     if(!g_ul_fill || !th_disco_family() || screen_current() != SCR_HOME || simple_cfg_get_int("disco_progress", 0) == 2) return 0;
     if(pa_on()){
@@ -861,11 +862,12 @@ void dhome_create(lv_obj_t *root){
     { lv_timer_t *it = lv_timer_create(idle_timer_cb, 10200, NULL); if(it) lv_timer_set_repeat_count(it, 1); }   /* idle 10 s after start */
     dhome_art_changed();
     if(th_simple())simple_music_layout();
+    if(th_nt()) nt_home_create(root);                                  /* NTDisk: its own Music layer on top (opaque) */
 }
 
 /* ---- setters (home.c forwards) ------------------------------------------------------------------- */
 void dhome_set_clock(const char *t, const char *sub){
-    (void)sub;
+    if(th_nt()) nt_home_clock(t, sub);
     dl_text(&L_TIME, t);
 }
 /* "<icon>  14°C  Partly cloudy" -> "<icon> 14°" */
@@ -903,6 +905,7 @@ void dhome_clockinfo_apply(void){
     for(int i = 0; i < 2; i++) if(w[i]){ if(wx) lv_obj_remove_flag(w[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(w[i], LV_OBJ_FLAG_HIDDEN); }
 }
 void dhome_set_now_playing(const char *title, const char *artist, lv_color_t accent, bool playing){
+    if(th_nt()) nt_home_now_playing(title, artist, playing);
     g_have = title != NULL;
     g_acc = ui_disco_fit_accent(accent);
     if(!th_simple() && title && strcmp(L_TITLE.cur,title) && L_ARTIST.fg){ui_music_scroll(L_ARTIST.fg);ui_music_scroll(L_ARTIST.sh);}
@@ -989,6 +992,7 @@ static void ink_all(const lv_image_dsc_t *d){
     acc_paint();                                                          /* the mode icon keeps the accent, with the shadow */
 }
 void dhome_art_changed(void){
+    if(th_nt()) nt_home_art_changed();
     if(th_simple()){simple_music_art();return;}
     if(!g_cover) return;
     const void *src = ui_current_sharp_img();

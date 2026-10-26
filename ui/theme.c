@@ -341,7 +341,7 @@ static const uint32_t DEFAULT_LIGHT[THEME_CLR_COUNT] = {
 #include "theme_presets.inc"   /* generated: tools/gen_theme_presets.py */
 
 typedef struct { const char *name; const uint32_t *dark, *light; } theme_preset_t;
-static uint32_t FORK_RING[2][THEME_CLR_COUNT], FORK_BRAUN[2][THEME_CLR_COUNT], FORK_DISCO[2][THEME_CLR_COUNT], FORK_NULL[2][THEME_CLR_COUNT], FORK_SIMPLE[2][THEME_CLR_COUNT], FORK_ZUNE[2][THEME_CLR_COUNT];
+static uint32_t FORK_RING[2][THEME_CLR_COUNT], FORK_BRAUN[2][THEME_CLR_COUNT], FORK_DISCO[2][THEME_CLR_COUNT], FORK_NULL[2][THEME_CLR_COUNT], FORK_SIMPLE[2][THEME_CLR_COUNT], FORK_ZUNE[2][THEME_CLR_COUNT], FORK_NT[2][THEME_CLR_COUNT];
 /* Sparse slots preserve every shipped theme ID; retired IDs are unavailable. */
 static const theme_preset_t PRESETS[THEME_PRESET_COUNT] = {
     THEME_PRESETS_GENERATED
@@ -351,10 +351,11 @@ static const theme_preset_t PRESETS[THEME_PRESET_COUNT] = {
     [THEME_PRESET_NULL] = { "Null", FORK_NULL[0], FORK_NULL[1] },
     [THEME_PRESET_SIMPLE] = { "Squash", FORK_SIMPLE[0], FORK_SIMPLE[1] },
     [THEME_PRESET_ZUNE] = { "Zune", FORK_ZUNE[0], FORK_ZUNE[1] },
+    [THEME_PRESET_NTDISK] = { "NTDisk", FORK_NT[0], FORK_NT[1] },
 };
 _Static_assert(sizeof PRESETS / sizeof PRESETS[0] == THEME_PRESET_COUNT, "THEME_PRESET_COUNT (theme.h) is stale");
 const char *const theme_preset_names[THEME_PRESET_COUNT] = { THEME_PRESET_NAMES_GENERATED,
- [THEME_PRESET_RING]="Ring",[THEME_PRESET_BRAUN]="Braun",[THEME_PRESET_DISCO]="Disco",[THEME_PRESET_NULL]="Null",[THEME_PRESET_SIMPLE]="Squash",[THEME_PRESET_ZUNE]="Zune" };
+ [THEME_PRESET_RING]="Ring",[THEME_PRESET_BRAUN]="Braun",[THEME_PRESET_DISCO]="Disco",[THEME_PRESET_NULL]="Null",[THEME_PRESET_SIMPLE]="Squash",[THEME_PRESET_ZUNE]="Zune",[THEME_PRESET_NTDISK]="NTDisk" };
 int theme_preset_available(int preset){return preset>=0&&preset<THEME_PRESET_COUNT&&PRESETS[preset].name!=NULL;}
 static int g_preset;
 static uint32_t g_custom[2][THEME_CLR_COUNT];      /* the saved custom theme, fixed roles filled from Default */
@@ -621,6 +622,38 @@ static uint32_t null_mix(uint32_t a, uint32_t b, int t){   /* t of 255 toward b 
     return o;
 }
 static int null_pick(const char *key, int def, int n){ int v = cfg_get_int(key, def); return v >= 0 && v < n ? v : def; }
+/* NTDisk: monochrome with one red. Dark: true black, charcoal tiles, near-white type. Light: pale grey paper, white
+ * tiles, near-black type. The red is the same in both (cfg nt_style picks Mix dark / Mix light / Dark / Light; the
+ * Mix styles also put light and dark tiles side by side on the screens NTDisk draws itself). */
+static void nt_palettes_init(void){
+    for(int v = 0; v < 2; v++){
+        uint32_t *p = FORK_NT[v];
+        memcpy(p, v ? DEFAULT_LIGHT : DEFAULT_DARK, sizeof FORK_NT[v]);
+        static const struct { theme_color_role_t r; uint32_t dark, light; } R[] = {
+            {THEME_CLR_CANVAS,0x000000,0xE6E6E6},{THEME_CLR_SURFACE,0x1A1A1A,0xFFFFFF},{THEME_CLR_SURFACE_RAISED,0x262626,0xF2F2F2},
+            {THEME_CLR_SURFACE_STRONG,0x333333,0xD9D9D9},{THEME_CLR_SURFACE_SELECTED,0x2E2E2E,0xDCDCDC},{THEME_CLR_LIST_PRESSED,0x2E2E2E,0xDCDCDC},
+            {THEME_CLR_SURFACE_PRESSED,0x262626,0xEBEBEB},{THEME_CLR_RAISED_PRESSED,0x333333,0xD9D9D9},{THEME_CLR_ART_PLACEHOLDER,0x1A1A1A,0xFFFFFF},
+            {THEME_CLR_BORDER,0x2B2B2B,0xD0D0D0},{THEME_CLR_BORDER_STRONG,0x3D3D3D,0xBDBDBD},{THEME_CLR_CONNECTED_SURFACE,0x262626,0xF2F2F2},
+            {THEME_CLR_CONTROL_TRACK,0x3D3D3D,0xC9C9C9},{THEME_CLR_CONTROL_TRACK_STRONG,0x3D3D3D,0xC9C9C9},
+            {THEME_CLR_CONTROL_FILL,0xF2F2F2,0x121212},{THEME_CLR_CONTROL_KNOB,0xF2F2F2,0x121212},{THEME_CLR_CONTROL_OFF,0x262626,0xF2F2F2},
+            {THEME_CLR_ON_CONTROL,0x000000,0xFFFFFF},
+            {THEME_CLR_TEXT_PRIMARY,0xF2F2F2,0x121212},{THEME_CLR_TEXT_SECONDARY,0xBFBFBF,0x474747},{THEME_CLR_TEXT_MUTED,0x9C9C9C,0x5C5C5C},
+            {THEME_CLR_TEXT_DISABLED,0x6E6E6E,0x8F8F8F},{THEME_CLR_TEXT_LYRICS,0xD9D9D9,0x2B2B2B},{THEME_CLR_TEXT_HINT,0x8A8A8A,0x6B6B6B},
+            {THEME_CLR_TEXT_FOOTNOTE,0x8A8A8A,0x6B6B6B},{THEME_CLR_TEXT_SEPARATOR,0x707070,0x7A7A7A},
+            {THEME_CLR_ACCENT_PRIMARY,0xD71921,0xD71921},{THEME_CLR_ACCENT_EMPHASIS,0xD71921,0xD71921},{THEME_CLR_ACCENT_IDLE,0xD71921,0xD71921},
+            {THEME_CLR_ON_ACCENT,0xFFFFFF,0xFFFFFF},{THEME_CLR_SWITCH_ON,0xD71921,0xD71921},{THEME_CLR_SWITCH_OFF,0x4A4A4A,0x8A8A8A},
+            {THEME_CLR_SWITCH_KNOB,0xFFFFFF,0xFFFFFF},{THEME_CLR_WIDGET_PRIMARY,0xD71921,0xD71921},{THEME_CLR_SIGNAL_ACTIVE,0xF2F2F2,0x121212},
+            {THEME_CLR_SIGNAL_INACTIVE,0x8A8A8A,0x6B6B6B},{THEME_CLR_GRABBER,0x8A8A8A,0x6B6B6B},{THEME_CLR_PAGE_DOT_ACTIVE,0xF2F2F2,0x121212},
+            {THEME_CLR_PAGE_DOT_INACTIVE,0x4A4A4A,0xBDBDBD},{THEME_CLR_PAGE_DOT_DIM,0x2B2B2B,0xD0D0D0},{THEME_CLR_KEY_SURFACE,0x262626,0xFFFFFF},
+            {THEME_CLR_KEY_SELECTED,0x4A1517,0xF5C7C9},{THEME_CLR_KEY_PRESSED,0x333333,0xD9D9D9},{THEME_CLR_KEY_TEXT,0xF2F2F2,0x121212},
+            {THEME_CLR_INPUT_CURSOR,0xD71921,0xD71921},{THEME_CLR_INPUT_PLACEHOLDER,0x9C9C9C,0x5C5C5C},
+            {THEME_CLR_ACTION_SURFACE,0xF2F2F2,0x121212},{THEME_CLR_ON_ACTION,0x000000,0xFFFFFF},
+            {THEME_CLR_FOLDER_ICON,0xBFBFBF,0x474747},{THEME_CLR_DECOR_1,0xD71921,0xD71921},{THEME_CLR_DOT_GRID,0x1A1A1A,0xD9D9D9},
+            {THEME_CLR_IMAGE_TINT,0x000000,0xE6E6E6},{THEME_CLR_ART_WALL_FRONT,0x262626,0xFFFFFF},{THEME_CLR_ART_WALL_SIDE,0x1A1A1A,0xF2F2F2},
+        };
+        for(unsigned i = 0; i < sizeof R / sizeof R[0]; i++) p[R[i].r] = v ? R[i].light : R[i].dark;
+    }
+}
 static void null_palettes_init(void){
  int scheme=cfg_get_int("null_palette",0);
  int matrix=scheme==2, custom=scheme==3;
@@ -732,7 +765,7 @@ static void fork_config_migrate(void){
 void theme_init(void){
     fork_palettes_init();
     disco_palettes_init();
-    null_palettes_init(); simple_palettes_init(); zune_palettes_init();
+    null_palettes_init(); simple_palettes_init(); zune_palettes_init(); nt_palettes_init();
     fork_config_migrate();
     int outdoor = cfg_get_int("outdoor", 0) == 1;
     g_outdoor = outdoor;
@@ -742,6 +775,7 @@ void theme_init(void){
         g_preset=THEME_PRESET_DISCO;cfg_set_int("theme_preset",g_preset);
     }
     if(g_preset==THEME_PRESET_NULL||g_preset==THEME_PRESET_ZUNE)g_variant=0;   /* dark-only themes */
+    if(g_preset==THEME_PRESET_NTDISK){ int st = cfg_get_int("nt_style", 0); g_variant = outdoor || st == 1 || st == 3; }   /* NTDisk: its Style */
     if(theme_auto_supported() && cfg_get_int("theme_auto",0) && !outdoor){
         time_t now=time(NULL); struct tm tm; localtime_r(&now,&tm);
         g_variant = !(tm.tm_hour >= 20 || tm.tm_hour < 7);
@@ -757,6 +791,10 @@ void theme_init(void){
     } else {
         g_pal = g_variant ? PRESETS[g_preset].light : PRESETS[g_preset].dark;
         g_def = theme_def_find(PRESETS[g_preset].name);   /* NULL for Default */
+        if(g_preset == THEME_PRESET_NTDISK){                    /* NTDisk: the chosen type pairing */
+            int f = cfg_get_int("nt_font", 0);
+            g_def = theme_def_find(f == 1 ? "NTDisk Sans" : f == 2 ? "NTDisk Mono" : "NTDisk");
+        }
     }
     /* fixed identities (brand, QR, splash, debug) are the same in every palette; a palette that changes one is
      * refused as a whole rather than half-applied */
@@ -1208,7 +1246,14 @@ const theme_kit_t *theme_kit_for_active(void){ return (g_def && g_def->kit) ? g_
 int theme_ring_light(void){return (g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_DISCO) && g_variant==1;}
 int theme_auto_supported(void){return g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_BRAUN || g_preset==THEME_PRESET_DISCO;}
 int th_null(void){return g_preset==THEME_PRESET_NULL;}
-int th_disco(void){return g_preset==THEME_PRESET_DISCO;}
+int th_disco(void){return g_preset==THEME_PRESET_DISCO || g_preset==THEME_PRESET_NTDISK;}
+int th_nt(void){return g_preset==THEME_PRESET_NTDISK;}
+int th_nt_mix(void){ int st = cfg_get_int("nt_style", 0); return th_nt() && (st == 0 || st == 1); }
+/* NTDisk Mix: Music is drawn in the other tone from the menus (a light "widget" among dark pages, or a dark one among light) */
+lv_color_t th_nt_music_color(theme_color_role_t role){
+    if(!th_nt_mix() || role < 0 || role >= THEME_CLR_COUNT) return theme_color(role);
+    return theme_color_from_rgb(FORK_NT[!g_variant][role]);
+}
 int th_simple(void){return g_preset==THEME_PRESET_SIMPLE;}
 int th_disco_family(void){return th_disco() || th_simple();}
 int th_ringlike(void){return g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_DISCO || g_preset==THEME_PRESET_ZUNE || th_simple();}

@@ -17,6 +17,29 @@ LV_FONT_DECLARE(diskos_mono_bold_12)
 LV_FONT_DECLARE(diskos_dot_18)
 LV_FONT_DECLARE(diskos_dot_28)
 
+LV_FONT_DECLARE(font_nt_dot_28)
+LV_FONT_DECLARE(font_nt_dot_48)
+LV_FONT_DECLARE(font_nt_dot_72)
+LV_FONT_DECLARE(font_nt_dot_96)
+LV_FONT_DECLARE(font_nt_mono_12)
+LV_FONT_DECLARE(font_nt_mono_14)
+LV_FONT_DECLARE(font_nt_mono_16)
+LV_FONT_DECLARE(font_nt_mono_18)
+LV_FONT_DECLARE(font_nt_mono_20)
+LV_FONT_DECLARE(font_nt_mono_22)
+LV_FONT_DECLARE(font_nt_mono_24)
+LV_FONT_DECLARE(font_nt_mono_28)
+LV_FONT_DECLARE(font_nt_mono_64)
+LV_FONT_DECLARE(font_nt_mono_88)
+LV_FONT_DECLARE(font_nt_sans_12)
+LV_FONT_DECLARE(font_nt_sans_14)
+LV_FONT_DECLARE(font_nt_sans_16)
+LV_FONT_DECLARE(font_nt_sans_18)
+LV_FONT_DECLARE(font_nt_sans_20)
+LV_FONT_DECLARE(font_nt_sans_22)
+LV_FONT_DECLARE(font_nt_sans_24)
+LV_FONT_DECLARE(font_nt_sans_28)
+
 #define TRAIT(t) (1u << THEME_TRAIT_##t)
 #define F(role) [THEME_FONT_##role]
 
@@ -55,7 +78,19 @@ LV_FONT_DECLARE(font_zune_semibold_12)
 LV_FONT_DECLARE(font_zune_semibold_24)
 LV_FONT_DECLARE(font_zune_regular_16)
 LV_FONT_DECLARE(font_zune_regular_17)
+#define NT_FONTS(T) F(UI_10)=&font_nt_##T##_12,F(UI_12)=&font_nt_##T##_12,F(UI_14)=&font_nt_##T##_14,F(UI_16)=&font_nt_##T##_16,\
+    F(UI_18)=&font_nt_##T##_18,F(UI_20)=&font_nt_##T##_20,F(UI_22)=&font_nt_##T##_22,F(UI_24)=&font_nt_##T##_24,F(UI_26)=&font_nt_##T##_24,\
+    F(UI_28)=&font_nt_##T##_28,F(UI_30)=&font_nt_##T##_28,F(UI_32)=&font_nt_##T##_28,F(UI_36)=&font_nt_##T##_28,F(UI_40)=&font_nt_##T##_28,\
+    F(USER_14)=&font_nt_##T##_14,F(USER_16)=&font_nt_##T##_16,F(USER_18)=&font_nt_##T##_18,F(USER_20)=&font_nt_##T##_20,\
+    F(HEADER)=&font_nt_##T##_22,F(HEADER_SM)=&font_nt_##T##_18,F(DATE)=&font_nt_##T##_16,\
+    F(MUSIC_TITLE)=&font_nt_##T##_22,F(MUSIC_ARTIST)=&font_nt_##T##_16,F(MUSIC_ALBUM)=&font_nt_##T##_14
 static const theme_def_t DEFS[] = {
+ { .name="NTDisk", .font={NT_FONTS(mono),F(CLOCK)=&font_nt_dot_72,F(SAVER_CLOCK)=&font_nt_dot_96,F(UI_48)=&font_nt_dot_48},
+   .texture=THEME_TEX_NONE, .title_case=THEME_CASE_KEEP, .fixed_accent=1, .kit=&theme_kit_ring },
+ { .name="NTDisk Sans", .font={NT_FONTS(sans),F(CLOCK)=&font_nt_dot_72,F(SAVER_CLOCK)=&font_nt_dot_96,F(UI_48)=&font_nt_dot_48},
+   .texture=THEME_TEX_NONE, .title_case=THEME_CASE_KEEP, .fixed_accent=1, .kit=&theme_kit_ring },
+ { .name="NTDisk Mono", .font={NT_FONTS(mono),F(CLOCK)=&font_nt_mono_64,F(SAVER_CLOCK)=&font_nt_mono_88,F(UI_48)=&font_nt_mono_28},
+   .texture=THEME_TEX_NONE, .title_case=THEME_CASE_KEEP, .fixed_accent=1, .kit=&theme_kit_ring },
  { .name="Zune", .font={F(UI_10)=&font_zune_regular_14,F(UI_12)=&font_zune_regular_16,F(UI_14)=&font_zune_regular_16,F(UI_16)=&font_zune_regular_17,F(UI_18)=&font_zune_light_18,F(UI_20)=&font_zune_regular_19,F(UI_22)=&font_zune_light_21,F(UI_24)=&font_zune_light_24,F(UI_28)=&font_zune_light_32,F(UI_32)=&font_zune_light_32,F(UI_46)=&font_zune_light_46,F(USER_14)=&font_zune_regular_16,F(USER_16)=&font_zune_regular_17,F(USER_18)=&font_zune_light_18,F(USER_20)=&font_zune_light_21,F(HEADER)=&font_zune_light_32,F(HEADER_SM)=&font_zune_light_24,F(CLOCK)=&font_zune_light_88,F(SAVER_CLOCK)=&font_zune_light_88,F(DATE)=&font_zune_regular_16,F(MUSIC_TITLE)=&font_zune_semibold_22,F(MUSIC_ARTIST)=&font_zune_regular_17,F(MUSIC_ALBUM)=&font_zune_regular_14}, .texture=THEME_TEX_NONE, .title_case=THEME_CASE_LOWER, .kit=&theme_kit_zune },
  { .name="Squash", .font={F(MUSIC_TITLE)=&font_simple_nunito_36,F(MUSIC_ARTIST)=&font_simple_nunito_32,F(MUSIC_ALBUM)=&font_simple_nunito_28,F(QS_ICON_36)=&font_simple_icons_36,F(LAUNCHER_ICON_80)=&font_simple_icons_80,F(UI_26)=&font_simple_nunito_26,F(UI_36)=&font_simple_nunito_36,F(UI_22)=&font_np_nunito_22,F(UI_24)=&font_np_nunito_22,F(UI_28)=&font_np_nunito_30,F(UI_30)=&font_np_nunito_30,F(UI_32)=&font_np_nunito_30,F(HEADER)=&font_np_nunito_30,F(HEADER_SM)=&font_np_nunito_22,F(UI_20)=&font_inter_medium_20}, .texture=THEME_TEX_NONE, .title_case=THEME_CASE_KEEP, .kit=&theme_kit_simple },
  { .name="Null",.font={F(UI_10)=&null_fine_12,F(UI_12)=&null_fine_12,F(UI_14)=&null_fine_16,F(UI_16)=&null_fine_18,F(UI_18)=&null_fine_20,F(UI_20)=&null_fine_24,F(UI_22)=&null_pixel_21,F(UI_24)=&null_pixel_21,F(UI_28)=&null_pixel_28,F(UI_32)=&null_pixel_28,F(UI_36)=&null_pixel_28,F(UI_40)=&null_pixel_28,F(USER_14)=&null_fine_16,F(USER_16)=&null_fine_18,F(USER_18)=&null_fine_20,F(USER_20)=&null_fine_24,F(HEADER)=&null_pixel_21,F(HEADER_SM)=&null_pixel_14,F(CLOCK)=&null_pixel_28,F(SAVER_CLOCK)=&null_pixel_56,F(DATE)=&null_pixel_14},.traits=TRAIT(FLAT_LISTS),.title_case=THEME_CASE_UPPER,.texture=THEME_TEX_NONE,.kit=&theme_kit_null },

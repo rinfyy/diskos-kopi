@@ -3396,9 +3396,18 @@ static lv_font_t s_cjk; /* upstream music-metadata supplement */
 static lv_font_t s_font28, s_font24, s_font22, s_font20, s_font18, s_font16, s_font14;      /* Montserrat, chain heads */
 static lv_font_t s_intl20, s_intl18, s_intl16, s_intl14;      /* intl link (fallback -> Source Han) */
 extern const lv_font_t font_inter_medium_14, font_inter_medium_16, font_inter_bold_18, font_inter_bold_22;
+static void ui_fonts_nt(void){                                        /* NTDisk: its own face heads the chain */
+    /* (again whenever the theme's fonts changed under us: the first call can come before the theme picked its face) */
+    if(!th_nt() || !s_font20.get_glyph_dsc || s_font22.dsc == TF(UI_22)->dsc) return;
+    const lv_font_t *f22 = s_font22.fallback, *f18 = s_font18.fallback, *f16 = s_font16.fallback, *f14 = s_font14.fallback;
+    s_font28 = *TF(UI_28); s_font28.fallback = f22; s_font24 = *TF(UI_24); s_font24.fallback = f22;
+    s_font22 = *TF(UI_22); s_font22.fallback = f22; s_font20 = *TF(UI_20); s_font20.fallback = f22;
+    s_font18 = *TF(UI_18); s_font18.fallback = f18; s_font16 = *TF(UI_16); s_font16.fallback = f16;
+    s_font14 = *TF(UI_14); s_font14.fallback = f14;
+}
 static void ui_fonts_init(void)
 {
-    if(s_font20.get_glyph_dsc) return;   /* once */
+    if(s_font20.get_glyph_dsc){ ui_fonts_nt(); return; }   /* once */
     /* user-text chain below the theme fonts: international (Latin/Greek/Cyrillic) -> Vietnamese -> Thai -> CJK -> Korean */
     static lv_font_t cjkx, vi20, vi18, vi16, vi14, th20, th18, th16, th14;
     cjkx = font_cjk_extra_16; cjkx.fallback = &font_kr_16;
@@ -3425,7 +3434,9 @@ static void ui_fonts_init(void)
     s_font18 = *theme_font_original(18); s_font18.fallback = &p18;
     s_font16 = *theme_font_original(16); s_font16.fallback = &p16;
     s_font14 = *theme_font_original(14); s_font14.fallback = &p14;
+    ui_fonts_nt();
 }
+
 
 /* Public accessor for the fallback-chained text font (Montserrat -> intl -> CJK) so other screens
  * render user text (track/album/artist names) with full glyph coverage. px = 14/16/18/20. */

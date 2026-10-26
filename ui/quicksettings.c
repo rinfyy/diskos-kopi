@@ -543,7 +543,7 @@ void quicksettings_set_art(const void *cover_dsc, const void *backdrop_src)
         lv_obj_remove_flag(g_cover_note, LV_OBJ_FLAG_HIDDEN);
     }
     lv_image_set_src(g_bg, NULL);
-    if(backdrop_src && !th_braun()){ lv_image_set_src(g_bg, backdrop_src); lv_obj_remove_flag(g_bg, LV_OBJ_FLAG_HIDDEN); }   /* Braun: the grille, no album wash */
+    if(backdrop_src && !th_braun() && !th_nt()){ lv_image_set_src(g_bg, backdrop_src); lv_obj_remove_flag(g_bg, LV_OBJ_FLAG_HIDDEN); }   /* Braun: the grille, no album wash */
     else lv_obj_add_flag(g_bg, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_bg_color(g_cover_clip, ui_media_accent(), 0);
     lv_obj_set_style_arc_color(g_prog, th_braun() ? TC(ACCENT_PRIMARY) : ui_media_accent(), LV_PART_INDICATOR);

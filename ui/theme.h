@@ -41,7 +41,10 @@ int         theme_variant(void);                    /* 0 dark, 1 light (the acti
 int         theme_outdoor(void);                    /* 1 = Outdoor mode (light variant + full backlight) this run */
 /* Built-in presets keep their shipped configuration IDs. Retired slots are unavailable.
  * Each active preset has dark/light palettes; Appearance / Outdoor selects the variant. */
-#define THEME_PRESET_COUNT 14 /* saved-ID capacity, including retired holes */
+#define THEME_PRESET_COUNT 15 /* saved-ID capacity, including retired holes */
+#define THEME_PRESET_NTDISK 14 /* fork: NTDisk, a monochrome dot-matrix theme on Disco's machinery (nt_home.c) */
+int th_nt(void);          /* the NTDisk theme is active (th_disco() is true too: it reuses Disco's screens) */
+int th_nt_mix(void);      /* NTDisk style Mix dark / Mix light: light and dark tiles together */
 #define THEME_PRESET_ZUNE 13   /* fork: Zune HD / Metro-inspired round theme */
 int th_zune(void);
 #define THEME_PRESET_STONE 6
@@ -121,6 +124,7 @@ const lv_font_t *theme_font_original(int px); /* stable symbol-bearing faces for
 const lv_font_t *theme_font_base(int px);          /* Montserrat 14/16/18/20: the symbol-carrying base of the
                                                     * international/CJK fallback chains (never themed) */
 lv_color_t  theme_color(theme_color_role_t role);
+lv_color_t  th_nt_music_color(theme_color_role_t role);   /* NTDisk Music: the Mix tone (theme.c) */
 lv_color_t theme_color_mix(lv_color_t foreground,lv_color_t background,uint8_t opacity);
 lv_color_t  theme_color_from_rgb(uint32_t rgb);     /* runtime colours: album accent, user-picked RGB */
 lv_color_t  theme_on_color(lv_color_t bg);          /* readable text on a fill of bg (ON_ACCENT, else black/white) */

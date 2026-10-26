@@ -12,6 +12,10 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"null_custom_on",NULL,"Appearance","Custom main"},
     {"null_custom_off",NULL,"Appearance","Custom detail"},
     {"null_custom_bg",NULL,"Appearance","Custom background"},
+    {"nt_style",NULL,"Appearance","Style"},
+    {"nt_font",NULL,"Appearance","Font"},
+    {"nt_music",NULL,"Music screen","Layout"},
+    {"nt_lyrics",NULL,"Music screen","Lyrics as title"},
     {"disco_palette",NULL,"Appearance","Colour palette"},
     {"disco_sheen",NULL,"Appearance","Rim sheen"},
     {"disco_eq",NULL,"Appearance","Equalizer colours"},
@@ -109,6 +113,13 @@ static int display_variant_hidden(const setting_t *s){
     if(s->cfg_key&&!strncmp(s->cfg_key,"null_custom_",12)&&!(th_null()&&cfg_get_int("null_palette",0)==3))return 1;   /* only with Null > Custom */
     if(!th_disco()&&(s->apply==apply_lock_next||(s->cfg_key&&!strncmp(s->cfg_key,"dlock_",6))))return 1;
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
+    if(s->cfg_key&&!th_nt()&&!strncmp(s->cfg_key,"nt_",3))return 1;
+    if(th_nt()&&(s->apply==apply_grp_musicinfo||s->apply==apply_grp_musicprogress||s->apply==apply_grp_musictext))return 1;                  /* NTDisk's own rows */
+    if(th_nt()&&(s->apply==apply_lock_next||(s->cfg_key&&(!strncmp(s->cfg_key,"dlock_",6)||!strcmp(s->cfg_key,"disco_palette")||
+       !strcmp(s->cfg_key,"disco_sheen")||!strcmp(s->cfg_key,"disco_controls")||!strcmp(s->cfg_key,"disco_title_al")||
+       !strcmp(s->cfg_key,"np_font")||!strcmp(s->cfg_key,"disco_progress")||!strcmp(s->cfg_key,"disco_prog_shape")||
+       !strcmp(s->cfg_key,"disco_times")||!strcmp(s->cfg_key,"disco_clock")||!strcmp(s->cfg_key,"disco_trackno")||
+       !strcmp(s->cfg_key,"theme_auto")))))return 1;   /* Disco's Music/lock styling: NTDisk draws its own */
     if(s->cfg_key&&!th_zune()&&!strncmp(s->cfg_key,"zune_",5))return 1;
     if(s->cfg_key&&!th_zune()&&(!strcmp(s->cfg_key,"zune_nav_hold")||!strncmp(s->cfg_key,"zlock_",6)))return 1;
     static const struct{const char *common,*null_key;} pairs[]={
@@ -131,6 +142,7 @@ static const char *display_disabled_reason(const setting_t *s){
     if(s->apply==apply_open_colorpick && (th_simple()||th_null()))return accent_disabled_reason();
     if(!strcmp(k,"disco_qs_style") && th_zune())return "Zune uses six circular quick actions. Choose and reorder them in Items.";
     if(!strcmp(k,"theme_variant") && th_zune())return "Zune uses a fixed dark appearance. Choose an accent colour instead.";
+    if(!strcmp(k,"theme_variant") && th_nt())return "NTDisk sets light and dark with its Style option (Mix dark, Mix light, Dark, Light).";
     if(!strcmp(k,"theme_variant") && th_null())return "Null uses a fixed dark appearance. Choose a colour scheme instead.";
     if(!strcmp(k,"theme_auto") && !theme_auto_supported())return "Automatic light/dark switching is available in Disco, Ring and Braun.";
     if(!strcmp(k,"null_side"))return "Null keeps its navigation on the right.";
@@ -169,6 +181,7 @@ static const char *display_group_alias(const char *g){
 static const char *settings_page_title(const char *page){
     if(!strcmp(page,"Theme navigation"))return "Navigation";
     if(strcmp(page,"Theme settings"))return page;
+    if(th_nt())return "NTDisk settings";
     if(th_disco())return "Disco settings";
     if(th_simple())return "Squash settings";
     if(th_null())return "Null settings";

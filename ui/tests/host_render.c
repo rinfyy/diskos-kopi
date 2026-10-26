@@ -777,6 +777,10 @@ int main(int argc, char **argv){
     if(getenv("NP_FONT"))cfg_set_int_deferred(atoi(argv[1])==THEME_PRESET_SIMPLE?"simple_track_font":"np_font",atoi(getenv("NP_FONT")));
     if(getenv("NULL_PALETTE"))cfg_set_int_deferred("null_palette",atoi(getenv("NULL_PALETTE")));
     if(getenv("DISCO_PALETTE"))cfg_set_int_deferred("disco_palette",atoi(getenv("DISCO_PALETTE")));
+    if(getenv("NT_STYLE"))cfg_set_int_deferred("nt_style",atoi(getenv("NT_STYLE")));
+    if(getenv("NT_FONT"))cfg_set_int_deferred("nt_font",atoi(getenv("NT_FONT")));
+    if(getenv("NT_MUSIC"))cfg_set_int_deferred("nt_music",atoi(getenv("NT_MUSIC")));
+    if(getenv("NT_LYRICS"))cfg_set_int_deferred("nt_lyrics",atoi(getenv("NT_LYRICS")));
     if(getenv("NULL_CUSTOM")){int a=1,b=10,c=1;sscanf(getenv("NULL_CUSTOM"),"%d,%d,%d",&a,&b,&c);cfg_set_int_deferred("null_custom_on",a);cfg_set_int_deferred("null_custom_off",b);cfg_set_int_deferred("null_custom_bg",c);}
     if(getenv("NULL_BG"))cfg_set_int_deferred("null_music_background",atoi(getenv("NULL_BG")));
     if(getenv("NULL_SIDE"))cfg_set_int_deferred("null_side",atoi(getenv("NULL_SIDE")));
@@ -1402,6 +1406,9 @@ int main(int argc, char **argv){
         if(th_null()&&!strcmp(page,"scr43"))appshelf_open();
         screen_show(scr);
         if(th_zune())zune_status_refresh();
+        if(th_nt()){home_set_clock("10:09","Saturday, 3 October");home_set_weather("\xEF\x83\x82  18\xC2\xB0" "C  Partly cloudy");
+            if(getenv("NT_IDLE"))nt_home_now_playing(NULL,NULL,0);nav_wait(60);
+            if(getenv("NT_LYRWAIT"))for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("APPS_OPEN")){if(getenv("APPS_ALL"))simple_cfg_set_int("apps_show_all",atoi(getenv("APPS_ALL")));appshelf_reload();screen_show(SCR_APPSHELF);nav_wait(60);
             if(getenv("APPS_SCROLL")){lv_obj_t*appshelf_scroller(void);lv_obj_scroll_to_y(appshelf_scroller(),atoi(getenv("APPS_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}
@@ -2436,7 +2443,7 @@ int main(int argc, char **argv){
             int extra=atoi(page+9);
             for(int i=0;i<extra/10;i++){lv_tick_inc(10);lv_timer_handler();}
         }
-        if(scr==SCR_SAVER && !getenv("ZSAVER_IDLE") && !(th_disco() && cfg_get_int("dlock_style",0)==1)){   /* Clock only shows no track */
+        if(scr==SCR_SAVER && !getenv("ZSAVER_IDLE") && !th_nt() && !(th_disco() && cfg_get_int("dlock_style",0)==1)){   /* Clock only shows no track */
             if(th_null()){assert_visible_icon_glyphs(screen_get_root(scr));assert(lv_font_get_line_height(lv_obj_get_style_text_font(find_text(screen_get_root(scr),"10:09"),0))>=70);}
             char saver_title[192];theme_upper(saver_title,sizeof saver_title,st.title);
             lv_obj_t *title=find_text(screen_get_root(scr),th_null()?saver_title:st.title), *artist=find_text(screen_get_root(scr),st.artist);

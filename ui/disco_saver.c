@@ -114,6 +114,7 @@ static void minimal_clock(const char *t){                         /* "10:09" big
     for(int k = 0; k < 2; k++){ lv_label_set_text(g_big[k], hm); lv_label_set_text(g_ampm[k], sfx); }
 }
 void dsaver_create(lv_obj_t *root){
+    if(th_nt()){ g_root = root; g_built_minimal = -1; nt_saver_create(root); return; }   /* NTDisk: its own clock face */
     memset(g_cur, 0, sizeof g_cur);
     g_root = root; g_veil = NULL;
     g_t[0] = g_t[1] = g_wx[0] = g_wx[1] = g_ti[0] = g_ti[1] = g_ar[0] = g_ar[1] = g_status[0] = g_status[1] = NULL;
@@ -176,11 +177,13 @@ void dsaver_set_status(int batt,int charging,int wifi,int bt){
     for(int k=0;k<2;k++)lv_label_set_text(g_status[k],text);
 }
 void dsaver_set_clock(const char *t){
+    if(th_nt()){ nt_saver_clock(t); return; }
     if(g_big[1]){ if(t && strcmp(t, g_last)){ snprintf(g_last, sizeof g_last, "%s", t); minimal_clock(t); } return; }
     if(!g_t[1] || !t || !strcmp(t, g_last)) return;
     strncpy(g_last, t, sizeof g_last - 1); ptext(g_t, t); progress();
 }
 void dsaver_set_weather(const char *s){                           /* "<icon>  14°C  Partly cloudy" -> "<icon> 14°" */
+    if(th_nt()){ nt_saver_weather(s); return; }
     char o[48] = ""; int n = 0;
     while(s && *s == ' ') s++;
     for(int i = 0; s && s[i] && n < (int)sizeof o - 1; i++){
@@ -192,6 +195,7 @@ void dsaver_set_weather(const char *s){                           /* "<icon>  14
     ptext(g_wx, o);
 }
 void dsaver_set_track(const char *title, const char *artist){
+    if(th_nt()){ nt_saver_track(title, artist); return; }
     ptext(g_ti, title ? title : ""); ptext(g_ar, artist ? artist : "");
     if(g_img){ const void *src = saver_art();
         if(th_simple()){extern unsigned ui_art_revision(void);static unsigned revision;static const void*previous;static int seen;unsigned current=ui_art_revision();if(seen&&revision==current&&previous==src){if(screen_current()==SCR_SAVER)progress();return;}seen=1;revision=current;previous=src;}
@@ -202,7 +206,7 @@ void dsaver_set_track(const char *title, const char *artist){
 /* saver.c: the standby screen is about to show. Rebuild it if its Disco lock choices changed since it was built;
  * the clock, weather and track are put back from what was last set. */
 void dsaver_show_sync(void){
-    if(!g_root || !th_disco()) return;
+    if(!g_root || !th_disco() || th_nt()) return;
     if(lock_src() == 1) lockcover_request();
     if(g_built_minimal == lock_minimal() && g_built_src == lock_src()){ cover_ready(); return; }
     char clk[16], wx[192], ti[192], ar[192];
