@@ -641,6 +641,8 @@ void M_SaveSelect(int choice)
     M_StringCopy(saveOldString,savegamestrings[choice], SAVESTRINGSIZE);
     if (!strcmp(savegamestrings[choice], EMPTYSTRING))
 	savegamestrings[choice][0] = 0;
+    if (!savegamestrings[choice][0])     // diskOS: no keyboard - a ready name, Enter saves
+	M_snprintf(savegamestrings[choice], SAVESTRINGSIZE, "SAVE %d", choice + 1);
     saveCharIndex = strlen(savegamestrings[choice]);
 }
 
@@ -2123,3 +2125,36 @@ void M_Init (void)
     //opldev = M_CheckParm("-opldev") > 0;
 }
 
+
+
+//
+// diskOS (doom_disc.c): a tap on the menu, in Doom's own 320x200 picture. The cursor moves to the item under it.
+// Returns the item, -1 when no menu is up, -2 when the tap missed the items. *slider: it has arrows (a thermometer);
+// *already: the cursor was on it before.
+//
+int M_DiskTap(int x, int y, int *slider, int *already)
+{
+    int i;
+    (void) x;
+    if (!menuactive || !currentMenu || messageToPrint)
+        return -1;
+    if (y < currentMenu->y - 3)
+        return -2;
+    i = (y - currentMenu->y + 3) / LINEHEIGHT;
+    if (i < 0 || i >= currentMenu->numitems)
+        return -2;
+    if (currentMenu->menuitems[i].status == -1 && i > 0 && currentMenu->menuitems[i - 1].status == 2)
+        i--;                             // the thermometer under a slider
+    if (currentMenu->menuitems[i].status == -1)
+        return -2;
+    *slider = currentMenu->menuitems[i].status == 2;
+    *already = itemOn == i;
+    itemOn = i;
+    return i;
+}
+
+// diskOS: is there a page to go back to (Backspace) rather than closing the menu (Escape)?
+int M_DiskCanGoBack(void)
+{
+    return menuactive && !messageToPrint && !saveStringEnter && currentMenu && currentMenu->prevMenu != NULL;
+}

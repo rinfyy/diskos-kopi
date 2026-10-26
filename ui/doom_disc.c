@@ -9,13 +9,9 @@
  *     to run), the right half fires (and is Enter / Yes in the menus), USE opens doors and flips switches, and the
  *     row on top has MAP, MENU and the next weapon. Each finger keeps the job of the place it landed.
  *   - The game: your own DOOM.WAD / DOOM2.WAD / DOOM1.WAD (or Plutonia, TNT) from the Doom folder on the SD card,
- *     else Freedoom. Saves and settings in /usr/data/doom. No sound (the player keeps the audio).
+ *     else Freedoom. Saves (.savegame/) and settings in /usr/data/doom. No sound (the player keeps the audio).
  * Leave with Menu > Quit Game (or hold Vol-Up, as for every app). */
 #define _GNU_SOURCE
-#include "doomgeneric.h"
-#include "doomkeys.h"
-#include "doomstat.h"
-#include "games/platform.h"
 #include <ctype.h>
 #include <dirent.h>
 #include <errno.h>
@@ -33,6 +29,34 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
+/* Doom's own key codes, after <linux/input.h>: that header has KEY_ENTER (28), KEY_TAB (15) and others with the same
+ * names but the scan-code values, and Doom wants ASCII (Enter 13, Tab 9) - the clash made menus ignore Enter. */
+#undef KEY_ENTER
+#undef KEY_TAB
+#undef KEY_BACKSPACE
+#undef KEY_PAUSE
+#undef KEY_MINUS
+#undef KEY_CAPSLOCK
+#undef KEY_NUMLOCK
+#undef KEY_HOME
+#undef KEY_END
+#undef KEY_F1
+#undef KEY_F2
+#undef KEY_F3
+#undef KEY_F4
+#undef KEY_F5
+#undef KEY_F6
+#undef KEY_F7
+#undef KEY_F8
+#undef KEY_F9
+#undef KEY_F10
+#undef KEY_F11
+#undef KEY_F12
+#include "doomgeneric.h"
+#include "doomkeys.h"
+#include "doomstat.h"
+#include "games/platform.h"
+_Static_assert(KEY_ENTER == 13 && KEY_TAB == 9, "Doom's key codes");
 
 #define IMG_W 288
 #define IMG_H 216
@@ -80,9 +104,12 @@ static struct { unsigned char key, pressed; } kq[64]; static int kq_r, kq_w;
 static void key(unsigned char k, int down){ int n = (kq_w + 1) % 64; if(n == kq_r) return; kq[kq_w].key = k; kq[kq_w].pressed = (unsigned char)down; kq_w = n; }
 
 /* ---- touch: several fingers, each with the job of where it landed ------------------------------------------------- */
-enum { R_NONE, R_JOY, R_FIRE, R_USE, R_MENU, R_MAP, R_WPN };
+enum { R_NONE, R_JOY, R_FIRE, R_USE, R_MENU, R_MAP, R_WPN, R_MTAP };   /* R_MTAP: a tap on Doom's menu */
+int M_DiskTap(int x, int y, int *slider, int *already);
+int M_DiskCanGoBack(void);
+extern int messageToPrint;
 #define SLOTS 6
-typedef struct { int down, was, x, y, x0, y0, role, rx, ry; } finger_t;
+typedef struct { int down, was, x, y, x0, y0, role, rx, ry, rx2; } finger_t;   /* rx2: the key MENU sent */
 static finger_t fg[SLOTS];
 static int tfd = -1, tmt, txmin, txmax, tymin, tymax, tslot;
 static int joy_up, joy_dn, joy_l, joy_r, joy_run, fire_on, use_on;
@@ -115,13 +142,14 @@ static int role_at(int x, int y){
         int dx = x - BTN[i].x, dy = y - BTN[i].y, r = BTN[i].r + 10;
         if(dx * dx + dy * dy <= r * r) return BTN[i].role;
     }
+    if(menuactive || messageToPrint) return R_MTAP;                         /* the menu is up: touch picks */
     if(y < 72) return R_NONE;
     return x < GW / 2 ? R_JOY : R_FIRE;
 }
 static void finger_down(finger_t *f){
     f->x0 = f->x; f->y0 = f->y; f->role = role_at(f->x, f->y);
     switch(f->role){
-    case R_MENU: key(KEY_ESCAPE, 1); break;
+    case R_MENU: f->rx2 = M_DiskCanGoBack() ? KEY_BACKSPACE : KEY_ESCAPE; key((unsigned char)f->rx2, 1); break;   /* a page back, or close */
     case R_MAP:  key(KEY_TAB, 1); break;
     case R_WPN:  key(KEY_NEXTWPN, 1); break;
     case R_USE:  key(KEY_USE, 1); key(' ', 1); use_on = 1; break;
@@ -129,9 +157,25 @@ static void finger_down(finger_t *f){
     default: break;
     }
 }
+static void tap_key(unsigned char k){ key(k, 1); key(k, 0); }
+static void menu_tap(finger_t *f){                                        /* a tap (not a drag) on the menu */
+    int dx = f->x - f->x0, dy = f->y - f->y0;
+    if(dx * dx + dy * dy > 24 * 24){                                       /* a swipe: up / down moves the cursor */
+        if(abs(dy) > abs(dx)) tap_key(dy < 0 ? KEY_UPARROW : KEY_DOWNARROW);
+        else tap_key(dx < 0 ? KEY_LEFTARROW : KEY_RIGHTARROW);
+        return;
+    }
+    if(messageToPrint){ tap_key('y'); return; }                            /* "are you sure?" - yes (MENU says no) */
+    int mx = (f->x - IMG_X) * DOOMGENERIC_RESX / IMG_W, my = (f->y - IMG_Y) * DOOMGENERIC_RESY / IMG_H;
+    int slider = 0, already = 0, item = M_DiskTap(mx, my, &slider, &already);
+    if(item < 0) return;                                                   /* not on an item */
+    if(slider) tap_key(mx < DOOMGENERIC_RESX / 2 ? KEY_LEFTARROW : KEY_RIGHTARROW);   /* left half less, right half more */
+    else tap_key(KEY_ENTER);
+}
 static void finger_up(finger_t *f){
     switch(f->role){
-    case R_MENU: key(KEY_ESCAPE, 0); break;
+    case R_MTAP: menu_tap(f); break;
+    case R_MENU: key((unsigned char)f->rx2, 0); break;
     case R_MAP:  key(KEY_TAB, 0); break;
     case R_WPN:  key(KEY_NEXTWPN, 0); break;
     case R_USE:  key(KEY_USE, 0); key(' ', 0); use_on = 0; break;
@@ -334,6 +378,32 @@ int doom_main(int argc, char **argv){
         f->down = 1; f->x = f->x0 = 180; f->y = f->y0 = 30; finger_down(f); for(int i = 0; i < 4; i++) doomgeneric_Tick();
         f->down = 0; finger_up(f); for(int i = 0; i < 4; i++) doomgeneric_Tick();
         int closed = !menuactive;
+        /* the menu by touch: open it, tap Options (a new page), Back, tap Quit Game (the question), MENU says no */
+        extern void *currentMenu;
+        #define TAP(px, py) do { f->down = 1; f->x = f->x0 = (px); f->y = f->y0 = (py); finger_down(f); for(int k_ = 0; k_ < 3; k_++) doomgeneric_Tick(); \
+                                 f->down = 0; finger_up(f); for(int k_ = 0; k_ < 6; k_++) doomgeneric_Tick(); } while(0)
+        #define DOOM_Y(dy) (IMG_Y + (dy) * IMG_H / DOOMGENERIC_RESY)
+        TAP(180, 30); void *main_menu = currentMenu;
+        TAP(170, DOOM_Y(64 + 16 + 6)); int options = menuactive && currentMenu != main_menu;
+        TAP(180, 30); int back = menuactive && currentMenu == main_menu;
+        TAP(170, DOOM_Y(64 + 5 * 16 + 6)); int asked = messageToPrint != 0;
+        TAP(180, 30); int kept = !messageToPrint;
+        printf("%s doom menu by touch: options %d, back %d, quit asks %d, no keeps playing %d\n",
+               options && back && asked && kept ? "PASS" : "FAIL", options, back, asked, kept);
+        closed = closed && options && back && asked && kept;
+        /* a new game by touch: New Game > the first episode > Hurt Me Plenty; then save it in the first slot */
+        TAP(180, 30); TAP(170, DOOM_Y(64 + 6));                             /* menu, New Game */
+        TAP(170, DOOM_Y(63 + 6));                                           /* episode 1 */
+        TAP(170, DOOM_Y(63 + 2 * 16 + 6));                                  /* Hurt Me Plenty */
+        for(int i = 0; i < 20; i++) doomgeneric_Tick();
+        int started = !menuactive && gamestate == GS_LEVEL;
+        TAP(180, 30); TAP(170, DOOM_Y(64 + 3 * 16 + 6));                    /* menu, Save Game */
+        TAP(170, DOOM_Y(54 + 6));                                           /* slot 1: named "SAVE 1", Enter saves */
+        TAP(170, DOOM_Y(54 + 6));
+        for(int i = 0; i < 10; i++) doomgeneric_Tick();
+        struct stat sv; int saved = stat(".savegame/doomsav0.dsg", &sv) == 0;
+        printf("%s doom new game and save by touch: started %d, saved %d\n", started && saved ? "PASS" : "FAIL", started, saved);
+        closed = closed && started && saved;
         printf("%s doom touch: walked %d, turned %d, menu opened %d, closed %d\n", walked && turned && menu && closed ? "PASS" : "FAIL", walked, turned, menu, closed);
         fflush(stdout);
         write_ppm(render_path); return walked && turned && menu && closed ? 0 : 1;
