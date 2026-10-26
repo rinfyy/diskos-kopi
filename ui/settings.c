@@ -1927,6 +1927,7 @@ static void settings_disco_list(lv_obj_t *root){          /* styled like the sub
     lv_obj_t *t = lv_label_create(root); lv_label_set_text(t, "Settings");
     lv_obj_set_style_text_font(t, th_simple()?TF(HEADER):TF(UI_20), 0); lv_obj_set_style_text_color(t, th_simple()?TC(ACCENT_PRIMARY):TC(TEXT_PRIMARY), 0);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, th_simple()?24:28);
+    if(th_nt()){ lv_label_set_text(t, "SETTINGS"); lv_obj_align(t, LV_ALIGN_TOP_MID, 6, 34); nt_title_style(t); kit_keep(t); }
     lv_obj_t *list = make_list(root);
     static curvelist_t cl; curvelist_attach(&cl, list, root, 288);
     for(int g = 0; g < N_GROUPS; g++){

@@ -1029,6 +1029,8 @@ lv_obj_t *disco_title(lv_obj_t *root, const char *t){
     lv_obj_align(l, LV_ALIGN_TOP_MID, 0, th_null()?36:28);
     if(th_simple())simple_keep_label(l);
     if(th_null()){char upper[192];theme_upper(upper,sizeof upper,t);lv_label_set_text(l,upper);lv_obj_add_flag(l,THEME_TITLE_STEPPED);kit_keep(l);}
+    if(th_nt()){ char upper[192]; theme_upper(upper, sizeof upper, t); lv_label_set_text(l, upper);   /* NTDisk: the shared title look */
+                 lv_obj_align(l, LV_ALIGN_TOP_MID, 6, 34); nt_title_style(l); kit_keep(l); }
     return l;
 }
 /* the vector icons for other screens (Apps' tiles): "@boom", "@stats", "@vinyl", "@apps" */

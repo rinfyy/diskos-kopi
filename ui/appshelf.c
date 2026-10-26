@@ -12,6 +12,7 @@
 #include "screens.h"
 #include "discshelf.h"
 #include "theme.h"
+#include "theme_kit.h"
 #include "config.h"
 #include "curvelist.h"
 #include "menu_apps.h"
@@ -159,7 +160,7 @@ static lv_obj_t *tile(lv_obj_t *p, int x, int y, int size, const shelf_app_t *a,
         return t;
     }
     lv_obj_t *l = lv_label_create(t);
-    lv_obj_set_style_text_color(l, ui_current_accent(), 0);
+    lv_obj_set_style_text_color(l, th_nt() ? TC(TEXT_PRIMARY) : ui_current_accent(), 0);   /* NTDisk: white icons */
     if(a->vec){ disco_vec_icon(l, a->vec, size * 56 / 100); lv_obj_center(l); return t; }
     char ini[8] = "?"; unsigned char c = (unsigned char)a->name[0]; int k = 1;
     if(c >= 0xF0) k = 4; else if(c >= 0xE0) k = 3; else if(c >= 0xC0) k = 2;
@@ -246,7 +247,8 @@ static void shelf_build(void){
     if(!g_shelf_list) return;
     lv_obj_clean(g_shelf_list); icons_forget(0);
     lv_obj_t *h = block(g_shelf_list, 56);
-    label(h, "Apps", 80, 18, 200, TF(UI_22), TC(TEXT_PRIMARY), LV_TEXT_ALIGN_CENTER);
+    lv_obj_t *ht = label(h, th_nt() ? "APPS" : "Apps", 80, 18, 200, TF(UI_22), TC(TEXT_PRIMARY), LV_TEXT_ALIGN_CENTER);
+    if(th_nt()){ lv_obj_set_y(ht, 26); nt_title_style(ht); kit_keep(ht); }
     if(!g_npin){
         lv_obj_t *b = block(g_shelf_list, 120);
         lv_obj_t *l = lv_label_create(b);

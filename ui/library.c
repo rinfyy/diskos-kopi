@@ -1821,7 +1821,7 @@ static void library_reload_inner(void){
     const char *ttl = (g_view==VIEW_GROUP) ? g_drill : (g_view==VIEW_ARTIST_ALBUMS) ? g_artist : VIEW_TITLE[g_view];
     if(th_zune()){ zpiv_attach(); zlib_layout(); zlib_title((g_view==VIEW_GROUP && g_scope_lvl==2 && g_drill_kind!=1) ? g_scope_album
                                              : (g_view==VIEW_GROUP || g_view==VIEW_ARTIST_ALBUMS) ? ttl : g_view==VIEW_RECENT ? "history" : zlow(tr(ttl))); }
-    else if(g_title) lv_label_set_text(g_title, ttl);
+    else if(g_title){ if(th_nt()) theme_title_text(g_title, ttl); else lv_label_set_text(g_title, ttl); }
     category_refresh();
     az_show(0);
 

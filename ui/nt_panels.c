@@ -350,3 +350,63 @@ void nt_volume_show(int vol){
 }
 int nt_volume_visible(void){ return v_root && !lv_obj_has_flag(v_root, LV_OBJ_FLAG_HIDDEN); }
 lv_obj_t *nt_volume_root(void){ return v_root; }
+
+/* ---- the NTDisk kit: one look for every screen ------------------------------------------------------------------
+ * Titles: small capitals, spaced, quiet grey, with the red dot before them (Song Info, Working mode, Quick Settings
+ * and the menu panel already look like this). Icons in rows: white, not red (red is for what is on / current).
+ * Chevrons quiet. Buttons keep Disco's fine ring. */
+static void nt_dot_cb(lv_event_t *e){
+    lv_obj_t *l = lv_event_get_target(e); lv_layer_t *layer = lv_event_get_layer(e); if(!layer) return;
+    const char *t = lv_label_get_text(l); if(!t || !t[0]) return;
+    lv_area_t a; lv_obj_get_coords(l, &a);
+    lv_point_t sz; lv_text_get_size(&sz, t, lv_obj_get_style_text_font(l, 0), lv_obj_get_style_text_letter_space(l, 0), 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+    int w = lv_area_get_width(&a), x;
+    if(sz.x >= w || lv_obj_get_style_text_align(l, 0) == LV_TEXT_ALIGN_LEFT) x = a.x1 - 13;
+    else x = a.x1 + (w - sz.x) / 2 - 13;
+    int cy = a.y1 + lv_font_get_line_height(lv_obj_get_style_text_font(l, 0)) / 2;
+    lv_draw_rect_dsc_t r; lv_draw_rect_dsc_init(&r); r.radius = LV_RADIUS_CIRCLE; r.bg_color = TC(ACCENT_PRIMARY); r.bg_opa = LV_OPA_COVER;
+    lv_area_t d = { x, cy - 3, x + 5, cy + 2 }; lv_draw_rect(layer, &r, &d);
+}
+static void nt_dot_ext(lv_event_t *e){ lv_event_set_ext_draw_size(e, 16); }
+void nt_title_style(lv_obj_t *l){
+    if(!l || !th_nt()) return;
+    lv_obj_set_style_text_font(l, ui_font_cjk(14), 0);
+    lv_obj_set_style_text_color(l, TC(TEXT_MUTED), 0);
+    lv_obj_set_style_text_letter_space(l, 2, 0);
+    lv_obj_remove_event_cb(l, nt_dot_cb); lv_obj_remove_event_cb(l, nt_dot_ext);   /* once, however often it's styled */
+    lv_obj_add_event_cb(l, nt_dot_cb, LV_EVENT_DRAW_POST, NULL);
+    lv_obj_add_event_cb(l, nt_dot_ext, LV_EVENT_REFR_EXT_DRAW_SIZE, NULL);
+    lv_obj_refresh_ext_draw_size(l);
+}
+static lv_obj_t *nt_header(lv_obj_t *root, const char *title, lv_event_cb_t back_cb){
+    lv_obj_t *t = theme_kit_default.header(root, title, back_cb);
+    lv_obj_t *back = lv_obj_get_child(root, lv_obj_get_index(t) - 1);
+    if(back){                                                              /* a quiet chevron, nearer the title */
+        lv_obj_set_pos(back, 60, 22);
+        lv_obj_t *ic = lv_obj_get_child(back, 0);
+        if(ic){ lv_obj_set_style_text_font(ic, TF(UI_16), 0); lv_obj_set_style_text_color(ic, TC(TEXT_MUTED), 0); }
+    }
+    lv_obj_set_pos(t, 104, 34); lv_obj_set_size(t, 152, 22);
+    nt_title_style(t);
+    return t;
+}
+static void nt_title(lv_obj_t *l, const char *text){ lv_label_set_text(l, text); nt_title_style(l); }
+static int is_icon(const char *s){ return s && (unsigned char)s[0] == 0xEF && strlen(s) <= 4; }
+static void nt_style(lv_obj_t *o, kit_role_t role){
+    extern const theme_kit_t theme_kit_ring;
+    if(theme_kit_ring.style) theme_kit_ring.style(o, role);               /* Disco's fine button rings */
+    if(role == KIT_ROW && lv_obj_get_style_bg_opa(o, 0) < LV_OPA_10 && lv_obj_get_width(o) >= 160){   /* every list row a pill */
+        lv_obj_set_style_radius(o, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(o, TC(SURFACE), 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_color(o, TC(SURFACE_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, LV_STATE_PRESSED);
+        return;
+    }
+    if(!lv_obj_check_type(o, &lv_label_class)) return;
+    const char *s = lv_label_get_text(o);
+    if(role == KIT_TITLE){ nt_title_style(o); return; }
+    if(role == KIT_ROW_CHEVRON){ lv_obj_set_style_text_color(o, TC(TEXT_MUTED), 0); return; }
+    if((role == KIT_ROW_TEXT || role == KIT_ROW_SUB || role == KIT_TEXT) && is_icon(s)
+       && lv_color_eq(lv_obj_get_style_text_color(o, 0), TC(ACCENT_PRIMARY)))
+        lv_obj_set_style_text_color(o, TC(TEXT_PRIMARY), 0);           /* icons white; red stays for "on" */
+}
+const theme_kit_t theme_kit_nt = { .id = "ntdisk", .header = nt_header, .style = nt_style, .title = nt_title };
