@@ -278,22 +278,29 @@ static void fmt_time(long ms, char *o, size_t n){ long s = ms > 0 ? ms / 1000 : 
 #define SPIN_MS   40                  /* 25 frames a second */
 #define SPIN_TURN 14000               /* one turn in 14 s */
 static uint32_t *g_src, *g_out; static uint8_t *g_mask; static int g_sd;   /* d x d */
+static int16_t *g_span;                                                     /* per row: the disc's first and last+1 column */
+static uint32_t g_bgpx = 0xFFFFFFFFu;                                       /* the canvas colour g_out's corners hold */
 static lv_image_dsc_t g_spin_dsc; static int g_angle10, g_src_ok, g_row0;   /* angle in tenths of a degree */
 static unsigned g_src_rev = ~0u; static lv_timer_t *g_spin_tm;
 static uint32_t px_of(lv_color_t c){ return 0xFF000000u | ((uint32_t)c.red << 16) | ((uint32_t)c.green << 8) | c.blue; }
 static void spin_alloc(int d){
     if(g_sd == d) return;
-    free(g_src); free(g_out); free(g_mask);
-    g_src = malloc((size_t)d * d * 4); g_out = calloc((size_t)d * d, 4); g_mask = malloc((size_t)d * d);
-    g_sd = (g_src && g_out && g_mask) ? d : 0;
+    free(g_src); free(g_out); free(g_mask); free(g_span);
+    g_src = malloc((size_t)d * d * 4); g_out = calloc((size_t)d * d, 4); g_mask = malloc((size_t)d * d); g_span = malloc(sizeof *g_span * 2 * (size_t)d);
+    g_sd = (g_src && g_out && g_mask && g_span) ? d : 0;
     if(!g_sd) return;
     float c = d / 2.0f, r = d / 2.0f - 0.5f;
     for(int y = 0; y < d; y++) for(int x = 0; x < d; x++){
         float dx = x + 0.5f - c, dy = y + 0.5f - c, cov = r - sqrtf(dx * dx + dy * dy) + 0.5f;
         g_mask[y * d + x] = cov <= 0 ? 0 : cov >= 1 ? 255 : (uint8_t)(cov * 255);
     }
+    for(int y = 0; y < d; y++){                                            /* each row's span inside the disc */
+        int a = 0, b = d; while(a < d && !g_mask[y * d + a]) a++; while(b > a && !g_mask[y * d + b - 1]) b--;
+        g_span[2 * y] = (int16_t)a; g_span[2 * y + 1] = (int16_t)b;
+    }
     memset(&g_spin_dsc, 0, sizeof g_spin_dsc);
-    g_spin_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_spin_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    g_bgpx = 0xFFFFFFFFu;                                                  /* (a new buffer: refill its corners) */
+    g_spin_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_spin_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888;
     g_spin_dsc.header.w = g_spin_dsc.header.h = (uint32_t)d; g_spin_dsc.header.stride = (uint32_t)d * 4;
     g_spin_dsc.data = (const uint8_t *)g_out; g_spin_dsc.data_size = (uint32_t)d * d * 4;
 }
@@ -415,15 +422,22 @@ static void spin_render(void){
     int d = g_sd; if(!d || !g_src_ok) return;
     float rad = g_angle10 * 0.1f * 0.01745329f;
     int32_t cs = (int32_t)(cosf(rad) * 65536), sn = (int32_t)(sinf(rad) * 65536), c16 = d * 32768;   /* centre, 16.16 */
+    const int64_t K = 32768 - c16;                                         /* xx = x * 65536 + K */
+    /* The picture is opaque (XRGB): the disc is put onto the canvas colour here, once per pixel, so LVGL copies rows
+     * instead of alpha-blending 60 000 pixels a frame. Outside the disc the corners are plain canvas. */
+    uint32_t bgpx = px_of(MC(CANVAS)) & 0xFFFFFF, sfpx = px_of(MC(SURFACE)) & 0xFFFFFF;
+    if(bgpx != g_bgpx){ for(size_t i = 0; i < (size_t)d * d; i++) g_out[i] = 0xFF000000u | bgpx; g_bgpx = bgpx; }
     for(int y = g_row0; y < d; y++){
         int32_t yy = y * 65536 + 32768 - c16;
         uint32_t *o = g_out + (size_t)y * d; const uint8_t *m = g_mask + (size_t)y * d;
-        for(int x = 0; x < d; x++){
-            if(!m[x]){ o[x] = 0; continue; }
-            int32_t xx = x * 65536 + 32768 - c16;
-            /* inverse rotation: where this pixel comes from in the unrotated cover */
-            int32_t sx = (int32_t)(((int64_t)xx * cs + (int64_t)yy * sn) >> 16) + c16 - 32768;
-            int32_t sy = (int32_t)((-(int64_t)xx * sn + (int64_t)yy * cs) >> 16) + c16 - 32768;
+        /* inverse rotation, stepped: sx(x) = x*cs + bx and sy(x) = -x*sn + by exactly (the 16.16 products split cleanly),
+         * so a pixel costs two adds, not two 64-bit multiplies. Only the disc's own span of the row is touched: the
+         * corners outside it were cleared once and stay clear. */
+        int32_t bx = (int32_t)((K * cs + (int64_t)yy * sn) >> 16) + c16 - 32768;
+        int32_t by = (int32_t)((-K * sn + (int64_t)yy * cs) >> 16) + c16 - 32768;
+        int x0 = g_span[2 * y], x1 = g_span[2 * y + 1];
+        int32_t sx = bx + x0 * cs, sy = by - x0 * sn;
+        for(int x = x0; x < x1; x++, sx += cs, sy -= sn){
             int ix = sx >> 16, iy = sy >> 16; unsigned fx = (unsigned)(sx >> 8) & 255, fy = (unsigned)(sy >> 8) & 255;
             if(ix < 0){ ix = 0; fx = 0; } if(iy < 0){ iy = 0; fy = 0; }
             if(ix >= d - 1){ ix = d - 2; fx = 255; } if(iy >= d - 1){ iy = d - 2; fy = 255; }
@@ -432,7 +446,14 @@ static void spin_render(void){
             unsigned w00 = (256 - fx) * (256 - fy) >> 8, w10 = fx * (256 - fy) >> 8, w01 = (256 - fx) * fy >> 8, w11 = fx * fy >> 8;
             uint32_t rb = (((a & 0xFF00FF) * w00 + (b & 0xFF00FF) * w10 + (c & 0xFF00FF) * w01 + (e & 0xFF00FF) * w11) >> 8) & 0xFF00FF;
             uint32_t g = (((a & 0x00FF00) * w00 + (b & 0x00FF00) * w10 + (c & 0x00FF00) * w01 + (e & 0x00FF00) * w11) >> 8) & 0x00FF00;
-            o[x] = (uint32_t)m[x] << 24 | rb | g;
+            uint32_t px = rb | g, al = m[x];
+            if(al != 255){                                                 /* the antialiased rim: onto what lies under it - */
+                uint32_t q = (((sfpx & 0xFF00FF) * al + (bgpx & 0xFF00FF) * (255 - al)) >> 8 & 0xFF00FF) |   /* the CD's own */
+                             (((sfpx & 0x00FF00) * al + (bgpx & 0x00FF00) * (255 - al)) >> 8 & 0x00FF00);     /* face on the canvas */
+                px = (((px & 0xFF00FF) * al + (q & 0xFF00FF) * (255 - al)) >> 8 & 0xFF00FF) |
+                     (((px & 0x00FF00) * al + (q & 0x00FF00) * (255 - al)) >> 8 & 0x00FF00);
+            }
+            o[x] = 0xFF000000u | px;
         }
     }
     if(g_art) lv_obj_invalidate(g_art);
@@ -868,9 +889,9 @@ void nt_lyrics_open(void){
             lv_obj_set_style_bg_grad_dir(f, LV_GRAD_DIR_VER, 0); lv_obj_set_style_bg_opa(f, LV_OPA_COVER, 0);
             lv_obj_set_style_bg_main_opa(f, k ? 0 : 230, 0); lv_obj_set_style_bg_grad_opa(f, k ? 230 : 0, 0);
         }
-        lv_obj_t *h = plain(l_root); lv_obj_set_size(h, 90, 34); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 6);   /* the close handle */
-        lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(h, l_close_cb, LV_EVENT_CLICKED, NULL);
-        lv_obj_t *bar = plain(h); lv_obj_set_size(bar, 36, 4); lv_obj_align(bar, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_t *h = plain(l_root); lv_obj_set_size(h, 140, 52); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 0);   /* the close handle: a big target */
+        lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(h, 10); lv_obj_add_event_cb(h, l_close_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *bar = plain(h); lv_obj_set_size(bar, 36, 4); lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 20);
         lv_obj_set_style_radius(bar, 2, 0); lv_obj_set_style_bg_color(bar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(bar, 160, 0);
         lv_obj_t *dotr = plain(l_root); lv_obj_set_size(dotr, 6, 6); lv_obj_align(dotr, LV_ALIGN_BOTTOM_MID, -46, -30);
         lv_obj_set_style_radius(dotr, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(dotr, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(dotr, LV_OPA_COVER, 0);

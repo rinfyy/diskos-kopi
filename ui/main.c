@@ -1779,6 +1779,7 @@ void app_launch(const char *exec){
     if(!strcmp(exec, APP_BUILTIN_PET)){ pet_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
+    if(!strcmp(exec, APP_BUILTIN_JPCARDS)){ jpcards_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_VIDEOS)){ folderbrowser_open_videos(); return; }
     if(!strcmp(exec, APP_BUILTIN_BROWSER)){ browser_open(NULL); return; }
     if(!strcmp(exec, APP_BUILTIN_SHELF)){discshelf_landing();return;}
@@ -3704,7 +3705,8 @@ int main(int argc, char **argv){
                     fsart_touch = ui_np_fsart_active();   /* latch: overlay owns this whole gesture */
                     sleep_touch = ui_volume_overlay_visible() || ui_np_overlay_active() || azjump_owns_point(p.x,p.y)   /* latch: the sleep popover owns this whole gesture, */
                                || (screen_current()==SCR_EQ_EDITOR && eqcustom_owns_point(p.x, p.y))    /* and so does the EQ dial (fork) */
-                               || (screen_current()==SCR_SPHERE && sphere_ui_owns_point(p.x, p.y));     /* and SongSphere's marker */
+                               || (screen_current()==SCR_SPHERE && sphere_ui_owns_point(p.x, p.y))      /* and SongSphere's marker */
+                               || (th_nt() && nt_lyrics_visible());                                       /* and NTDisk's full-screen lyrics (closed below) */
                     seek_touch = dhome_owns_point(p.x, p.y) || simple_owns_point(p.x,p.y);
                     if(th_null() && null_owns_point(p.x,p.y))sleep_touch=1;   /* fork: Disco Music's seek line / ring (no swipe to Apps) */
                     if(fsart_touch || sleep_touch){
@@ -3784,7 +3786,11 @@ int main(int argc, char **argv){
                         seek_consumed = ui_np_seek_release(lastx, lasty);
                     }
                     int vert = ady > adx*2, horiz = adx > ady*2;
-                    if(lvgl_owned || ui_np_fsart_active()){
+                    if(th_nt() && nt_lyrics_visible()){
+                        /* NTDisk's full-screen lyrics: a sideways swipe anywhere (Back) closes them - Music itself has
+                         * no Back to go to, so the swipe used to do nothing and the lyrics stayed */
+                        if(horiz && adx >= 50 && dt < 900) nt_lyrics_close();
+                    } else if(lvgl_owned || ui_np_fsart_active()){
                         /* swallow - LVGL handled (or will handle) the open/close */
                     } else if(!seek_consumed){
                     if(th_nt() && (disco_mirror() ? sx <= 34 : sx >= 326) && horiz && SIDE_DX(dx)<0 && adx>=40 && dt<700 && disco_nav_edge_open()){

@@ -1427,6 +1427,7 @@ int main(int argc, char **argv){
             if(getenv("APPS_SCROLL")){lv_obj_t*appshelf_scroller(void);lv_obj_scroll_to_y(appshelf_scroller(),atoi(getenv("APPS_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}
         if(getenv("STOPWATCH")){long long ms=0;int run=0,laps=0;sscanf(getenv("STOPWATCH"),"%lld,%d,%d",&ms,&run,&laps);void stopwatch_test_state(int64_t,int,int);
             stopwatch_open();stopwatch_test_state(ms,run,laps);nav_wait(60);}
+        if(getenv("JPC")){void jpcards_test(const char*);jpcards_open();nav_wait(30);jpcards_test(getenv("JPC"));nav_wait(60);}
         if(getenv("CHESS")){void chess_test(const char*,const char*);chess_open();nav_wait(30);chess_test(getenv("CHESS"),getenv("CHESS_TAP"));
             for(int i=0;i<200;i++){lv_tick_inc(10);lv_timer_handler();usleep(2000);}nav_wait(60);}
         if(getenv("BROWSER")){int browser_test_wait(int);browser_open(strcmp(getenv("BROWSER"),"start")?getenv("BROWSER"):NULL);assert(browser_test_wait(8000));nav_wait(80);

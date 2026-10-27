@@ -199,8 +199,6 @@ static void feed_audio(double m){
 }
 
 /* ---- picture and controls ---------------------------------------------------------------------------------------- */
-#define INK 0xF2F2F2
-#define RED 0xD71921
 static void blit(void){
     memset(g_frame, 0, sizeof g_frame);
     if(!have_pic || !pic) return;
@@ -208,6 +206,16 @@ static void blit(void){
     if(fill){ if(a >= 1){ H = GH; W = (int)(GH * a); } else { W = GW; H = (int)(GW / a); } }   /* covers the circle */
     else { H = (int)(360.0 / sqrt(1 + a * a)); W = (int)(H * a); }      /* the biggest that fits inside it */
     int X = (GW - W) / 2, Y = (GH - H) / 2;
+    static int16_t tx[GW], tw[GW]; static int k_fw, k_W, k_X;            /* each column's source, until the shape changes */
+    if(k_fw != fw || k_W != W || k_X != X){
+        for(int x = 0; x < GW; x++){
+            int fx = (int)((int64_t)(x - X) * (fw - 1) * 256 / (W > 1 ? W - 1 : 1)), ix = fx >> 8, wx = fx & 255;
+            if(ix < 0){ ix = 0; wx = 0; }
+            if(ix >= fw - 1){ ix = fw > 1 ? fw - 2 : 0; wx = fw > 1 ? 256 : 0; }
+            tx[x] = (int16_t)ix; tw[x] = (int16_t)wx;
+        }
+        k_fw = fw; k_W = W; k_X = X;
+    }
     for(int y = 0; y < GH; y++){
         int sy = (y - Y); if(sy < 0 || sy >= H) continue;
         int fy = (int)((int64_t)sy * (fh - 1) * 256 / (H > 1 ? H - 1 : 1)), iy = fy >> 8, wy = fy & 255; if(iy >= fh - 1){ iy = fh - 2 < 0 ? 0 : fh - 2; wy = fh > 1 ? 256 : 0; }
@@ -215,7 +223,7 @@ static void blit(void){
         uint32_t *o = g_frame + y * GW;
         int xa = X < 0 ? 0 : X, xb = X + W > GW ? GW : X + W;
         for(int x = xa; x < xb; x++){
-            int fx = (int)((int64_t)(x - X) * (fw - 1) * 256 / (W > 1 ? W - 1 : 1)), ix = fx >> 8, wx = fx & 255; if(ix >= fw - 1){ ix = fw > 1 ? fw - 2 : 0; wx = fw > 1 ? 256 : 0; }
+            int ix = tx[x], wx = tw[x];
             uint32_t p = r0[ix], q = r0[ix + (fw > 1)], u = r1[ix], v = r1[ix + (fw > 1)];
             uint32_t rb = ((((p & 0xFF00FF) * (256 - wx) + (q & 0xFF00FF) * wx) >> 8 & 0xFF00FF) * (256 - wy) +
                            (((u & 0xFF00FF) * (256 - wx) + (v & 0xFF00FF) * wx) >> 8 & 0xFF00FF) * wy) >> 8 & 0xFF00FF;
@@ -225,33 +233,62 @@ static void blit(void){
         }
     }
 }
+/* the theme's colours (mq_ui writes them to /tmp/diskos-app-env before a launch); NTDisk's look if there are none */
+static uint32_t C_TEXT = 0xF2F2F2, C_DIM = 0x8C8C8C, C_ACC = 0xD71921, C_ON = 0xFFFFFF;
+static void load_colours(void){
+    FILE *f = fopen("/tmp/diskos-app-env", "r"); if(!f) return;
+    char line[96]; unsigned v; uint32_t canvas = 0, surf = 0; int have_c = 0;
+    while(fgets(line, sizeof line, f)){
+        if(sscanf(line, "text=%6x", &v) == 1) C_TEXT = v;
+        else if(sscanf(line, "text_muted=%6x", &v) == 1) C_DIM = v;
+        else if(sscanf(line, "accent=%6x", &v) == 1) C_ACC = v;
+        else if(sscanf(line, "on_accent=%6x", &v) == 1) C_ON = v;
+        else if(sscanf(line, "canvas=%6x", &v) == 1){ canvas = v; have_c = 1; }
+        else if(sscanf(line, "surface=%6x", &v) == 1) surf = v;
+    }
+    fclose(f); (void)surf;
+    /* the video is always on black: a light theme's dark text would vanish, so take the light side */
+    if(have_c && ((canvas >> 16 & 255) + (canvas >> 8 & 255) + (canvas & 255)) > 3 * 128){ C_TEXT = 0xF2F2F2; C_DIM = 0x9A9A9A; }
+}
+static void shade(int cx, int cy, int rx, int ry, int amax){          /* darkens an ellipse, fading out to its edge */
+    for(int y = cy - ry; y <= cy + ry; y++) for(int x = cx - rx; x <= cx + rx; x++){
+        float dx = (float)(x - cx) / rx, dy = (float)(y - cy) / ry, d = dx * dx + dy * dy;
+        if(d < 1) gp_put(x, y, 0x000000, (int)(amax * (1 - d) * (1 - d)));
+    }
+}
 static void tri(int cx, int cy, int s, uint32_t c){                    /* a play triangle pointing right */
     for(int y = -s; y <= s; y++){ int w = (s - abs(y)) * 2 * 87 / 100; for(int x = 0; x <= w; x++) gp_put(cx - s * 2 / 3 + x, cy + y, c, 255); }
 }
 static void fmt(double s, char *o, size_t n){ int t = s > 0 ? (int)s : 0; snprintf(o, n, "%d:%02d", t / 60, t % 60); }
+static void line(float x0, float y0, float x1, float y1, uint32_t c){  /* a thin anti-aliased line, by small discs */
+    int n = (int)(fabsf(x1 - x0) + fabsf(y1 - y0)) + 1;
+    for(int i = 0; i <= n; i++){ float t = (float)i / n; gp_disc(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 0.9f, c, 255); }
+}
+/* Quiet controls in the theme's colours: a fine ring with play / pause, -10 and +10 as plain text either side, a thin
+ * close mark at the top, the time below, FIT / FILL under it, and the rim's dots as the progress (the head in the
+ * accent). A soft shade only where the controls are, not over the whole picture. */
 static void draw_controls(void){
     double m = media_now(); if(m < 0) m = 0;
     if(dur > 0 && m > dur) m = dur;
-    /* the progress: 60 dots round the rim, lit up to now, the head red */
-    int lit = dur > 0 ? (int)(60 * m / dur) : 0;
-    for(int i = 0; i < 60; i++){
-        double an = (i * 6.0 - 90) * M_PI / 180;
-        gp_disc((float)(180 + 168 * cos(an)), (float)(180 + 168 * sin(an)), 3, i == lit ? RED : i < lit ? INK : 0x555555, 255);
+    int lit = dur > 0 ? (int)(72 * m / dur) : 0;
+    for(int i = 0; i < 72; i++){
+        double an = (i * 5.0 - 90) * M_PI / 180;
+        gp_disc((float)(180 + 170 * cos(an)), (float)(180 + 170 * sin(an)), i == lit ? 3.0f : 1.8f, i == lit ? C_ACC : i < lit ? C_TEXT : C_DIM, i < lit || i == lit ? 255 : 150);
     }
-    for(int y = 0; y < GH; y++) for(int x = 0; x < GW; x++){            /* a veil so the controls read on any picture */
-        int dx = x - 180, dy = y - 180; if(dx * dx + dy * dy < 160 * 160) gp_put(x, y, 0x000000, 90);
-    }
-    gp_disc(180, 180, 36, paused || ended ? RED : 0x000000, 210); gp_ring(180, 180, 36, 2, INK, 220);
-    if(paused || ended) tri(184, 180, 15, INK); else { gp_rect(168, 165, 8, 30, INK, 2, 255); gp_rect(184, 165, 8, 30, INK, 2, 255); }
-    gp_disc(92, 180, 26, 0x000000, 170); gp_ring(92, 180, 26, 2, INK, 180); gp_text_at(92 - gp_text_w("-10", 2) / 2, 173, "-10", 2, INK);
-    gp_disc(268, 180, 26, 0x000000, 170); gp_ring(268, 180, 26, 2, INK, 180); gp_text_at(268 - gp_text_w("+10", 2) / 2, 173, "+10", 2, INK);
-    gp_disc(180, 62, 20, 0x000000, 170); gp_ring(180, 62, 20, 2, INK, 180);                   /* close */
-    for(int k = -8; k <= 8; k++){ gp_disc(180 + k, 62 + k, 1.6f, INK, 255); gp_disc(180 + k, 62 - k, 1.6f, INK, 255); }
-    char a[16], b[16], t[40]; fmt(m, a, sizeof a); fmt(dur, b, sizeof b); snprintf(t, sizeof t, "%s / %s", a, b);
-    gp_text(250, t, 2, INK);
-    const char *z = fill ? "FIT" : "FILL";
-    gp_rect(180 - 34, 282, 68, 26, 0x000000, 13, 170); gp_text(291, z, 1, INK);
-    if(!ap_ok) gp_text(316, "NO SOUND", 1, 0x999999);
+    shade(180, 190, 120, 70, 150);                                     /* a soft shade behind the controls */
+    int still = paused || ended;
+    gp_disc(180, 180, 30, still ? C_ACC : 0x000000, still ? 255 : 140);
+    if(!still) gp_ring(180, 180, 30, 1.5f, C_TEXT, 230);
+    if(still) tri(184, 180, 12, C_ON);
+    else { gp_rect(170, 168, 6, 24, C_TEXT, 2, 255); gp_rect(184, 168, 6, 24, C_TEXT, 2, 255); }
+    gp_text_at(98 - gp_text_w("-10", 2) / 2, 173, "-10", 2, C_TEXT);
+    gp_text_at(262 - gp_text_w("+10", 2) / 2, 173, "+10", 2, C_TEXT);
+    line(172, 54, 188, 70, C_TEXT); line(188, 54, 172, 70, C_TEXT);     /* close */
+    char a[16], b[16]; fmt(m, a, sizeof a); fmt(dur, b, sizeof b);
+    int wa = gp_text_w(a, 2), wb = gp_text_w(b, 1), x = 180 - (wa + 8 + wb) / 2;
+    gp_text_at(x, 248, a, 2, C_TEXT); gp_text_at(x + wa + 8, 255, b, 1, C_DIM);
+    gp_text(274, fill ? "FIT" : "FILL", 1, C_DIM);
+    if(!ap_ok) gp_text(300, "NO SOUND", 1, C_DIM);
 }
 static void render(void){
     blit();
@@ -271,17 +308,17 @@ static void tap(int x, int y){
     ctrl_until = gp_now() + CTRL_S;
     if(abs(x - 180) < 30 && abs(y - 62) < 30){ quit = 1; return; }
     if(r2 < 44 * 44){ if(ended){ paused = 0; restart_at(0); } else set_paused(!paused); return; }
-    if(abs(x - 92) < 36 && abs(y - 180) < 36){ double t = media_now() - 10; if(paused) pause_pos = t < 0 ? 0 : t; else restart_at(t); return; }
-    if(abs(x - 268) < 36 && abs(y - 180) < 36){ double t = media_now() + 10; if(paused) pause_pos = dur > 0 && t > dur ? dur : t; else restart_at(t); return; }
-    if(abs(x - 180) < 44 && y > 274 && y < 316){ fill = !fill; return; }
+    if(abs(x - 98) < 38 && abs(y - 180) < 38){ double t = media_now() - 10; if(paused) pause_pos = t < 0 ? 0 : t; else restart_at(t); return; }
+    if(abs(x - 262) < 38 && abs(y - 180) < 38){ double t = media_now() + 10; if(paused) pause_pos = dur > 0 && t > dur ? dur : t; else restart_at(t); return; }
+    if(abs(x - 180) < 44 && y > 264 && y < 296){ fill = !fill; return; }
     ctrl_until = 0;                                                    /* anywhere else: hide them */
 }
 static void message(const char *l1, const char *l2, const char *l3){
     memset(g_frame, 0, sizeof g_frame);
-    gp_text(110, "VIDEOS", 3, RED); gp_text(160, l1, 2, INK);
-    if(l2) gp_text(190, l2, 1, 0xB0B0B0);
-    if(l3) gp_text(206, l3, 1, 0xB0B0B0);
-    gp_text(262, "TAP TO LEAVE", 1, 0x808080);
+    gp_text(110, "VIDEOS", 3, C_ACC); gp_text(160, l1, 2, C_TEXT);
+    if(l2) gp_text(190, l2, 1, C_DIM);
+    if(l3) gp_text(206, l3, 1, C_DIM);
+    gp_text(262, "TAP TO LEAVE", 1, C_DIM);
     present();
 }
 
@@ -291,6 +328,7 @@ int video_main(int argc, char **argv){
     const char *out = selftest ? argv[2] : NULL, *path = argc >= 2 ? argv[argc - 1] : NULL;
     FILE *f = fopen("/usr/data/diskos.conf", "r");
     if(f){ char line[256]; int v; while(fgets(line, sizeof line, f)) if(sscanf(line, "screen_rot=%d", &v) == 1 && v >= 0 && v < 4) rot = v; fclose(f); }
+    load_colours();
     signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGHUP, on_sig); signal(SIGPIPE, SIG_IGN);
     if(!selftest){ if(open_fb() < 0){ fprintf(stderr, "video: no display\n"); return 1; } open_touch(); }
     plm = path ? plm_create_with_filename(path) : NULL;

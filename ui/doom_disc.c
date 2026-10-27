@@ -256,12 +256,15 @@ static void draw_controls(void){
 }
 static void scale_frame(void){                                             /* 320 x 200 -> 288 x 216, bilinear */
     const uint32_t *src = DG_ScreenBuffer; const int SW = DOOMGENERIC_RESX, SH = DOOMGENERIC_RESY;
+    static int16_t tx[IMG_W]; static int16_t tw[IMG_W]; static int ready;   /* each column's source: worked out once */
+    if(!ready){ for(int x = 0; x < IMG_W; x++){ int fx = (int)(((int64_t)x * (SW - 1) << 8) / (IMG_W - 1)), ix = fx >> 8, wx = fx & 255;
+                                                if(ix >= SW - 1){ ix = SW - 2; wx = 256; } tx[x] = (int16_t)ix; tw[x] = (int16_t)wx; } ready = 1; }
     for(int y = 0; y < IMG_H; y++){
         int fy = (int)(((int64_t)y * (SH - 1) << 8) / (IMG_H - 1)), iy = fy >> 8, wy = fy & 255; if(iy >= SH - 1){ iy = SH - 2; wy = 256; }
         uint32_t *o = g_frame + (IMG_Y + y) * GW + IMG_X;
         const uint32_t *r0 = src + iy * SW, *r1 = r0 + SW;
         for(int x = 0; x < IMG_W; x++){
-            int fx = (int)(((int64_t)x * (SW - 1) << 8) / (IMG_W - 1)), ix = fx >> 8, wx = fx & 255; if(ix >= SW - 1){ ix = SW - 2; wx = 256; }
+            int ix = tx[x], wx = tw[x];
             uint32_t a = r0[ix], b = r0[ix + 1], c = r1[ix], d = r1[ix + 1];
             uint32_t rb = ((((a & 0xFF00FF) * (256 - wx) + (b & 0xFF00FF) * wx) >> 8 & 0xFF00FF) * (256 - wy) +
                            (((c & 0xFF00FF) * (256 - wx) + (d & 0xFF00FF) * wx) >> 8 & 0xFF00FF) * wy) >> 8 & 0xFF00FF;
@@ -273,7 +276,10 @@ static void scale_frame(void){                                             /* 32
 }
 void DG_DrawFrame(void){
     read_touch();
-    memset(g_frame, 0, sizeof g_frame);
+    static int cleared;                                                    /* the picture's place is always fully painted: */
+    if(!cleared){ memset(g_frame, 0, sizeof g_frame); cleared = 1; }       /* only the controls' rows need clearing */
+    else { memset(g_frame, 0, sizeof(uint32_t) * GW * IMG_Y); memset(g_frame + (IMG_Y + IMG_H) * GW, 0, sizeof(uint32_t) * GW * (GH - IMG_Y - IMG_H));
+           for(int y = IMG_Y; y < IMG_Y + IMG_H; y++){ memset(g_frame + y * GW, 0, sizeof(uint32_t) * IMG_X); memset(g_frame + y * GW + IMG_X + IMG_W, 0, sizeof(uint32_t) * (GW - IMG_X - IMG_W)); } }
     scale_frame(); draw_controls();
     present();
 }
