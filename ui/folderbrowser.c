@@ -67,7 +67,7 @@
 #define FB_K_IMAGE 3     /* JPEG / PNG / BMP / GIF: opens the picture viewer (imageview.c) */
 #define FB_K_OTHER 4     /* any other file: listed so the folder shows everything; hold for file operations */
 #define FB_K_DOC   5     /* .html .htm .txt .md: opens in the Browser as a readable page */
-#define FB_K_VIDEO 6     /* .mpg .mpeg (MPEG-1): plays full screen (video_disc.c); other video files say how to convert */
+#define FB_K_VIDEO 6     /* .mp4 .mkv .mov .avi .webm .mpg ...: plays full screen (video_disc.c) */
 typedef struct {
     char name[FB_NAMELEN];
     int  is_dir;
@@ -90,6 +90,12 @@ static int fb_has_ext(const char *name, const char *ext){
 static int fb_is_image(const char *name){
     return name[0] != '.' && (fb_has_ext(name, ".jpg") || fb_has_ext(name, ".jpeg") || fb_has_ext(name, ".png")
                               || fb_has_ext(name, ".bmp") || fb_has_ext(name, ".gif"));
+}
+static int fb_is_video(const char *name){
+    static const char *const V[] = { ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".mpg", ".mpeg", ".m1v", ".ts", ".m2ts", ".vob" };
+    if(name[0] == '.') return 0;                                    /* (macOS "._" files and the like) */
+    for(unsigned i = 0; i < sizeof V / sizeof V[0]; i++) if(fb_has_ext(name, V[i])) return 1;
+    return 0;
 }
 static int fb_is_audio(const char *name){
     /* mirror scanner.c is_audio()'s music set (SONG-resident, folder-playable). .m4b is intentionally
@@ -164,7 +170,7 @@ static void fb_scan_leased(void){
                     kind = (pn > 0 && pn < (int)sizeof ip && mdb_subtrack_count(ip, 1) > 0) ? FB_K_ISO : FB_K_OTHER;
                 } else if(fb_is_image(nm)) kind = FB_K_IMAGE;
                 else if(fb_has_ext(nm, ".html") || fb_has_ext(nm, ".htm") || fb_has_ext(nm, ".txt") || fb_has_ext(nm, ".md")) kind = FB_K_DOC;
-                else if(fb_has_ext(nm, ".mpg") || fb_has_ext(nm, ".mpeg") || fb_has_ext(nm, ".m1v")) kind = FB_K_VIDEO;
+                else if(fb_is_video(nm)) kind = FB_K_VIDEO;
                 else kind = FB_K_OTHER;
             }
 
@@ -495,9 +501,6 @@ static void fb_row_cb(lv_event_t *e){
                                    if(n > 0 && n < (int)sizeof full) browser_open(full); else ui_toast("Path too long"); }
     else if(en->kind == FB_K_VIDEO){ char full[FB_MAXPATH]; int n = snprintf(full, sizeof full, "%s/%s", g_dir, en->name);
                                      if(n > 0 && n < (int)sizeof full) video_play(full); else ui_toast("Path too long"); }
-    else if(en->kind == FB_K_OTHER && (fb_has_ext(en->name, ".mp4") || fb_has_ext(en->name, ".mkv") || fb_has_ext(en->name, ".mov") ||
-                                       fb_has_ext(en->name, ".avi") || fb_has_ext(en->name, ".webm") || fb_has_ext(en->name, ".m4v")))
-        ui_toast("Videos play as .mpg (MPEG-1) - convert it first, see the README");
     else if(en->kind == FB_K_OTHER) ui_toast("Can't open this type of file - hold for file actions");
     else if(en->kind == FB_K_ISO) fb_play_iso(en->name);
     else if(en->kind == FB_K_CUE) fb_play_sheet(en->name);

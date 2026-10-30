@@ -91,3 +91,5 @@ shelf.conf
 
 # Generated Zune font instances (source lives in ui/fonts/zune).
 .fontcache/
+/ui/vendor/ffmpeg-build/
+/ui/vendor/ffmpeg-src/

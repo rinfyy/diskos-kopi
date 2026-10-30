@@ -26,7 +26,7 @@ CFLAGS += $(EXTRA_CFLAGS)
 # --gc-sections drops every provably-unreferenced function/data section at link (unused LVGL fonts,
 # widgets, draw backends, sqlite fns) with NO behavior change - only unreachable symbols are removed.
 LDFLAGS := -static -pthread -Wl,--gc-sections
-LDLIBS  := -lm -lrt
+LDLIBS  = $(FFMPEG_LIBS) -lm -lrt
 
 LVGL_SRCS := $(sort $(shell find $(LVGL)/src -name "*.c"))   # sorted: find order depends on the disk, link order must not
 APP_SRCS  := $(APP)/font_simple_nunito_28.c $(APP)/font_simple_nunito_32.c $(APP)/font_simple_nunito_38.c  $(APP)/font_simple_icons_36.c  $(APP)/font_simple_icons_80.c  $(APP)/font_simple_nunito_26.c $(APP)/font_simple_nunito_36.c  $(APP)/simple_theme.c  $(APP)/null_theme.c $(APP)/null_menu.c $(APP)/null_transport_icons.c $(APP)/font_null.c $(APP)/font_null_music.c $(APP)/font_null_jersey.c $(APP)/battery.c $(APP)/eqpreset.c $(APP)/eqprofile.c $(APP)/main.c $(APP)/sdio.c $(APP)/font_cjk_extra_16.c $(APP)/playstate.c $(APP)/fb_pan.c $(APP)/ipc.c $(APP)/ui.c $(APP)/art.c $(APP)/screenmgr.c $(APP)/home.c $(APP)/home_shortcuts.c $(APP)/library.c $(APP)/musicdb.c $(APP)/settings.c $(APP)/power.c $(APP)/controls.c $(APP)/config.c $(APP)/anim.c $(APP)/search.c $(APP)/saver.c $(APP)/quicksettings.c $(APP)/songinfo.c $(APP)/npmenus.c $(APP)/eqcustom.c $(APP)/apps.c $(APP)/menu_apps.c $(APP)/appshelf.c $(APP)/sphere_ui.c $(APP)/songsphere/sphere.c $(APP)/songsphere/ssdb.c $(APP)/stats.c $(APP)/kbinput.c $(APP)/playlistview.c $(APP)/folderbrowser.c $(APP)/imageview.c $(APP)/stopwatch.c $(APP)/chess.c $(APP)/chess_engine.c $(APP)/font_chess_26.c $(APP)/jpcards.c $(APP)/jpcards_data.c $(APP)/font_jp_64.c $(APP)/font_jp_30.c $(APP)/font_jp_18.c $(APP)/browser.c $(APP)/htmltext.c $(APP)/multipick.c $(APP)/crashlog.c $(APP)/books.c $(APP)/upnext.c $(APP)/datetime.c $(APP)/i18n.c $(APP)/i18n_tables.c $(APP)/theme.c $(APP)/theme_kit.c $(APP)/theme_defs.c $(APP)/font_hifi_ui_24.c $(APP)/theme_kits.c $(APP)/theme_validate.c $(APP)/theme_store.c $(APP)/artcache.c $(APP)/colorpick.c $(APP)/albumwall.c $(APP)/debug_ui.c $(APP)/modes.c $(APP)/ma.c $(APP)/roulette.c $(APP)/roulette_spin.c $(APP)/roulette_backend.c $(APP)/azjump.c $(APP)/sendspin.c $(APP)/wifi.c $(APP)/bt.c $(APP)/weather.c $(APP)/lyrics.c $(APP)/netart.c $(APP)/toast.c $(APP)/lastfm.c $(APP)/lastfm_ui.c $(APP)/splash.c $(APP)/md5.c $(APP)/scanner.c $(APP)/system.c $(APP)/ota.c $(APP)/fwcaps.c $(APP)/eqrate.c $(APP)/command_spawn.c $(APP)/ui_instance.c $(APP)/font_icons_28.c $(APP)/font_icons_20.c $(APP)/font_weather16.c $(APP)/font_weather20.c $(APP)/font_intl_14.c $(APP)/font_intl_16.c $(APP)/font_intl_18.c $(APP)/font_intl_20.c $(APP)/font_thai_14.c $(APP)/font_thai_16.c $(APP)/font_thai_18.c $(APP)/font_thai_20.c $(APP)/font_viet_14.c $(APP)/font_viet_16.c $(APP)/font_viet_18.c $(APP)/font_viet_20.c $(APP)/font_kr_16.c $(APP)/font_mono_14.c $(APP)/font_mono_16.c $(APP)/font_mono_18.c $(APP)/font_mono_20.c $(APP)/font_mono_24.c $(APP)/font_mono_bold_12.c $(APP)/font_dot_18.c $(APP)/font_dot_28.c $(APP)/font_stone_clk_64.c $(APP)/font_stone_ui_12.c $(APP)/font_stone_ui_14.c $(APP)/font_stone_ui_16.c $(APP)/font_stone_ui_18.c $(APP)/font_stone_ui_20.c $(APP)/font_stone_ui_24.c $(APP)/font_splash_light_26.c $(APP)/font_splash_bold_26.c $(APP)/font_splash_disco_72.c $(APP)/orbit.c $(APP)/tagfix.c $(APP)/vlist.c $(APP)/fileops.c $(APP)/usage.c $(APP)/queue.c $(APP)/braun.c $(APP)/braun_home.c $(APP)/braun_saver.c $(APP)/disco_saver.c $(APP)/lockcover.c $(APP)/disco.c $(APP)/onboarding.c $(APP)/disco_home.c $(APP)/nt_home.c $(APP)/nt_panels.c $(APP)/font_inter_medium_12.c $(APP)/font_inter_medium_14.c $(APP)/font_inter_medium_16.c $(APP)/font_inter_bold_16.c $(APP)/font_inter_bold_18.c $(APP)/font_inter_bold_22.c $(APP)/font_inter_bold_44.c $(APP)/font_inter_medium_20.c $(APP)/songmenu.c $(APP)/curvelist.c $(APP)/imm_record.c $(APP)/artdec_inproc.c $(APP)/font_theme_20.c $(APP)/font_theme_24.c $(APP)/npfont.c $(APP)/font_squash_inter_28.c $(APP)/font_squash_inter_32.c $(APP)/font_squash_inter_36.c $(APP)/font_np_inter_30.c $(APP)/font_np_inter_22.c $(APP)/font_np_nunito_30.c $(APP)/font_np_nunito_22.c
@@ -52,9 +52,14 @@ DOOM_SRCS := $(sort $(wildcard $(APP)/vendor/doomgeneric/*.c)) $(APP)/doom_disc.
 DOOM_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 \
   -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE -I$(APP)/vendor/doomgeneric -I$(APP) $(REPRO_FLAGS) $(FP_FLAGS)
 OBJCOPY_LOCAL ?= llvm-objcopy
-# Videos (video_disc.c): MPEG-1 playback with pl_mpeg (MIT, ui/vendor/pl_mpeg), run as `mq_ui --video <file>`; its sound
+# Videos (video_disc.c): run as `mq_ui --video <file>`; its sound
 # goes to the Disc's own AirPlay receiver (ss_airplay.h, as MA Sendspin does). A full-screen child: no LVGL.
-VIDEO_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -I$(APP) $(REPRO_FLAGS) $(FP_FLAGS)
+# Its decoding is a small static FFmpeg 7.1 (LGPL; H.264 / H.265 / MPEG-4 / VP9 ..., MP4 / MKV / AVI ...) built by
+# tools/build_ffmpeg.sh for this compiler into vendor/ffmpeg-build (from FFMPEG_SRC, fetched at tag n7.1 if absent).
+FFMPEG_SRC ?= $(APP)/vendor/ffmpeg-src
+FFMPEG := $(APP)/vendor/ffmpeg-build
+FFMPEG_LIBS := $(FFMPEG)/lib/libavformat.a $(FFMPEG)/lib/libavcodec.a $(FFMPEG)/lib/libswscale.a $(FFMPEG)/lib/libswresample.a $(FFMPEG)/lib/libavutil.a
+VIDEO_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -I$(APP) -I$(FFMPEG)/include $(REPRO_FLAGS) $(FP_FLAGS)
 OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/doom_all.o $(APP)/video_disc.o $(APP)/vendor/smb-build/libsmb2.a
 
 # Every on-screen colour is a theme role (theme.h); theme.c is the only place RGB becomes a colour. The link fails if
@@ -129,7 +134,11 @@ $(APP)/snake/snake.o: $(APP)/snake/snake.c
 	$(CC) $(SNAKE_FLAGS) -c $< -o $@
 $(APP)/games/%.o: $(APP)/games/%.c $(APP)/games/platform.h
 	$(CC) $(SNAKE_FLAGS) -c $< -o $@
-$(APP)/video_disc.o: $(APP)/video_disc.c $(APP)/vendor/pl_mpeg/pl_mpeg.h $(APP)/ss_airplay.h $(APP)/games/platform.h
+$(FFMPEG)/lib/libavcodec.a:
+	[ -d $(FFMPEG_SRC) ] || git clone -q --depth 1 --branch n7.1 https://github.com/FFmpeg/FFmpeg.git $(FFMPEG_SRC)
+	sh $(APP)/tools/build_ffmpeg.sh $(abspath $(FFMPEG_SRC)) $(abspath $(FFMPEG)) $(CROSS)
+$(FFMPEG_LIBS): $(FFMPEG)/lib/libavcodec.a
+$(APP)/video_disc.o: $(APP)/video_disc.c $(APP)/ss_airplay.h $(APP)/games/platform.h $(FFMPEG)/lib/libavcodec.a
 	$(CC) $(VIDEO_FLAGS) -c $< -o $@
 %.doom.o: %.c
 	$(CC) $(DOOM_FLAGS) -c $< -o $@

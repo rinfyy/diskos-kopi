@@ -1,22 +1,32 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2026 diskOS contributors */
-/* video_disc.c - Videos: plays an MPEG-1 file (.mpg / .mpeg, MPEG-1 video + MP2 sound) full screen, run as
- * `mq_ui --video <file>`, a child that owns the screen until it exits, like the games.
+/* video_disc.c - Videos: plays a video file full screen, run as `mq_ui --video <file>`, a child that owns the screen
+ * until it exits, like the games.
  *
- * Decoding is pl_mpeg (vendor/pl_mpeg, MIT): MPEG-1 is light enough for the player's CPU in software, which phone
- * formats (H.264 / H.265) are not - Files says how to convert. The picture keeps its shape inside the round screen
- * (Fit) or fills the circle (Fill). Sound: mq_player owns the audio hardware, so - like MA Sendspin - the sound goes to
- * the Disc's own AirPlay receiver (ss_airplay.h); mq_ui switches the Disc to AirPlay for the video and back after.
- * The receiver holds about two seconds of sound, so the picture runs that far behind what's sent and stays in step.
- * Without the receiver the video plays silently.
+ * Files: MP4 / MOV / M4V, MKV / WebM, AVI and MPEG (.mpg / .ts), with H.264, H.265, MPEG-4 (Xvid / DivX), MPEG-1/2,
+ * VP8 / VP9 pictures and AAC, MP3, AC-3, Opus, Vorbis, FLAC or MP2 sound - decoded by a small static FFmpeg build
+ * (tools/build_ffmpeg.sh, LGPL), on the player's own CPU with no hardware help. Each picture is scaled straight to
+ * the size it's shown at, and when decoding falls behind the clock it first skips H.264 / H.265's smoothing filter,
+ * then pictures nothing depends on, rather than letting the picture drift; large videos (720p and up) are best
+ * shrunk first - Files' README has the one-line command. Phone videos turned on their side are shown upright.
+ * The picture keeps its shape inside the round screen (Fit) or fills the circle (Fill).
+ *
+ * Sound: mq_player owns the audio hardware, so - like MA Sendspin - the sound goes to the Disc's own AirPlay receiver
+ * (ss_airplay.h); mq_ui switches the Disc to AirPlay for the video and back after. The receiver holds about two
+ * seconds of sound, so the picture runs that far behind what's sent and stays in step. Without the receiver the
+ * video plays silently.
  *
  * Touch: a tap shows the controls for 4 s - play / pause in the middle, back / forward 10 s either side, Fit / Fill,
  * close at the top - and the rim's dots are the progress (tap the rim to jump there). Vol-Up held also closes. */
 #define _GNU_SOURCE
 #include "ss_airplay.h"
-#define PL_MPEG_IMPLEMENTATION
-#include "vendor/pl_mpeg/pl_mpeg.h"
 #include "games/platform.h"
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/display.h>
+#include <libavutil/imgutils.h>
+#include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 #include <ctype.h>
 #include <linux/fb.h>
 #include <linux/input.h>
@@ -108,49 +118,141 @@ static void read_touch(void){
 }
 
 /* ---- playback ---------------------------------------------------------------------------------------------------- */
-static plm_t *plm;
 static double dur, t0, pause_pos, ctrl_until, lat;
 static int paused, ended, fill, fw, fh, have_pic, dirty = 1;
-static uint32_t *pic;                                  /* the last frame shown, XRGB */
-static plm_frame_t *next_frame;
-static plm_samples_t *next_samples;
+static uint32_t *pic;                                  /* the last frame shown, XRGB, at the size it's shown */
 static airplay_t ap; static int ap_ok;
 #define FIFO (44100 * 4)
 static int16_t fifo[FIFO * 2]; static int f_r, f_w; static double f_time; static int f_started;   /* f_time: media time of f_r */
-static double rs_phase; static float rs_prev[2]; static int sr = 44100;
 
 static double media_now(void){ return paused ? pause_pos : gp_now() - t0; }
 static int fifo_len(void){ return (f_w - f_r + FIFO) % FIFO; }
-static void fifo_put(float l, float r){
-    if(fifo_len() >= FIFO - 1) return;
-    int L = (int)lrintf(l * 32767.0f), R = (int)lrintf(r * 32767.0f);
-    if(L > 32767) L = 32767;
-    if(L < -32768) L = -32768;
-    if(R > 32767) R = 32767;
-    if(R < -32768) R = -32768;
-    fifo[2 * f_w] = (int16_t)L; fifo[2 * f_w + 1] = (int16_t)R; f_w = (f_w + 1) % FIFO;
+
+/* the file: FFmpeg demuxes into two packet queues, so the picture and the sound (which runs ~2.4 s ahead of it) are
+ * each decoded when they're wanted */
+typedef struct pq { AVPacket *p[1024]; int r, n; } pq_t;
+static AVFormatContext *fx; static AVCodecContext *vc, *ac; static int vs = -1, as = -1, src_eof, v_eof, a_eof;
+static struct SwsContext *sws; static SwrContext *swr; static AVFrame *vfn, *vfc, *af; static pq_t vq, aq;   /* vfn: the next picture; vfc: the one to show */
+static int rot90;                                      /* a quarter turn to stand the picture up (1 clockwise, 2 anticlockwise) */
+static uint32_t *tmp;                                  /* the scaled picture before a quarter turn */
+static double v_next = -1, last_vpts = -1;             /* the decoded picture waiting for its time, and its time */
+static int v_have, drop_level;                         /* 0 everything, 1 no deblocking, 2 also no unreferenced pictures */
+
+static void pq_clear(pq_t *q){ while(q->n){ av_packet_free(&q->p[q->r]); q->r = (q->r + 1) % 1024; q->n--; } q->r = 0; }
+static int pq_push(pq_t *q, AVPacket *pk){ if(q->n >= 1024) return 0; q->p[(q->r + q->n) % 1024] = pk; q->n++; return 1; }
+static AVPacket *pq_pop(pq_t *q){ if(!q->n) return NULL; AVPacket *pk = q->p[q->r]; q->r = (q->r + 1) % 1024; q->n--; return pk; }
+static int demux_one(void){                                           /* read a packet into its queue; 0 at the end */
+    if(src_eof) return 0;
+    AVPacket *pk = av_packet_alloc(); if(!pk) return 0;
+    if(av_read_frame(fx, pk) < 0){ av_packet_free(&pk); src_eof = 1; return 0; }
+    if(pk->stream_index == vs && pq_push(&vq, pk)) return 1;
+    if(pk->stream_index == as && ac && ap_ok && pq_push(&aq, pk)) return 1;
+    av_packet_free(&pk); return 1;
 }
-static void push_samples(plm_samples_t *s){                    /* resampled to 44.1 kHz (linear) */
-    if(!f_started){ f_time = s->time; f_started = 1; rs_phase = 0; rs_prev[0] = s->interleaved[0]; rs_prev[1] = s->interleaved[1]; }
-    if(sr == 44100){ for(unsigned i = 0; i < s->count; i++) fifo_put(s->interleaved[2 * i], s->interleaved[2 * i + 1]); return; }
-    double step = (double)sr / 44100.0;
-    /* rs_phase: position between rs_prev (0) and this block's first sample (1), counted in source samples */
+static double ts_of(AVFrame *f, int st){
+    int64_t t = f->best_effort_timestamp; if(t == AV_NOPTS_VALUE) t = f->pts;
+    if(t == AV_NOPTS_VALUE) return -1;
+    double s0 = fx->streams[st]->start_time != AV_NOPTS_VALUE ? fx->streams[st]->start_time * av_q2d(fx->streams[st]->time_base) : 0;
+    return t * av_q2d(fx->streams[st]->time_base) - s0;
+}
+static int video_decode_next(void){                                   /* one more picture into vf; 0 when there are none */
     for(;;){
-        double p = rs_phase; int i = (int)floor(p); double fr = p - i;
-        if(i >= (int)s->count) break;
-        float a0, a1, b0, b1;
-        if(i == 0){ a0 = rs_prev[0]; a1 = rs_prev[1]; } else { a0 = s->interleaved[2 * (i - 1)]; a1 = s->interleaved[2 * (i - 1) + 1]; }
-        b0 = s->interleaved[2 * i]; b1 = s->interleaved[2 * i + 1];
-        fifo_put(a0 + (b0 - a0) * (float)fr, a1 + (b1 - a1) * (float)fr);
-        rs_phase += step;
+        int r = avcodec_receive_frame(vc, vfn);
+        if(r == 0){ double t = ts_of(vfn, vs); if(t < 0) t = last_vpts < 0 ? 0 : last_vpts + 1.0 / 30; last_vpts = t; v_next = t; return 1; }
+        if(r == AVERROR_EOF){ v_eof = 1; return 0; }
+        if(r != AVERROR(EAGAIN)) return 0;
+        AVPacket *pk;
+        while(!(pk = pq_pop(&vq))) if(!demux_one()) break;
+        if(pk){ avcodec_send_packet(vc, pk); av_packet_free(&pk); } else avcodec_send_packet(vc, NULL);   /* the end: drain */
     }
-    rs_phase -= s->count; rs_prev[0] = s->interleaved[2 * (s->count - 1)]; rs_prev[1] = s->interleaved[2 * (s->count - 1) + 1];
+}
+static void set_drop(int lv){
+    if(lv == drop_level) return;
+    drop_level = lv;
+    vc->skip_loop_filter = lv >= 1 ? AVDISCARD_ALL : AVDISCARD_DEFAULT;
+    vc->skip_frame = lv >= 2 ? AVDISCARD_NONREF : AVDISCARD_DEFAULT;
+}
+static void show_frame(AVFrame *vf){                                  /* a picture -> pic, scaled to its shown size */
+    int w = vf->width, h = vf->height;
+    double sar = vf->sample_aspect_ratio.num > 0 && vf->sample_aspect_ratio.den > 0 ? av_q2d(vf->sample_aspect_ratio) : 1;
+    double a = w * sar / h; if(rot90) a = 1 / a;                        /* the shape it's seen in */
+    int W, H;
+    if(fill){ if(a >= 1){ H = GH; W = (int)(GH * a); } else { W = GW; H = (int)(GW / a); } }
+    else { H = (int)(360.0 / sqrt(1 + a * a)); W = (int)(H * a); }
+    if(W < 2) W = 2;
+    if(H < 2) H = 2;
+    int dw = rot90 ? H : W, dh = rot90 ? W : H;                         /* what swscale makes, before the turn */
+    sws = sws_getCachedContext(sws, w, h, vf->format, dw, dh, AV_PIX_FMT_BGRA, SWS_FAST_BILINEAR, NULL, NULL, NULL);
+    if(!sws) return;
+    if(!pic || fw != W || fh != H){ free(pic); free(tmp); fw = W; fh = H; pic = malloc((size_t)W * H * 4); tmp = rot90 ? malloc((size_t)W * H * 4) : NULL; }
+    if(!pic || (rot90 && !tmp)) return;
+    uint8_t *dst[4] = { (uint8_t *)(rot90 ? tmp : pic), NULL, NULL, NULL }; int ls[4] = { dw * 4, 0, 0, 0 };
+    sws_scale(sws, (const uint8_t *const *)vf->data, vf->linesize, 0, h, dst, ls);
+    if(rot90 == 1)      for(int y = 0; y < dh; y++) for(int x = 0; x < dw; x++) pic[x * W + (W - 1 - y)] = tmp[y * dw + x];   /* clockwise */
+    else if(rot90 == 2) for(int y = 0; y < dh; y++) for(int x = 0; x < dw; x++) pic[(H - 1 - x) * W + y] = tmp[y * dw + x];   /* anticlockwise */
+    have_pic = 1; dirty = 1;
+}
+static double shown_t = -1;                                          /* the time of the picture on screen */
+static void decode_video(double m){
+    /* the newest picture that's due is the one shown; any due before it are decoded (later ones need them) but not
+     * scaled. Falling behind turns on the decoder's shortcuts; keeping up for a while turns them off again. */
+    static int bad, good;
+    int cand = 0, skipped = 0; double cand_t = 0;
+    for(;;){
+        if(!v_have){ if(!video_decode_next()){ if(v_eof) ended = !cand; break; } v_have = 1; }
+        if(v_next > m) break;
+        if(cand) skipped++;
+        AVFrame *t = vfc; vfc = vfn; vfn = t; cand = 1; cand_t = v_next; v_have = 0;
+    }
+    if(!cand) return;
+    show_frame(vfc); shown_t = cand_t;
+    if(skipped || m - cand_t > 0.12){ good = 0; if(++bad >= 3){ bad = 0; if(drop_level < 2) set_drop(drop_level + 1); } }
+    else { bad = 0; if(++good >= 90){ good = 0; if(drop_level > 0) set_drop(drop_level - 1); } }
+}
+static void push_audio(void){                                         /* decoded sound -> 44.1 kHz stereo -> the fifo */
+    int out_max = av_rescale_rnd(swr_get_delay(swr, ac->sample_rate) + af->nb_samples, 44100, ac->sample_rate, AV_ROUND_UP);
+    if(out_max <= 0) return;
+    int16_t *buf = malloc((size_t)out_max * 4); if(!buf) return;
+    uint8_t *o[1] = { (uint8_t *)buf };
+    int n = swr_convert(swr, o, out_max, (const uint8_t **)af->extended_data, af->nb_samples);
+    if(n > 0 && !f_started){ double t = ts_of(af, as); f_time = t < 0 ? 0 : t; f_started = 1; }
+    for(int i = 0; i < n && fifo_len() < FIFO - 1; i++){ fifo[2 * f_w] = buf[2 * i]; fifo[2 * f_w + 1] = buf[2 * i + 1]; f_w = (f_w + 1) % FIFO; }
+    free(buf);
+}
+static void feed_audio(double m){
+    if(!ap_ok || !ac) return;
+    /* keep the sound decoded up to ~0.4 s past what's due to be sent */
+    while(!a_eof && (!f_started || f_time + (double)fifo_len() / 44100.0 <= m + lat + 0.4)){
+        int r = avcodec_receive_frame(ac, af);
+        if(r == 0){
+            double t = ts_of(af, as);
+            if(t >= 0 && t + (double)af->nb_samples / ac->sample_rate < m - 0.2 && !f_started) continue;   /* behind (after a seek) */
+            push_audio(); continue;
+        }
+        if(r == AVERROR_EOF){ a_eof = 1; break; }
+        AVPacket *pk;
+        while(!(pk = pq_pop(&aq))) if(!demux_one()) break;
+        if(pk){ avcodec_send_packet(ac, pk); av_packet_free(&pk); } else { avcodec_send_packet(ac, NULL); }
+        if(!pk && src_eof && !aq.n){ /* drained below */ }
+        if(vq.n >= 1000) break;                                        /* (a file with sound far from its picture) */
+    }
+    double now = gp_now();
+    while(fifo_len() >= AP_FRAMES){                                     /* each packet goes when its time minus the hold-back comes */
+        double play_at = t0 + f_time;
+        if(play_at - lat > now + 0.05) break;
+        int16_t pk2[AP_FRAMES * 2];
+        for(int i = 0; i < AP_FRAMES; i++){ pk2[2 * i] = fifo[2 * f_r]; pk2[2 * i + 1] = fifo[2 * f_r + 1]; f_r = (f_r + 1) % FIFO; }
+        if(play_at > now - 0.2) ap_send(&ap, pk2);                      /* too late to hear: skip it */
+        f_time += (double)AP_FRAMES / 44100.0;
+    }
 }
 static void restart_at(double t){                              /* after a seek, a resume or the start */
     if(t < 0) t = 0;
     if(dur > 0 && t > dur - 0.5) t = dur > 0.5 ? dur - 0.5 : 0;
-    if(t > 0.05) plm_seek(plm, t, 0); else plm_rewind(plm);
-    next_frame = NULL; next_samples = NULL;
+    av_seek_frame(fx, -1, (int64_t)(t * AV_TIME_BASE) + (fx->start_time != AV_NOPTS_VALUE ? fx->start_time : 0), AVSEEK_FLAG_BACKWARD);
+    pq_clear(&vq); pq_clear(&aq); src_eof = v_eof = a_eof = 0; v_have = 0; last_vpts = -1;
+    avcodec_flush_buffers(vc); if(ac) avcodec_flush_buffers(ac);
+    if(swr) swr_init(swr);
     f_r = f_w = 0; f_started = 0;
     if(ap_ok) ap_flush(&ap);
     t0 = gp_now() + lat - t; ended = 0; dirty = 1;
@@ -161,40 +263,35 @@ static void set_paused(int p){
     else { paused = 0; restart_at(pause_pos); }          /* resume = start again from here (the receiver dropped what it held) */
     dirty = 1;
 }
-static void decode_video(double m){
-    plm_frame_t *show = NULL;
-    for(;;){
-        if(!next_frame){ next_frame = plm_decode_video(plm); if(!next_frame){ if(plm_has_ended(plm)) ended = 1; break; } }
-        if(next_frame->time > m) break;
-        show = next_frame; next_frame = NULL;
-        if(!show) break;
-        /* convert only the newest frame that's due (a late one is dropped, not shown late) */
-        plm_frame_t *peek = plm_decode_video(plm);
-        if(peek && peek->time <= m){ next_frame = peek; continue; }
-        if(!pic || (int)show->width != fw || (int)show->height != fh){
-            free(pic); fw = (int)show->width; fh = (int)show->height; pic = malloc((size_t)fw * fh * 4);
-        }
-        if(pic){ plm_frame_to_bgra(show, (uint8_t *)pic, fw * 4); have_pic = 1; dirty = 1; }
-        next_frame = peek;
-        break;
+static int open_file(const char *path){
+    if(avformat_open_input(&fx, path, NULL, NULL) < 0) return -1;
+    fx->max_analyze_duration = 2 * AV_TIME_BASE;
+    if(avformat_find_stream_info(fx, NULL) < 0) return -1;
+    const AVCodec *vcd = NULL, *acd = NULL;
+    vs = av_find_best_stream(fx, AVMEDIA_TYPE_VIDEO, -1, -1, &vcd, 0);
+    if(vs < 0 || !vcd) return -2;                                       /* no picture we can decode */
+    vc = avcodec_alloc_context3(vcd); if(!vc) return -1;
+    avcodec_parameters_to_context(vc, fx->streams[vs]->codecpar);
+    vc->thread_count = 0; vc->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;   /* every core the player has */
+    if(avcodec_open2(vc, vcd, NULL) < 0) return -2;
+    as = av_find_best_stream(fx, AVMEDIA_TYPE_AUDIO, -1, vs, &acd, 0);
+    if(as >= 0 && acd){
+        ac = avcodec_alloc_context3(acd);
+        if(ac){ avcodec_parameters_to_context(ac, fx->streams[as]->codecpar); if(avcodec_open2(ac, acd, NULL) < 0) avcodec_free_context(&ac); }
     }
+    for(unsigned i = 0; i < fx->nb_streams; i++) if((int)i != vs && (int)i != as) fx->streams[i]->discard = AVDISCARD_ALL;
+    /* a phone held upright stores the picture on its side with a turn to apply */
+    const AVPacketSideData *sd = av_packet_side_data_get(fx->streams[vs]->codecpar->coded_side_data, fx->streams[vs]->codecpar->nb_coded_side_data, AV_PKT_DATA_DISPLAYMATRIX);
+    if(sd && sd->size >= 9 * 4){ double r = av_display_rotation_get((const int32_t *)sd->data); if(fabs(r + 90) < 10) rot90 = 1; else if(fabs(r - 90) < 10) rot90 = 2; }
+    dur = fx->duration != AV_NOPTS_VALUE ? fx->duration / (double)AV_TIME_BASE : 0;
+    vfn = av_frame_alloc(); vfc = av_frame_alloc(); af = av_frame_alloc();
+    return vfn && vfc && af ? 0 : -1;
 }
-static void feed_audio(double m){
-    if(!ap_ok) return;
-    while(!next_samples || next_samples->time <= m + lat + 0.4){      /* keep ~0.4 s decoded ahead of what's sent */
-        if(next_samples){ push_samples(next_samples); next_samples = NULL; }
-        next_samples = plm_decode_audio(plm);
-        if(!next_samples) break;
-        if(next_samples->time < m - 0.2){ next_samples = NULL; continue; }   /* behind (after a seek): skip */
-    }
-    double now = gp_now();
-    while(fifo_len() >= AP_FRAMES){                                     /* each packet goes when its time minus the hold-back comes */
-        double play_at = t0 + f_time;
-        if(play_at - lat > now + 0.05) break;
-        int16_t pkt[AP_FRAMES * 2];
-        for(int i = 0; i < AP_FRAMES; i++){ pkt[2 * i] = fifo[2 * f_r]; pkt[2 * i + 1] = fifo[2 * f_r + 1]; f_r = (f_r + 1) % FIFO; }
-        if(play_at > now - 0.2) ap_send(&ap, pkt);                      /* too late to hear: skip it */
-        f_time += (double)AP_FRAMES / 44100.0;
+static void audio_setup(void){
+    if(!ac) return;
+    AVChannelLayout st = AV_CHANNEL_LAYOUT_STEREO;
+    if(swr_alloc_set_opts2(&swr, &st, AV_SAMPLE_FMT_S16, 44100, &ac->ch_layout, ac->sample_fmt, ac->sample_rate, 0, NULL) < 0 || swr_init(swr) < 0){
+        swr_free(&swr); avcodec_free_context(&ac);
     }
 }
 
@@ -330,43 +427,42 @@ int video_main(int argc, char **argv){
     if(f){ char line[256]; int v; while(fgets(line, sizeof line, f)) if(sscanf(line, "screen_rot=%d", &v) == 1 && v >= 0 && v < 4) rot = v; fclose(f); }
     load_colours();
     signal(SIGINT, on_sig); signal(SIGTERM, on_sig); signal(SIGHUP, on_sig); signal(SIGPIPE, SIG_IGN);
+    av_log_set_level(AV_LOG_ERROR);
     if(!selftest){ if(open_fb() < 0){ fprintf(stderr, "video: no display\n"); return 1; } open_touch(); }
-    plm = path ? plm_create_with_filename(path) : NULL;
-    if(plm && !plm_probe(plm, 5000 * 1024)){ plm_destroy(plm); plm = NULL; }
-    if(!plm || !plm_get_num_video_streams(plm)){
-        fprintf(stderr, "video: can't play %s\n", path ? path : "(none)");
+    if(!selftest) message("OPENING", NULL, NULL);
+    int r = path ? open_file(path) : -1;
+    if(r < 0){
+        fprintf(stderr, "video: can't play %s (%d)\n", path ? path : "(none)", r);
         if(selftest){ printf("FAIL video: can't open %s\n", path ? path : ""); return 1; }
-        message("CAN'T PLAY THIS FILE", "VIDEOS PLAYS MPEG-1 .MPG FILES", "CONVERT OTHERS FIRST - SEE THE README");
+        if(r == -2) message("CAN'T PLAY THIS VIDEO", "ITS PICTURE FORMAT ISN'T SUPPORTED", "H.264 / H.265 / MPEG-4 / VP9 PLAY");
+        else message("CAN'T OPEN THIS FILE", "IT MAY BE DAMAGED OR NOT A VIDEO", NULL);
         double t = gp_now(); int was = 0;
         while(!quit && gp_now() - t < 60){ usleep(30000); int w = t_down; read_touch(); if(was && !t_down) break; was = w || t_down; }
         return 0;
     }
-    dur = plm_get_duration(plm);
-    sr = plm_get_samplerate(plm); if(sr <= 0) sr = 44100;
-    int audio = plm_get_num_audio_streams(plm) > 0 && !selftest;
-    plm_set_audio_enabled(plm, audio);
-    plm_set_loop(plm, 0);
-    if(audio){                                                          /* the receiver comes up just after the mode switch */
+    if(ac && !selftest){                                                /* the receiver comes up just after the mode switch */
         message("STARTING SOUND", NULL, NULL);
         ap.port = 5000; ap.rtsp = ap.aud = ap.ctl = ap.tim = -1; ap.vol_db = 0;
         for(int i = 0; i < 16 && !quit; i++){ if(ap_open(&ap) == 0){ ap_ok = 1; break; } usleep(500000); }
         if(!ap_ok) fprintf(stderr, "video: no AirPlay receiver - playing without sound\n");
     }
+    if(ap_ok) audio_setup();
     lat = ap_ok ? LAT_S : 0.15;
-    printf("video: %s, %dx%d, %.1f s, %d Hz, sound %s\n", path, plm_get_width(plm), plm_get_height(plm), dur, sr, ap_ok ? "on" : "off"); fflush(stdout);
+    printf("video: %s, %s %dx%d%s, %.1f s, sound %s%s\n", path, vc->codec->name, vc->width, vc->height, rot90 ? " (turned)" : "", dur,
+           ac ? ac->codec->name : "none", ap_ok ? " via AirPlay" : " off"); fflush(stdout);
     restart_at(0); ctrl_until = gp_now() + 2.5;
-    if(selftest){                                                       /* decode 3 s of picture as fast as it goes, seek, render */
-        int frames = 0; double t_end = 3.0;
-        t0 = 0; paused = 0;
-        for(double m = 0; m < t_end; m += 1.0 / 30){ decode_video(m); if(have_pic) frames++; }
-        int jumped = 0; restart_at(dur > 8 ? 6 : dur / 2); t0 = 0;
-        double want = dur > 8 ? 6 : dur / 2; next_frame = plm_decode_video(plm);
-        if(next_frame && fabs(next_frame->time - want) < 2.5) jumped = 1;
-        decode_video(want); paused = 1; pause_pos = want;
+    if(selftest){                                                       /* decode 3 s of film as fast as it goes, seek, render */
+        double film = dur > 3.5 ? 3.0 : dur * 0.8, w0 = gp_now();
+        t0 = 0; paused = 0; int shown = 0;
+        for(double m = 0; m < film; m += 1.0 / 30){ int h = have_pic; have_pic = 0; decode_video(m); if(have_pic) shown++; else have_pic = h; }
+        double secs = gp_now() - w0;
+        double want = dur > 8 ? 6 : dur / 2; restart_at(want); t0 = 0;
+        decode_video(want + 0.05); paused = 1; pause_pos = want;
+        int jumped = fabs(shown_t - want) < 0.25;
         render(); write_ppm(out);
-        int ok = frames > 30 && have_pic && jumped;
-        printf("%s video: %dx%d, %.1f s, %d frames decoded in 3 s of film, seek to %.0f s %s\n", ok ? "PASS" : "FAIL",
-               fw, fh, dur, frames, want, jumped ? "ok" : "missed");
+        int ok = shown >= (int)(film * 20) && have_pic && jumped;
+        printf("%s video: %s %dx%d -> %dx%d, %.1f s, %d pictures for %.1f s of film in %.2f s (%.0f fps), seek to %.0f s %s, drop level %d\n",
+               ok ? "PASS" : "FAIL", vc->codec->name, vc->width, vc->height, fw, fh, dur, shown, film, secs, shown / (secs > 0 ? secs : 1), want, jumped ? "ok" : "missed", drop_level);
         return ok ? 0 : 1;
     }
     double last_draw = 0;
@@ -382,6 +478,9 @@ int video_main(int argc, char **argv){
         poll(&p, tfd >= 0 ? 1 : 0, paused ? 40 : 4);
     }
     if(ap_ok) ap_close(&ap);
-    plm_destroy(plm); free(pic);
+    pq_clear(&vq); pq_clear(&aq);
+    avcodec_free_context(&vc); avcodec_free_context(&ac); avformat_close_input(&fx);
+    sws_freeContext(sws); swr_free(&swr); av_frame_free(&vfn); av_frame_free(&vfc); av_frame_free(&af);
+    free(pic); free(tmp);
     return 0;
 }
