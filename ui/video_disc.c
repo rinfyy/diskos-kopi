@@ -24,6 +24,7 @@
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/display.h>
+#include <libavutil/pixdesc.h>
 #include <libavutil/imgutils.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
@@ -263,8 +264,16 @@ static void set_paused(int p){
     else { paused = 0; restart_at(pause_pos); }          /* resume = start again from here (the receiver dropped what it held) */
     dirty = 1;
 }
+static int big_w, big_h;                                                   /* a video too big to play: its size */
 static int open_file(const char *path){
     if(avformat_open_input(&fx, path, NULL, NULL) < 0) return -1;
+    /* (MP4 and MKV give the picture size in their header: a 4K film is turned away here, before probing it decodes a
+     * frame - which alone can take more memory than the Disc has) */
+    { int ok = 0, w = 0, h = 0;
+      for(unsigned i = 0; i < fx->nb_streams; i++){ AVCodecParameters *c = fx->streams[i]->codecpar;
+          if(c->codec_type != AVMEDIA_TYPE_VIDEO || (fx->streams[i]->disposition & AV_DISPOSITION_ATTACHED_PIC)) continue;
+          if(!c->width || (long)c->width * c->height <= 1920L * 1088) ok = 1; else { w = c->width; h = c->height; } }
+      if(!ok && w){ big_w = w; big_h = h; return -3; } }
     fx->max_analyze_duration = 2 * AV_TIME_BASE;
     if(avformat_find_stream_info(fx, NULL) < 0) return -1;
     const AVCodec *vcd = NULL, *acd = NULL;
@@ -272,7 +281,17 @@ static int open_file(const char *path){
     if(vs < 0 || !vcd) return -2;                                       /* no picture we can decode */
     vc = avcodec_alloc_context3(vcd); if(!vc) return -1;
     avcodec_parameters_to_context(vc, fx->streams[vs]->codecpar);
-    vc->thread_count = 0; vc->thread_type = FF_THREAD_FRAME | FF_THREAD_SLICE;   /* every core the player has */
+    /* Too big for the Disc? A 4K picture is 12 MB a frame (24 MB at 10 bits) and H.264 / H.265 keep up to 16 of them,
+     * which is more memory than the whole player has - the decoder would be killed half-way through opening. Work
+     * out what the decoder will hold and compare it with the memory that's free, and say so instead. */
+    { long px = (long)vc->width * vc->height, bpp = vc->bits_per_raw_sample > 8 || strstr(av_get_pix_fmt_name(vc->pix_fmt) ? av_get_pix_fmt_name(vc->pix_fmt) : "", "10") ? 3 : 2;
+      long need = px * bpp / 2 * 3 / 2 * 10 / 1024;                          /* KiB: ~10 pictures in flight, 4:2:0 */
+      long avail = 0; FILE *m = fopen("/proc/meminfo", "r");
+      if(m){ char l[128]; while(fgets(l, sizeof l, m)) if(sscanf(l, "MemAvailable: %ld", &avail) == 1) break; fclose(m); }
+      big_w = vc->width; big_h = vc->height;
+      if(px > 1920L * 1088 || (avail > 0 && need > avail * 3 / 4)) return -3; }
+    vc->thread_count = 2; vc->thread_type = FF_THREAD_SLICE | FF_THREAD_FRAME;   /* the Disc's two cores, no more frames in flight */
+    if((long)vc->width * vc->height > 1280L * 720){ vc->skip_loop_filter = AVDISCARD_ALL; vc->flags2 |= AV_CODEC_FLAG2_FAST; }   /* 1080p: every shortcut */
     if(avcodec_open2(vc, vcd, NULL) < 0) return -2;
     as = av_find_best_stream(fx, AVMEDIA_TYPE_AUDIO, -1, vs, &acd, 0);
     if(as >= 0 && acd){
@@ -434,7 +453,9 @@ int video_main(int argc, char **argv){
     if(r < 0){
         fprintf(stderr, "video: can't play %s (%d)\n", path ? path : "(none)", r);
         if(selftest){ printf("FAIL video: can't open %s\n", path ? path : ""); return 1; }
-        if(r == -2) message("CAN'T PLAY THIS VIDEO", "ITS PICTURE FORMAT ISN'T SUPPORTED", "H.264 / H.265 / MPEG-4 / VP9 PLAY");
+        char sz[48]; snprintf(sz, sizeof sz, "%dx%d: MORE THAN THE DISC CAN DECODE", big_w, big_h);
+        if(r == -3) message("THIS VIDEO IS TOO BIG", sz, "MAKE A SMALL COPY: SEE VIDEOS/README");
+        else if(r == -2) message("CAN'T PLAY THIS VIDEO", "ITS PICTURE FORMAT ISN'T SUPPORTED", "H.264 / H.265 / MPEG-4 / VP9 PLAY");
         else message("CAN'T OPEN THIS FILE", "IT MAY BE DAMAGED OR NOT A VIDEO", NULL);
         double t = gp_now(); int was = 0;
         while(!quit && gp_now() - t < 60){ usleep(30000); int w = t_down; read_touch(); if(was && !t_down) break; was = w || t_down; }

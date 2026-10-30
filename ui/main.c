@@ -1921,7 +1921,7 @@ static void app_run(const char *exec){
     if(!gpio_gpb_pin()) ui_toast("Note: hold-to-close is unavailable");   /* no silent loss of the escape */
     unlink(APP_REQ_PATH);                            /* only what this run asks for */
     app_env_write();
-    int failed = 0, killed = 0;
+    int failed = 0, killed = 0, status = 0;
     pid_t pid = -1;
     char *argv[] = { (char *)exec, NULL, NULL, NULL };
     if(builtin){ argv[0] = "/proc/self/exe"; argv[1] = !strcmp(exec, APP_BUILTIN_SNAKE) ? "--snake" : !strcmp(exec, APP_BUILTIN_ECHO) ? "--echo" :
@@ -1932,7 +1932,6 @@ static void app_run(const char *exec){
                  if(!strcmp(exec, APP_BUILTIN_VIDEO)) argv[2] = g_app_arg; }   /* the running image, never a path that can change */
     if(command_spawn(&pid, argv) != 0) pid = -1;   /* posix_spawn in its own group (a fork() of the UI can fail for memory) */
     if(pid > 0){
-        int status = 0;
         int grouped = 1;                            /* POSIX_SPAWN_SETPGROUP: the group exists before exec */
         /* The app owns the screen until it exits, so a HUNG app used to own it forever - taking Settings,
          * and with it the user's route back to the stock firmware, for the rest of the session. Wait
@@ -1968,6 +1967,11 @@ static void app_run(const char *exec){
     lv_refr_now(NULL);
     if(killed)      ui_toast("App force-closed");
     else if(failed) ui_toast("Launch failed");
+    else if(pid > 0 && WIFSIGNALED(status)){                         /* it died (out of memory, most often): say so */
+        fprintf(stderr, "app %s ended by signal %d\n", exec, WTERMSIG(status));
+        ui_toast(!strcmp(exec, APP_BUILTIN_VIDEO) ? (WTERMSIG(status) == SIGKILL ? "Video stopped: not enough memory for it" : "Video player stopped unexpectedly")
+                                                   : "App stopped unexpectedly");
+    }
     else app_request_take();                         /* play / keep what the app picked */
 }
 

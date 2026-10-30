@@ -545,7 +545,7 @@ void disco_open_np_immersive(void);
 static void ov_mark(int i, int on){
     lv_obj_t *b = g_ov_btn[i], *l = lv_obj_get_child(b, 0);
     if(th_idisc()){                                                      /* iDisc: glass; a lit tile turns pink-red (a loved song) */
-        if(on){ lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_NONE, 0); lv_obj_set_style_bg_color(b, TC(DECOR_2), 0);
+        if(on){ idisc_solid(b); lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_NONE, 0); lv_obj_set_style_bg_color(b, TC(DECOR_2), 0);
                 lv_obj_set_style_bg_main_opa(b, LV_OPA_COVER, 0); lv_obj_set_style_border_width(b, 0, 0); }
         else idisc_glass(b, 23);
         for(uint32_t k = 0; k < lv_obj_get_child_count(b); k++){ lv_obj_t *c = lv_obj_get_child(b, (int32_t)k);

@@ -467,7 +467,7 @@ static void ntmodes_paint(int slot, int pending){
         int id = th_idisc();                                              /* iDisc: glass tiles, the active one blue */
         lv_color_t bg = on ? (id ? TC(ACCENT_PRIMARY) : TC(TEXT_PRIMARY)) : TC(SURFACE), fg = on ? (id ? TC(ON_ACCENT) : TC(CANVAS)) : TC(TEXT_PRIMARY);
         if(id && !on) idisc_glass(t, 24);
-        else { lv_obj_set_style_bg_grad_dir(t, LV_GRAD_DIR_NONE, 0); lv_obj_set_style_bg_main_opa(t, LV_OPA_COVER, 0); lv_obj_set_style_border_width(t, 0, 0); }
+        else { if(id) idisc_solid(t); lv_obj_set_style_bg_grad_dir(t, LV_GRAD_DIR_NONE, 0); lv_obj_set_style_bg_main_opa(t, LV_OPA_COVER, 0); lv_obj_set_style_border_width(t, 0, 0); }
         lv_obj_set_style_bg_color(t, bg, 0);
         lv_obj_set_style_text_color(g_nt_ic[i], fg, 0); lv_obj_set_style_text_color(g_nt_nm[i], fg, 0);
         lv_obj_set_style_text_color(g_nt_sub[i], on ? fg : TC(TEXT_MUTED), 0);

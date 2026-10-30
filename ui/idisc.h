@@ -5,7 +5,9 @@
 #define IDISC_H
 #include "lvgl/lvgl.h"
 void idisc_wallpaper(lv_obj_t *o);            /* the soft wallpaper (Clear glass) or the plain canvas (Tinted) */
-void idisc_glass(lv_obj_t *o, int radius);    /* a glass surface */
+void idisc_glass(lv_obj_t *o, int radius);    /* a glass surface over the wallpaper */
+void idisc_glass_on(lv_obj_t *o, int radius, const lv_image_dsc_t *src);   /* ... over another screen-aligned 360 px frost (NULL: none) */
+void idisc_solid(lv_obj_t *o);                /* a glass surface made solid (a lit tile): no frost under it */
 void idisc_title_style(lv_obj_t *l);
 void idisc_home_create(lv_obj_t *root); void idisc_home_now_playing(const char *title, const char *artist, int playing);
 void idisc_home_art_changed(void); void idisc_home_lyrics_apply(int on); void idisc_home_clock(const char *t);

@@ -648,7 +648,7 @@ static void ntm_create(void){
     lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
     if(th_idisc()){                                                      /* iDisc: a glass sheet, a plain bold title */
         lv_label_set_text(t, "Menu"); idisc_title_style(t); lv_obj_set_pos(t, in + 22, 28); lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN);
-        idisc_wallpaper(g_ntm); lv_obj_set_style_border_color(g_ntm, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(g_ntm, theme_variant() ? 200 : 50, 0);
+        idisc_glass(g_ntm, 40); lv_obj_set_style_border_side(g_ntm, LV_BORDER_SIDE_FULL, 0);   /* a frosted sheet */
     }
     g_ntm_list = ntm_plain(g_ntm); lv_obj_set_size(g_ntm_list, 216, 236); lv_obj_set_pos(g_ntm_list, in, 62);
     lv_obj_add_flag(g_ntm_list, LV_OBJ_FLAG_SCROLLABLE); lv_obj_set_scroll_dir(g_ntm_list, LV_DIR_VER);

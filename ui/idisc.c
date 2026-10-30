@@ -27,6 +27,7 @@
 #include "ipc.h"
 #include "idisc.h"
 #include <ctype.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,42 +56,154 @@ static void show(lv_obj_t *o, int on){ if(!o) return; if(on) lv_obj_remove_flag(
 static void fmt_time(long ms, char *o, size_t n){ long s = ms > 0 ? ms / 1000 : 0; snprintf(o, n, "%ld:%02ld", s / 60, s % 60); }
 static int dark(void){ return !theme_variant(); }
 
-/* The wallpaper: a soft vertical wash - blue at the top into indigo (dark) or pink (light) at the bottom, both
- * mostly the canvas colour. Tinted glass: the plain canvas. */
+/* ---- liquid glass ---------------------------------------------------------------------------------------------------
+ * The wallpaper is a picture made once at start: soft-edged discs of the system hues (blue, indigo, teal, pink) over
+ * a dark (or pale) wash. Its "frost" is the same picture box-blurred three times and lightened. A glass surface
+ * draws, under its own tint, the part of the frost that lies behind it - so the shapes behind a row show through
+ * it blurred and brighter, and move behind it as it scrolls - then a bright rim along its top edge (the light
+ * catching it) and a faint dark one along the bottom. Only a copy of pixels per surface, no blur while drawing.
+ * Tinted glass: none of this, solid rows on the plain canvas. */
+#define WN 360
+static uint32_t *g_wall, *g_frost; static lv_image_dsc_t g_wall_dsc, g_frost_dsc; static int g_wall_ok;
+static void dsc_init(lv_image_dsc_t *d, uint32_t *px){
+    memset(d, 0, sizeof *d);
+    d->header.magic = LV_IMAGE_HEADER_MAGIC; d->header.cf = LV_COLOR_FORMAT_XRGB8888;
+    d->header.w = d->header.h = WN; d->header.stride = WN * 4; d->data = (const uint8_t *)px; d->data_size = WN * WN * 4;
+}
+static float smoothstep(float a, float b, float x){ float t = (x - a) / (b - a); t = t < 0 ? 0 : t > 1 ? 1 : t; return t * t * (3 - 2 * t); }
+/* three box-blur passes of radius r each way on one 8-bit plane (running sums) */
+static void blur_plane(uint8_t *p, int r){
+    static uint8_t t[WN * WN];
+    for(int pass = 0; pass < 3; pass++){
+        for(int y = 0; y < WN; y++){ int sum = 0; uint8_t *row = p + y * WN;
+            for(int x = -r; x <= r; x++) sum += row[x < 0 ? 0 : x];
+            for(int x = 0; x < WN; x++){ t[y * WN + x] = (uint8_t)(sum / (2 * r + 1));
+                int a = x - r, b = x + r + 1; sum += row[b >= WN ? WN - 1 : b] - row[a < 0 ? 0 : a]; } }
+        for(int x = 0; x < WN; x++){ int sum = 0;
+            for(int y = -r; y <= r; y++) sum += t[(y < 0 ? 0 : y) * WN + x];
+            for(int y = 0; y < WN; y++){ p[y * WN + x] = (uint8_t)(sum / (2 * r + 1));
+                int a = y - r, b = y + r + 1; sum += t[(b >= WN ? WN - 1 : b) * WN + x] - t[(a < 0 ? 0 : a) * WN + x]; } }
+    }
+}
+static void wall_make(void){
+    if(g_wall_ok) return;
+    g_wall = malloc(WN * WN * 4); g_frost = malloc(WN * WN * 4);
+    uint8_t *pl = malloc(WN * WN * 3);
+    if(!g_wall || !g_frost || !pl){ free(g_wall); free(g_frost); free(pl); g_wall = g_frost = NULL; return; }
+    int d = dark();
+    struct { float x, y, r, a; lv_color_t c; } B[5] = {
+        { 64, 84, 124, 0.95f, TC(ACCENT_PRIMARY) }, { 300, 252, 132, 0.95f, TC(DECOR_1) }, { 262, 44, 74, 0.85f, TC(STATUS_INFO) },
+        { 104, 328, 84, 0.8f, TC(DECOR_2) }, { 200, 170, 40, 0.55f, TC(STATUS_INFO) } };
+    lv_color_t base0 = theme_color_mix(TC(DECOR_1), TC(CANVAS), d ? 60 : 30), base1 = TC(CANVAS);
+    float dim = d ? 0.62f : 1.0f;
+    for(int y = 0; y < WN; y++) for(int x = 0; x < WN; x++){
+        float ty = y / (float)(WN - 1);
+        float r = base0.red + (base1.red - base0.red) * ty, g = base0.green + (base1.green - base0.green) * ty, b = base0.blue + (base1.blue - base0.blue) * ty;
+        for(int k = 0; k < 5; k++){
+            float dx = x - B[k].x, dy = y - B[k].y, dist = sqrtf(dx * dx + dy * dy);
+            float a = B[k].a * (1 - smoothstep(B[k].r - 9, B[k].r + 9, dist));          /* a soft, still visible edge */
+            a *= 0.75f + 0.25f * (1 - dist / (B[k].r + 1));                                 /* brighter towards the middle */
+            if(a <= 0) continue;
+            float cr = B[k].c.red, cg = B[k].c.green, cb = B[k].c.blue;
+            if(!d){ cr = cr + (255 - cr) * 0.45f; cg = cg + (255 - cg) * 0.45f; cb = cb + (255 - cb) * 0.45f; }   /* pastel */
+            else { cr *= dim; cg *= dim; cb *= dim; }
+            r += (cr - r) * a; g += (cg - g) * a; b += (cb - b) * a;
+        }
+        uint8_t R = (uint8_t)(r < 0 ? 0 : r > 255 ? 255 : r), G = (uint8_t)(g < 0 ? 0 : g > 255 ? 255 : g), Bb = (uint8_t)(b < 0 ? 0 : b > 255 ? 255 : b);
+        g_wall[y * WN + x] = 0xFF000000u | (uint32_t)R << 16 | (uint32_t)G << 8 | Bb;
+        pl[y * WN + x] = R; pl[WN * WN + y * WN + x] = G; pl[2 * WN * WN + y * WN + x] = Bb;
+    }
+    for(int k = 0; k < 3; k++) blur_plane(pl + k * WN * WN, 14);
+    int lift = d ? 30 : 140;                                                  /* frosted: lighter than what's behind */
+    for(int i = 0; i < WN * WN; i++){
+        uint32_t v = 0xFF000000u;
+        for(int k = 0; k < 3; k++){ int c = pl[k * WN * WN + i]; c += (255 - c) * lift / 255; v |= (uint32_t)c << (16 - 8 * k); }
+        g_frost[i] = v;
+    }
+    free(pl);
+    dsc_init(&g_wall_dsc, g_wall); dsc_init(&g_frost_dsc, g_frost); g_wall_ok = 1;
+}
 void idisc_wallpaper(lv_obj_t *o){
     lv_obj_set_style_bg_color(o, TC(CANVAS), 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
-    if(!th_id_glass()){ lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_NONE, 0); return; }
-    static lv_grad_dsc_t g;                                               /* a gradient descriptor: screens that reset */
-    if(g.dir != LV_GRAD_DIR_VER){                                         /* their canvas colour keep the wallpaper */
-        lv_color_t top = theme_color_mix(TC(ACCENT_PRIMARY), TC(CANVAS), dark() ? 96 : 52);
-        lv_color_t bot = theme_color_mix(dark() ? TC(DECOR_1) : TC(DECOR_2), TC(CANVAS), dark() ? 70 : 40);
-        g.stops_count = 2; g.stops[0].color = top; g.stops[1].color = bot;
-        g.stops[0].opa = g.stops[1].opa = LV_OPA_COVER; g.stops[0].frac = 0; g.stops[1].frac = 255; g.dir = LV_GRAD_DIR_VER;
-    }
-    lv_obj_set_style_bg_grad(o, &g, 0);
+    lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_NONE, 0);
+    if(!th_id_glass()) return;
+    wall_make();
+    if(g_wall_ok){ lv_obj_set_style_bg_image_src(o, &g_wall_dsc, 0); lv_obj_set_style_bg_image_opa(o, LV_OPA_COVER, 0); }
 }
-/* A glass surface. Clear: white at low opacity with a sheen (more at the top) and a bright 1 px rim; on a light
- * wallpaper, frosted white. Tinted: the solid grouped-row colour. */
-void idisc_glass(lv_obj_t *o, int radius){
+/* the frost behind a glass surface, and its rim */
+typedef struct { lv_image_dsc_t d; const lv_image_dsc_t *src; } glass_t;
+static int glass_r(lv_obj_t *o){ lv_area_t a; lv_obj_get_coords(o, &a); int r = lv_obj_get_style_radius(o, 0), m = LV_MIN(lv_area_get_width(&a), lv_area_get_height(&a)) / 2; return r > m ? m : r; }
+static void glass_under(lv_event_t *e){
+    glass_t *g = lv_event_get_user_data(e); lv_obj_t *o = lv_event_get_target(e); lv_layer_t *l = lv_event_get_layer(e);
+    if(!g || !g->src || !l || lv_obj_get_style_opa_recursive(o, 0) < LV_OPA_MIN) return;
+    lv_area_t a, s = { 0, 0, WN - 1, WN - 1 }, b; lv_obj_get_coords(o, &a);
+    if(!_lv_area_intersect(&b, &a, &s)) return;
+    const lv_image_dsc_t *src = g->src; uint32_t st = src->header.stride;
+    g->d = *src; g->d.header.w = (uint32_t)lv_area_get_width(&b); g->d.header.h = (uint32_t)lv_area_get_height(&b);
+    g->d.data = src->data + (size_t)b.y1 * st + (size_t)b.x1 * 4; g->d.data_size = st * g->d.header.h;
+    lv_draw_image_dsc_t id; lv_draw_image_dsc_init(&id); id.src = &g->d;
+    /* The software renderer doesn't round an image's corners, so the frost goes down in bands of rows, each clipped to
+     * the rounded shape (rows of equal width share a band; the tint and rim drawn over it smooth the steps). */
+    int r = glass_r(o); lv_area_t keep = l->_clip_area;
+    for(int y = b.y1; y <= b.y2; ){
+        int in = 0, k0 = 0, y2 = y;
+        for(;;){
+            int top = a.y1 + r - y2, bot = y2 - (a.y2 - r), dy = top > 0 ? top : bot > 0 ? bot : 0, k = 0;
+            if(dy > 0){ float t = dy - 0.5f; k = (int)(r - sqrtf((float)r * r - t * t) + 0.5f); }
+            if(y2 == y) in = k0 = k; else if(abs(k - k0) > 1) break; else if(k > in) in = k;   /* (a pixel either way: one band) */
+            if(++y2 > b.y2) break;
+        }
+        lv_area_t band = { a.x1 + in, y, a.x2 - in, y2 - 1 }, c;
+        if(band.x1 <= band.x2 && _lv_area_intersect(&c, &band, &keep)){ l->_clip_area = c; lv_draw_image(l, &id, &b); }
+        y = y2;
+    }
+    l->_clip_area = keep;
+}
+static void glass_rim(lv_event_t *e){
+    glass_t *g = lv_event_get_user_data(e); lv_obj_t *o = lv_event_get_target(e); lv_layer_t *l = lv_event_get_layer(e);
+    if(!g || !g->src || !l) return;
+    lv_area_t a; lv_obj_get_coords(o, &a);
+    lv_draw_rect_dsc_t r; lv_draw_rect_dsc_init(&r); r.bg_opa = LV_OPA_TRANSP; r.radius = glass_r(o); r.border_width = 1;
+    r.border_color = TC(FIXED_MEDIA_WHITE); r.border_opa = dark() ? 150 : 255; r.border_side = LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT;
+    lv_draw_rect(l, &r, &a);                                                  /* light from the top left */
+    r.border_color = TC(FIXED_MEDIA_BLACK); r.border_opa = dark() ? 60 : 24; r.border_side = LV_BORDER_SIDE_BOTTOM;
+    lv_draw_rect(l, &r, &a);
+}
+static void glass_free(lv_event_t *e){ free(lv_event_get_user_data(e)); }
+static glass_t *glass_of(lv_obj_t *o){
+    for(uint32_t i = 0; i < lv_obj_get_event_count(o); i++){ lv_event_dsc_t *d = lv_obj_get_event_dsc(o, i);
+        if(d && lv_event_dsc_get_cb(d) == glass_under) return lv_event_dsc_get_user_data(d); }
+    glass_t *g = calloc(1, sizeof *g); if(!g) return NULL;
+    lv_obj_add_event_cb(o, glass_under, LV_EVENT_DRAW_MAIN_BEGIN, g);
+    lv_obj_add_event_cb(o, glass_rim, LV_EVENT_DRAW_MAIN_END, g);
+    lv_obj_add_event_cb(o, glass_free, LV_EVENT_DELETE, g);
+    return g;
+}
+/* A glass surface over src (a 360 px frost, screen-aligned; NULL = no frost, the tint alone). Tinted glass: solid. */
+void idisc_glass_on(lv_obj_t *o, int radius, const lv_image_dsc_t *src){
     lv_obj_set_style_radius(o, radius, 0);
     if(th_id_glass()){
         int d = dark();
-        lv_obj_set_style_bg_color(o, d ? TC(FIXED_MEDIA_WHITE) : TC(SURFACE), 0);
-        lv_obj_set_style_bg_grad_color(o, d ? TC(FIXED_MEDIA_WHITE) : TC(SURFACE), 0);
-        lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0);
-        lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_main_opa(o, d ? 50 : 210, 0); lv_obj_set_style_bg_grad_opa(o, d ? 26 : 160, 0);
+        glass_t *g = glass_of(o); if(g) g->src = src;
+        lv_obj_set_style_bg_color(o, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_grad_color(o, TC(FIXED_MEDIA_WHITE), 0);
+        lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+        lv_obj_set_style_bg_main_opa(o, d ? 40 : 120, 0); lv_obj_set_style_bg_grad_opa(o, d ? 8 : 50, 0);   /* a sheen, more at the top */
         lv_obj_set_style_border_width(o, 1, 0); lv_obj_set_style_border_color(o, TC(FIXED_MEDIA_WHITE), 0);
-        lv_obj_set_style_border_opa(o, d ? 46 : 220, 0);
+        lv_obj_set_style_border_opa(o, d ? 40 : 140, 0);
     } else {
+        glass_t *g = glass_of(o); if(g) g->src = NULL;
         lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_NONE, 0);
         lv_obj_set_style_bg_color(o, TC(SURFACE), 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
         lv_obj_set_style_bg_main_opa(o, LV_OPA_COVER, 0); lv_obj_set_style_bg_grad_opa(o, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(o, 0, 0);
     }
-    lv_obj_set_style_bg_color(o, TC(SURFACE_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_NONE, LV_STATE_PRESSED);
-    lv_obj_set_style_bg_opa(o, th_id_glass() && dark() ? 120 : LV_OPA_COVER, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_color(o, TC(FIXED_MEDIA_WHITE), LV_STATE_PRESSED); lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_NONE, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_opa(o, th_id_glass() ? (dark() ? 90 : 200) : LV_OPA_COVER, LV_STATE_PRESSED);
+    if(!th_id_glass()){ lv_obj_set_style_bg_color(o, TC(SURFACE_PRESSED), LV_STATE_PRESSED); }
 }
+void idisc_glass(lv_obj_t *o, int radius){ if(th_id_glass()) wall_make(); idisc_glass_on(o, radius, g_wall_ok ? &g_frost_dsc : NULL); }
+/* a solid surface (a lit tile): no frost under it */
+void idisc_solid(lv_obj_t *o){ glass_t *g = glass_of(o); if(g) g->src = NULL; }
 /* ---- transport glyphs, drawn (filled triangles and rounded bars, not a font) ------------------------------------- */
 enum { G_PLAY, G_PAUSE, G_PREV, G_NEXT };
 typedef struct { int kind, size; lv_color_t c; } glyph_t;
@@ -130,22 +243,27 @@ static void glyph_set(lv_obj_t *o, int kind){ glyph_t *g = o ? lv_obj_get_user_d
 
 /* ---- the album wash: the cover area-averaged to 40 x 40, box-blurred three times, stretched back to 360 --------- */
 #define BL_N 40
-static uint32_t *g_wash; static lv_image_dsc_t g_wash_dsc; static int g_wash_ok; static unsigned g_wash_rev = ~0u;
-static int wash_make(const lv_image_dsc_t *a, int dim){
-    g_wash_ok = 0;
+typedef struct { uint32_t *px, *fr; lv_image_dsc_t d, fd; int ok; } wash_t;
+static wash_t g_aw, g_pw;                                                  /* the album's; your picture's */
+static unsigned g_wash_rev = ~0u;
+/* the picture as a dark wash (dim/256) and as its frost (full brightness, lifted toward white) */
+static int wash_make(wash_t *w, const lv_image_dsc_t *a, int dim){
+    w->ok = 0;
     if(!a || !a->data || !a->header.w) return 0;
     int bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : (a->header.cf == LV_COLOR_FORMAT_XRGB8888 || a->header.cf == LV_COLOR_FORMAT_ARGB8888) ? 4 : 0;
     if(!bpp) return 0;
-    if(!g_wash && !(g_wash = malloc(360 * 360 * 4))) return 0;
-    int w = (int)a->header.w, h = (int)a->header.h, st = a->header.stride ? (int)a->header.stride : w * bpp;
+    if(!w->px) w->px = malloc(360 * 360 * 4);
+    if(!w->fr) w->fr = malloc(360 * 360 * 4);
+    if(!w->px || !w->fr) return 0;
+    int wd = (int)a->header.w, h = (int)a->header.h, st = a->header.stride ? (int)a->header.stride : wd * bpp;
     static int sm[3][BL_N * BL_N], tmp[BL_N * BL_N];
     for(int y = 0; y < BL_N; y++) for(int x = 0; x < BL_N; x++){
-        int y0 = y * h / BL_N, y1 = (y + 1) * h / BL_N, x0 = x * w / BL_N, x1 = (x + 1) * w / BL_N;
+        int y0 = y * h / BL_N, y1 = (y + 1) * h / BL_N, x0 = x * wd / BL_N, x1 = (x + 1) * wd / BL_N;
         if(y1 <= y0) y1 = y0 + 1;
         if(x1 <= x0) x1 = x0 + 1;
         unsigned c[3] = {0, 0, 0}, n = 0;
         for(int yy = y0; yy < y1 && yy < h; yy++){ const uint8_t *q = a->data + (size_t)yy * st + (size_t)x0 * bpp;
-            for(int xx = x0; xx < x1 && xx < w; xx++, q += bpp){ c[0] += q[0]; c[1] += q[1]; c[2] += q[2]; n++; } }
+            for(int xx = x0; xx < x1 && xx < wd; xx++, q += bpp){ c[0] += q[0]; c[1] += q[1]; c[2] += q[2]; n++; } }
         for(int k = 0; k < 3; k++) sm[k][y * BL_N + x] = n ? (int)(c[k] / n) : 0;
     }
     for(int k = 0; k < 3; k++) for(int pass = 0; pass < 3; pass++) for(int dir = 0; dir < 2; dir++){
@@ -160,42 +278,33 @@ static int wash_make(const lv_image_dsc_t *a, int dim){
         }
         memcpy(sm[k], tmp, sizeof tmp);
     }
-    for(int y = 0; y < 360; y++){                                           /* stretched up, darkened by dim/256 */
+    for(int y = 0; y < 360; y++){
         int fy = (y * (BL_N - 1) * 256) / 359, iy = fy >> 8; fy &= 255; if(iy >= BL_N - 1){ iy = BL_N - 2; fy = 256; }
         for(int x = 0; x < 360; x++){
             int fx = (x * (BL_N - 1) * 256) / 359, ix = fx >> 8; fx &= 255; if(ix >= BL_N - 1){ ix = BL_N - 2; fx = 256; }
-            uint32_t v = 0xFF000000u;
+            uint32_t v = 0xFF000000u, f = 0xFF000000u;
             for(int k = 0; k < 3; k++){
                 const int *m = sm[k] + iy * BL_N + ix;
                 int top = m[0] * (256 - fx) + m[1] * fx, bot = m[BL_N] * (256 - fx) + m[BL_N + 1] * fx;
-                int c = (top * (256 - fy) + bot * fy) >> 16; c = c * dim >> 8;
-                v |= (uint32_t)c << (k * 8);
+                int c = (top * (256 - fy) + bot * fy) >> 16;
+                v |= (uint32_t)(c * dim >> 8) << (k * 8);
+                f |= (uint32_t)(c + (255 - c) * 24 / 255) << (k * 8);
             }
-            g_wash[y * 360 + x] = v;
+            w->px[y * 360 + x] = v; w->fr[y * 360 + x] = f;
         }
     }
-    memset(&g_wash_dsc, 0, sizeof g_wash_dsc);
-    g_wash_dsc.header.magic = LV_IMAGE_HEADER_MAGIC; g_wash_dsc.header.cf = LV_COLOR_FORMAT_XRGB8888;
-    g_wash_dsc.header.w = g_wash_dsc.header.h = 360; g_wash_dsc.header.stride = 360 * 4;
-    g_wash_dsc.data = (const uint8_t *)g_wash; g_wash_dsc.data_size = 360 * 360 * 4;
-    return g_wash_ok = 1;
+    dsc_init(&w->d, w->px); dsc_init(&w->fd, w->fr);
+    return w->ok = 1;
 }
 /* your picture (Idle screen: Wallpaper / My picture / My picture, blurred) */
-static uint32_t *g_pblur; static lv_image_dsc_t g_pblur_dsc; static int g_pblur_ok;
 static const void *idle_picture(void){
     int m = cfg_get_int("nt_idle", 0);
     if(m <= 0) return NULL;
     const lv_image_dsc_t *p = lockcover_img();
     if(!p){ lockcover_request(); return NULL; }
     if(m == 1) return p;
-    if(!g_pblur_ok){                                                     /* the wash maker, into its own buffer */
-        uint32_t *keep = g_wash; lv_image_dsc_t kd = g_wash_dsc; int kok = g_wash_ok;
-        g_wash = g_pblur;
-        if(wash_make(p, 210)){ g_pblur = g_wash; g_pblur_dsc = g_wash_dsc; g_pblur_dsc.data = (const uint8_t *)g_pblur; g_pblur_ok = 1; }
-        else g_pblur = g_wash;
-        g_wash = keep; g_wash_dsc = kd; g_wash_ok = kok;
-    }
-    return g_pblur_ok ? (const void *)&g_pblur_dsc : (const void *)p;
+    if(!g_pw.ok) wash_make(&g_pw, p, 210);
+    return g_pw.ok ? (const void *)&g_pw.d : (const void *)p;
 }
 
 /* ---- the lock-screen face (Music with nothing playing, and standby) ------------------------------------------------
@@ -255,13 +364,20 @@ static void face_weather(face_t *f, const char *s){
 #define ART_P 132                 /* ... paused (it settles back a little) */
 #define ART_CY 104
 static lv_obj_t *g_layer, *g_wash_img, *g_veil, *g_card, *g_art, *g_note, *g_info, *g_title, *g_artist, *g_bar, *g_fill, *g_el, *g_rem;
-static lv_obj_t *g_prev, *g_pp, *g_next, *g_pp_g, *g_idle, *g_start;
+static lv_obj_t *g_prev, *g_pp, *g_next, *g_pp_g, *g_idle, *g_start, *g_ctl;
 static face_t g_face;
 static lv_timer_t *g_tm;
 static int g_have, g_playing, g_lyr_on, g_drag, g_card_d = ART;
 static char g_t[160], g_a[160];
 static lyr_line_t *g_lyr; static int g_lyr_n; static unsigned g_lyr_rev = ~0u;
 
+static void ctl_glass(void){                                              /* (always the dark glass: the type is white) */
+    if(!g_ctl) return;
+    idisc_glass_on(g_ctl, LV_RADIUS_CIRCLE, g_aw.ok ? &g_aw.fd : NULL);
+    if(th_id_glass()){ lv_obj_set_style_bg_main_opa(g_ctl, 46, 0); lv_obj_set_style_bg_grad_opa(g_ctl, 10, 0); lv_obj_set_style_border_opa(g_ctl, 50, 0); }
+    else { lv_obj_set_style_bg_color(g_ctl, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(g_ctl, 36, 0); }
+    lv_obj_set_style_bg_opa(g_ctl, 0, LV_STATE_PRESSED);
+}
 static void card_size(void *o, int32_t d){
     (void)o; g_card_d = (int)d;
     lv_obj_set_size(g_card, d, d); lv_obj_set_pos(g_card, 180 - d / 2, ART_CY - d / 2);
@@ -284,10 +400,11 @@ static void art_apply(void){
     else { show(g_art, 0); show(g_note, 1); }
     unsigned rev = ui_art_revision();
     if(!c){ g_wash_rev = ~0u; show(g_wash_img, 0); }
-    else if(rev != g_wash_rev || !g_wash_ok){
+    else if(rev != g_wash_rev || !g_aw.ok){
         g_wash_rev = rev;
-        if(wash_make(c, 150)){ lv_image_set_src(g_wash_img, NULL); lv_image_set_src(g_wash_img, &g_wash_dsc); show(g_wash_img, 1); }
+        if(wash_make(&g_aw, c, 150)){ lv_image_set_src(g_wash_img, NULL); lv_image_set_src(g_wash_img, &g_aw.d); show(g_wash_img, 1); }
         else show(g_wash_img, 0);
+        ctl_glass(); lv_obj_invalidate(g_ctl);
     } else show(g_wash_img, 1);
 }
 static void lyrics_refresh(long pos){
@@ -423,7 +540,9 @@ void idisc_home_create(lv_obj_t *root){
     g_rem = text(g_layer, TF(UI_12), TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_opa(g_rem, 160, 0);
     lv_obj_set_style_text_align(g_rem, LV_TEXT_ALIGN_RIGHT, 0); lv_obj_set_width(g_rem, 80); lv_obj_set_pos(g_rem, 208, 270);
 
-    /* previous / play-pause / next */
+    /* previous / play-pause / next, on a glass capsule over the album wash */
+    g_ctl = plain(g_layer); lv_obj_set_size(g_ctl, 216, 62); lv_obj_set_pos(g_ctl, 72, 283);
+    ctl_glass();
     g_prev = tbtn(g_layer, 112, 314, 54, G_PREV, 22, "0201000C0002");
     g_pp = tbtn(g_layer, 180, 314, 62, G_PLAY, 30, "0201000C0000"); g_pp_g = lv_obj_get_child(g_pp, 0);
     g_next = tbtn(g_layer, 248, 314, 54, G_NEXT, 22, "0201000C0001");
@@ -448,7 +567,7 @@ void idisc_home_create(lv_obj_t *root){
     lockcover_set_listener(idisc_pictures_apply);
     view_apply();
 }
-void idisc_pictures_apply(void){ g_pblur_ok = 0; face_picture(&g_face); idisc_saver_pictures(); }
+void idisc_pictures_apply(void){ g_pw.ok = 0; face_picture(&g_face); idisc_saver_pictures(); }
 void idisc_home_now_playing(const char *title, const char *artist, int playing){
     int have = title && title[0];
     int changed = have != g_have || !!playing != g_playing || strcmp(g_t, title ? title : "") || strcmp(g_a, artist ? artist : "");
@@ -458,7 +577,7 @@ void idisc_home_now_playing(const char *title, const char *artist, int playing){
     set_text(g_title, g_t); set_text(g_artist, g_a);
     view_apply();
 }
-const lv_image_dsc_t *idisc_wash(void){ return g_wash_ok ? &g_wash_dsc : NULL; }
+const lv_image_dsc_t *idisc_wash(void){ return g_aw.ok ? &g_aw.d : NULL; }
 void idisc_home_art_changed(void){ g_wash_rev = ~0u; art_apply(); }
 void idisc_home_lyrics_apply(int on){ g_lyr_on = on; g_lyr_rev = ~0u; progress_paint(); }
 void idisc_home_clock(const char *t){ if(t) snprintf(g_clock, sizeof g_clock, "%s", t); face_clock(&g_face, t); idisc_saver_clock(t); }
@@ -484,8 +603,8 @@ static void sstat_paint(void){
     char p[16]; snprintf(p, sizeof p, "%d%%", b); set_text(g_spct, p);
 }
 void idisc_saver_create(lv_obj_t *root){
-    face_build(&g_sface, root, 104, TF(SAVER_CLOCK));
     lv_obj_set_style_bg_image_src(root, NULL, 0);
+    face_build(&g_sface, root, 104, TF(SAVER_CLOCK));
     /* a small status line at the top: battery */
     g_sstat = plain(root); lv_obj_set_size(g_sstat, LV_SIZE_CONTENT, 16); lv_obj_align(g_sstat, LV_ALIGN_TOP_MID, 0, 26);
     lv_obj_set_flex_flow(g_sstat, LV_FLEX_FLOW_ROW); lv_obj_set_flex_align(g_sstat, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -560,7 +679,9 @@ static const lv_font_t *icon_font(void){
 static void qs_construct(void){
     if(q_panel) return;
     q_panel = plain(q_root); lv_obj_set_size(q_panel, 360, 360); lv_obj_set_pos(q_panel, 0, -360);
-    lv_obj_set_style_bg_color(q_panel, TC(CANVAS), 0); lv_obj_set_style_bg_opa(q_panel, th_id_glass() ? 214 : LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(q_panel, TC(CANVAS), 0); lv_obj_set_style_bg_opa(q_panel, LV_OPA_COVER, 0);
+    if(th_id_glass()){ wall_make(); if(g_wall_ok){ lv_obj_set_style_bg_image_src(q_panel, &g_wall_dsc, 0);     /* the wallpaper, dimmed */
+        lv_obj_set_style_bg_image_recolor(q_panel, TC(CANVAS), 0); lv_obj_set_style_bg_image_recolor_opa(q_panel, dark() ? 110 : 90, 0); } }
     lv_obj_add_flag(q_panel, LV_OBJ_FLAG_CLICKABLE);
     q_top = text(q_panel, TF(UI_14), TC(TEXT_PRIMARY), 0); lv_obj_align(q_top, LV_ALIGN_TOP_MID, 0, 22);
     /* media */
@@ -635,7 +756,7 @@ void idisc_qs_refresh(void){
     set_text(q_top, b);
     for(int k = 0; k < q_n; k++){
         int on = quicksettings_item_active(q_ids[k]);
-        if(on){ lv_obj_set_style_bg_color(q_tile[k], TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_grad_dir(q_tile[k], LV_GRAD_DIR_NONE, 0);
+        if(on){ idisc_solid(q_tile[k]); lv_obj_set_style_bg_color(q_tile[k], TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_grad_dir(q_tile[k], LV_GRAD_DIR_NONE, 0);
                 lv_obj_set_style_bg_opa(q_tile[k], LV_OPA_COVER, 0); lv_obj_set_style_bg_main_opa(q_tile[k], LV_OPA_COVER, 0);
                 lv_obj_set_style_border_width(q_tile[k], 0, 0); lv_obj_set_style_text_color(q_icon[k], TC(ON_ACCENT), 0);
                 lv_obj_set_style_bg_color(q_tile[k], TC(PRIMARY_PRESSED), LV_STATE_PRESSED); }
