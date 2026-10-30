@@ -783,6 +783,8 @@ int main(int argc, char **argv){
     if(getenv("NT_DISC"))cfg_set_int_deferred("nt_disc",atoi(getenv("NT_DISC")));
     if(getenv("NT_IDLEBG"))cfg_set_int_deferred("nt_idle",atoi(getenv("NT_IDLEBG")));
     if(getenv("NT_LYRICS"))cfg_set_int_deferred("nt_lyrics",atoi(getenv("NT_LYRICS")));
+    if(getenv("ID_STYLE"))cfg_set_int_deferred("id_style",atoi(getenv("ID_STYLE")));
+    if(getenv("ID_GLASS"))cfg_set_int_deferred("id_glass",atoi(getenv("ID_GLASS")));
     if(getenv("NULL_CUSTOM")){int a=1,b=10,c=1;sscanf(getenv("NULL_CUSTOM"),"%d,%d,%d",&a,&b,&c);cfg_set_int_deferred("null_custom_on",a);cfg_set_int_deferred("null_custom_off",b);cfg_set_int_deferred("null_custom_bg",c);}
     if(getenv("NULL_BG"))cfg_set_int_deferred("null_music_background",atoi(getenv("NULL_BG")));
     if(getenv("NULL_SIDE"))cfg_set_int_deferred("null_side",atoi(getenv("NULL_SIDE")));
@@ -802,7 +804,7 @@ int main(int argc, char **argv){
     }
     if(!strcmp(argv[3],"shutdown")){
         screen_set_anim(0); screens_init(); ui_shutdown_screen();
-        if(getenv("GB_MS")){void splash_nt_goodbye_test(int);splash_nt_goodbye_test(atoi(getenv("GB_MS")));for(int i=0;i<3;i++){lv_tick_inc(5);lv_timer_handler();}}
+        if(getenv("GB_MS")){void splash_nt_goodbye_test(int);void splash_idisc_goodbye_test(int);if(th_idisc())splash_idisc_goodbye_test(atoi(getenv("GB_MS")));else splash_nt_goodbye_test(atoi(getenv("GB_MS")));for(int i=0;i<3;i++){lv_tick_inc(5);lv_timer_handler();}}
         goto render;
     }
     if(!strncmp(argv[3],"shortcuts-",10)){

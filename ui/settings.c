@@ -267,7 +267,7 @@ static void apply_playkey_learn(int v){
     g_pk_dlg = lv_obj_create(lv_layer_top()); lv_obj_remove_style_all(g_pk_dlg); lv_obj_set_size(g_pk_dlg, 360, 360);
     lv_obj_set_style_bg_color(g_pk_dlg, TC(CANVAS), 0); lv_obj_set_style_bg_opa(g_pk_dlg, LV_OPA_COVER, 0);
     lv_obj_add_flag(g_pk_dlg, LV_OBJ_FLAG_CLICKABLE); lv_obj_remove_flag(g_pk_dlg, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t *h = lv_label_create(g_pk_dlg); lv_label_set_text(h, th_nt() ? "PLAY BUTTON" : "Play button");
+    lv_obj_t *h = lv_label_create(g_pk_dlg); lv_label_set_text(h, th_nt_caps() ? "PLAY BUTTON" : "Play button");
     lv_obj_set_style_text_font(h, TF(UI_18), 0); lv_obj_set_style_text_color(h, TC(TEXT_PRIMARY), 0); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 60);
     if(th_nt()){ lv_obj_align(h, LV_ALIGN_TOP_MID, 6, 60); nt_title_style(h); }
     g_pk_msg = lv_label_create(g_pk_dlg); lv_label_set_text(g_pk_msg, "Don't touch any button...");
@@ -542,11 +542,15 @@ static const char *OPT_NTSTYLE[] = { "Mix dark", "Mix light", "Dark", "Light", "
 static const char *OPT_NTFONT[] = { "Dot + Mono", "Dot + Sans", "Mono" };
 static const char *OPT_NTMUSIC[] = { "CD + info", "Disc only" };
 static void apply_nt_style(int v){ (void)v; theme_reload_or_revert("nt_style"); }
+static void apply_id_style(int v){ (void)v; theme_reload_or_revert("id_style"); }
+static void apply_id_glass(int v){ (void)v; theme_reload_or_revert("id_glass"); }
 static void apply_nt_font(int v){ (void)v; theme_reload_or_revert("nt_font"); }
 static void apply_nt_music(int v){ (void)v; theme_reload_or_revert("nt_music"); }
 static void apply_nt_lyrics(int v){ nt_home_lyrics_apply(v); }
 static const char *OPT_NTDISC[] = { "Album", "My picture" };
 static const char *OPT_NTIDLE[] = { "Plain", "My picture", "Blurred" };
+static const char *OPT_IDSTYLE[] = { "Dark", "Light", "Automatic" };
+static const char *OPT_IDGLASS[] = { "Clear", "Tinted" };
 static void apply_nt_pics(int v){ (void)v; nt_home_pictures_apply(); setlist_refresh(); }
 static void apply_nt_pic_next(int v){                                    /* NTDisk: the next picture in CustomCover */
     (void)v; char msg[128];
@@ -1095,9 +1099,13 @@ static const setting_t TABLE[] = {
     { "Disco Colours", "Palette", ST_CYCLER, "disco_palette", 0,0,1, OPT_DISCOPAL, 2, NULL, apply_disco_palette, 0,
       "Original cyan, or Kopi Ungu: espresso brown, dark plum and an amethyst accent. Restarts the UI; music continues.", NULL },
     { "Disco Colours", "Restart to Apply", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_REFRESH, apply_nt_restart, 0,
-      "Some NTDisk changes are waiting for a restart. Tap to restart the screen now; your music keeps playing.", NULL },
+      "Some theme changes are waiting for a restart. Tap to restart the screen now; your music keeps playing.", NULL },
     { "Disco Colours", "Style", ST_CYCLER, "nt_style", 0,0,0, OPT_NTSTYLE, 6, NULL, apply_nt_style, 0,
       "Mix dark / Mix light: menus and Music in opposite tones. Dark, Light, pastel Cream or deep Midnight.", NULL },
+    { "Disco Colours", "Style", ST_CYCLER, "id_style", 0,0,0, OPT_IDSTYLE, 3, NULL, apply_id_style, 0,
+      "Dark, Light, or Automatic: light by day (7:00 to 20:00), dark at night.", NULL },
+    { "Disco Colours", "Glass", ST_CYCLER, "id_glass", 0,0,0, OPT_IDGLASS, 2, NULL, apply_id_glass, 0,
+      "Clear: see-through glass over a soft wallpaper. Tinted: solid surfaces on a plain background, for the most contrast.", NULL },
     { "Disco Colours", "Font", ST_CYCLER, "nt_font", 0,0,0, OPT_NTFONT, 3, NULL, apply_nt_font, 0,
       "A dot-matrix clock with Space Mono or Space Grotesk text, or Space Mono throughout.", NULL },
     { "Music Screen", "Layout", ST_CYCLER, "nt_music", 0,0,0, OPT_NTMUSIC, 2, NULL, apply_nt_music, 0,
@@ -1789,7 +1797,7 @@ void setting_detail_refresh(void){
         int is_theme = !strcmp(s->cfg_key, "theme_preset");
         /* Themes: Disco first, then Ring, Braun and Stone; the other presets stay in the code and keep working if
          * already selected, but are not offered here for now. Rows still carry the real preset index. */
-        int THEME_SHOWN[8] = { THEME_PRESET_DISCO, THEME_PRESET_NTDISK, THEME_PRESET_NULL, THEME_PRESET_SIMPLE, THEME_PRESET_ZUNE, THEME_PRESET_RING, THEME_PRESET_BRAUN, THEME_PRESET_STONE }, nshown = 8;
+        int THEME_SHOWN[9] = { THEME_PRESET_DISCO, THEME_PRESET_NTDISK, THEME_PRESET_IDISC, THEME_PRESET_NULL, THEME_PRESET_SIMPLE, THEME_PRESET_ZUNE, THEME_PRESET_RING, THEME_PRESET_BRAUN, THEME_PRESET_STONE }, nshown = 9;
         int nrows = is_theme ? nshown : s->nopts;
         for(int r = 0; r < nrows; r++){
             int i = is_theme ? THEME_SHOWN[r] : r;
@@ -1816,7 +1824,8 @@ void setting_detail_refresh(void){
             }
             lv_obj_t *lbl = lv_label_create(row);
             if(is_theme){ char nm[32]; snprintf(nm, sizeof nm, "%s", tr(s->opts[i]));      /* "stone" -> "Stone" */
-                          if(nm[0] >= 'a' && nm[0] <= 'z') nm[0] -= 'a' - 'A'; lv_label_set_text(lbl, nm); }
+                          if(nm[0] >= 'a' && nm[0] <= 'z' && !(nm[1] >= 'A' && nm[1] <= 'Z')) nm[0] -= 'a' - 'A';   /* (not "iDisc") */
+                          lv_label_set_text(lbl, nm); }
             else lv_label_set_text(lbl, tr(s->opts[i]));
             lv_obj_align(lbl, LV_ALIGN_LEFT_MID, x, 0);
             lv_obj_set_style_text_font(lbl, s->opts == i18n_lang_names ? TF(USER_16) : TF(UI_16), 0);   /* native names: any script */
@@ -2011,7 +2020,7 @@ static void settings_disco_list(lv_obj_t *root){          /* styled like the sub
     lv_obj_t *t = lv_label_create(root); lv_label_set_text(t, "Settings");
     lv_obj_set_style_text_font(t, th_simple()?TF(HEADER):TF(UI_20), 0); lv_obj_set_style_text_color(t, th_simple()?TC(ACCENT_PRIMARY):TC(TEXT_PRIMARY), 0);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, th_simple()?24:28);
-    if(th_nt()){ lv_label_set_text(t, "SETTINGS"); lv_obj_align(t, LV_ALIGN_TOP_MID, 6, 34); nt_title_style(t); kit_keep(t); }
+    if(th_nt()){ lv_label_set_text(t, th_nt_caps() ? "SETTINGS" : "Settings"); lv_obj_align(t, LV_ALIGN_TOP_MID, 6, 34); nt_title_style(t); kit_keep(t); }
     lv_obj_t *list = make_list(root);
     static curvelist_t cl; curvelist_attach(&cl, list, root, 288);
     for(int g = 0; g < N_GROUPS; g++){

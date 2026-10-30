@@ -254,7 +254,7 @@ static void shelf_build(void){
     if(!g_shelf_list) return;
     lv_obj_clean(g_shelf_list); icons_forget(0);
     lv_obj_t *h = block(g_shelf_list, 56);
-    lv_obj_t *ht = label(h, th_nt() ? "APPS" : "Apps", 80, 18, 200, TF(UI_22), TC(TEXT_PRIMARY), LV_TEXT_ALIGN_CENTER);
+    lv_obj_t *ht = label(h, th_nt_caps() ? "APPS" : "Apps", 80, 18, 200, TF(UI_22), TC(TEXT_PRIMARY), LV_TEXT_ALIGN_CENTER);
     if(th_nt()){ lv_obj_set_y(ht, 26); nt_title_style(ht); kit_keep(ht); }
     if(!g_npin){
         lv_obj_t *b = block(g_shelf_list, 120);

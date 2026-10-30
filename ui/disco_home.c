@@ -10,6 +10,7 @@
  * its setters here when th_disco_family(). */
 #include "screens.h"
 #include "theme.h"
+#include "idisc.h"
 #include "theme_kit.h"
 #include "config.h"
 #include "battery.h"
@@ -543,6 +544,15 @@ enum { OV_FAV, OV_ALBUM, OV_ARTIST, OV_QUEUE, OV_LYRICS, OV_INFO, OV_N };
 void disco_open_np_immersive(void);
 static void ov_mark(int i, int on){
     lv_obj_t *b = g_ov_btn[i], *l = lv_obj_get_child(b, 0);
+    if(th_idisc()){                                                      /* iDisc: glass; a lit tile turns pink-red (a loved song) */
+        if(on){ lv_obj_set_style_bg_grad_dir(b, LV_GRAD_DIR_NONE, 0); lv_obj_set_style_bg_color(b, TC(DECOR_2), 0);
+                lv_obj_set_style_bg_main_opa(b, LV_OPA_COVER, 0); lv_obj_set_style_border_width(b, 0, 0); }
+        else idisc_glass(b, 23);
+        for(uint32_t k = 0; k < lv_obj_get_child_count(b); k++){ lv_obj_t *c = lv_obj_get_child(b, (int32_t)k);
+            if(lv_obj_check_type(c, &lv_label_class)) lv_obj_set_style_text_color(c, on ? TC(FIXED_MEDIA_WHITE) : TC(TEXT_PRIMARY), 0);
+            else lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN); }
+        return;
+    }
     if(th_nt()){                                                         /* NTDisk: a lit tile is white with a red dot */
         lv_obj_set_style_bg_color(b, on ? TC(TEXT_PRIMARY) : TC(SURFACE), 0);
         for(uint32_t k = 0; k < lv_obj_get_child_count(b); k++){ lv_obj_t *c = lv_obj_get_child(b, (int32_t)k);
@@ -623,6 +633,7 @@ static void ov_open(void){
         lv_obj_remove_style_all(g_ov); lv_obj_set_size(g_ov, 360, 360);
         lv_obj_set_style_bg_color(g_ov, TC(CANVAS), 0); lv_obj_set_style_bg_opa(g_ov, LV_OPA_COVER, 0);
         lv_obj_add_flag(g_ov, LV_OBJ_FLAG_CLICKABLE); lv_obj_clear_flag(g_ov, LV_OBJ_FLAG_SCROLLABLE);
+        if(th_idisc()) idisc_wallpaper(g_ov);
         nt_ov_build(sphere_ui_enabled());
         ov_paint(); onboarding_context(HINT_POPUP);
         ov_swipe_bubble(g_ov); lv_obj_add_event_cb(g_ov, ov_swipe_cb, LV_EVENT_ALL, NULL);
@@ -695,7 +706,7 @@ static void ov_open(void){
 /* NTDisk's track actions: "NOW PLAYING" with the red dot, the title and artist (tap to close), six pill tiles two by
  * two (icon + name; Favourite lit white with a red dot when it is one), and the mood pill under them. */
 static void nt_ov_build(int mood){
-    lv_obj_t *hd = lv_label_create(g_ov); lv_label_set_text(hd, "NOW PLAYING"); lv_obj_align(hd, LV_ALIGN_TOP_MID, 6, mood ? 22 : 30);
+    lv_obj_t *hd = lv_label_create(g_ov); lv_label_set_text(hd, th_nt_caps() ? "NOW PLAYING" : "Now Playing"); lv_obj_align(hd, LV_ALIGN_TOP_MID, 6, mood ? 22 : 30);
     nt_title_style(hd); kit_keep(hd);
     lv_obj_t *tb = lv_obj_create(g_ov); lv_obj_remove_style_all(tb); lv_obj_set_size(tb, 250, 50); lv_obj_align(tb, LV_ALIGN_TOP_MID, 0, mood ? 42 : 52);
     lv_obj_add_flag(tb, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(tb, ov_title_cb, LV_EVENT_CLICKED, NULL); kit_keep(tb);

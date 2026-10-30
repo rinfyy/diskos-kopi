@@ -19,6 +19,7 @@
 #include "discshelf.h"
 #include "orbit.h"
 #include "theme.h"
+#include "idisc.h"
 #include "theme_kit.h"
 #include "config.h"
 #include "menu_apps.h"
@@ -614,18 +615,20 @@ static void ntm_build(void){
         const dsec_t sec = menu_section(g_menu[i]); int on = i == g_cur;
         lv_obj_t *r = ntm_plain(g_ntm_list); lv_obj_set_size(r, 204, 48);
         lv_obj_set_style_radius(r, 24, 0); lv_obj_set_style_bg_opa(r, LV_OPA_COVER, 0);
-        lv_obj_set_style_bg_color(r, on ? TC(TEXT_PRIMARY) : TC(SURFACE), 0);
+        lv_obj_set_style_bg_color(r, on ? (th_idisc() ? TC(ACCENT_PRIMARY) : TC(TEXT_PRIMARY)) : TC(SURFACE), 0);   /* iDisc: the current one blue */
         lv_obj_set_style_bg_color(r, on ? TC(PRIMARY_PRESSED) : TC(SURFACE_PRESSED), LV_STATE_PRESSED);
         lv_obj_add_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLL_ON_FOCUS); lv_obj_add_event_cb(r, ntm_row_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
         lv_obj_t *ic = lv_label_create(r); kit_keep(ic); lv_label_set_text(ic, sec.icon);
         lv_obj_set_style_text_font(ic, (!strcmp(sec.icon, "EQ") || !strcmp(sec.icon, "MA")) ? TF(UI_14) : !strcmp(sec.icon, IC_MIC) ? TF(ICON_20) : (!strcmp(sec.icon, TH_IC_SEARCH) ? &font_theme_20 : theme_font_original(18)), 0);
         roulette_icon(ic, sec.icon, 18);
-        lv_obj_set_style_text_color(ic, on ? TC(CANVAS) : TC(TEXT_PRIMARY), 0); lv_obj_align(ic, LV_ALIGN_LEFT_MID, 16, 0);
+        lv_obj_set_style_text_color(ic, on ? (th_idisc() ? TC(ON_ACCENT) : TC(CANVAS)) : TC(TEXT_PRIMARY), 0); lv_obj_align(ic, LV_ALIGN_LEFT_MID, 16, 0);
         lv_obj_t *nm = lv_label_create(r); kit_keep(nm); lv_label_set_text(nm, sec.name);
-        lv_obj_set_style_text_font(nm, TF(UI_16), 0); lv_obj_set_style_text_color(nm, on ? TC(CANVAS) : TC(TEXT_PRIMARY), 0);
+        lv_obj_set_style_text_font(nm, TF(UI_16), 0); lv_obj_set_style_text_color(nm, on ? (th_idisc() ? TC(ON_ACCENT) : TC(CANVAS)) : TC(TEXT_PRIMARY), 0);
         lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT); lv_obj_set_width(nm, 132); lv_obj_align(nm, LV_ALIGN_LEFT_MID, 54, 0);
-        if(on){ lv_obj_t *d = ntm_plain(r); lv_obj_set_size(d, 6, 6); lv_obj_align(d, LV_ALIGN_RIGHT_MID, -16, 0);
-                lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0); cur = r; }
+        if(on && !th_idisc()){ lv_obj_t *d = ntm_plain(r); lv_obj_set_size(d, 6, 6); lv_obj_align(d, LV_ALIGN_RIGHT_MID, -16, 0);
+                lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0); }
+        if(on) cur = r;
+        if(th_idisc() && !on) idisc_glass(r, 24);
     }
     lv_obj_update_layout(g_ntm_list);
     if(cur) lv_obj_scroll_to_view(cur, LV_ANIM_OFF);
@@ -643,6 +646,10 @@ static void ntm_create(void){
     lv_obj_set_style_text_letter_space(t, 3, 0); lv_obj_set_pos(t, in + 30, 34);
     lv_obj_t *d = ntm_plain(g_ntm); lv_obj_set_size(d, 7, 7); lv_obj_set_pos(d, in + 18, 40);
     lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(d, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(d, LV_OPA_COVER, 0);
+    if(th_idisc()){                                                      /* iDisc: a glass sheet, a plain bold title */
+        lv_label_set_text(t, "Menu"); idisc_title_style(t); lv_obj_set_pos(t, in + 22, 28); lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN);
+        idisc_wallpaper(g_ntm); lv_obj_set_style_border_color(g_ntm, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(g_ntm, theme_variant() ? 200 : 50, 0);
+    }
     g_ntm_list = ntm_plain(g_ntm); lv_obj_set_size(g_ntm_list, 216, 236); lv_obj_set_pos(g_ntm_list, in, 62);
     lv_obj_add_flag(g_ntm_list, LV_OBJ_FLAG_SCROLLABLE); lv_obj_set_scroll_dir(g_ntm_list, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(g_ntm_list, LV_SCROLLBAR_MODE_OFF);
@@ -652,6 +659,7 @@ static void ntm_create(void){
     lv_obj_set_style_radius(ed, 17, 0); lv_obj_set_style_border_width(ed, 1, 0); lv_obj_set_style_border_color(ed, TC(BORDER_STRONG), 0);
     lv_obj_set_style_bg_color(ed, TC(SURFACE_PRESSED), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(ed, LV_OPA_COVER, LV_STATE_PRESSED);
     lv_obj_add_flag(ed, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(ed, ntm_edit_cb, LV_EVENT_CLICKED, NULL);
+    if(th_idisc()){ idisc_glass(ed, 17); lv_obj_set_style_border_width(ed, 1, 0); }
     lv_obj_t *el = lv_label_create(ed); kit_keep(el); lv_label_set_text(el, "Edit menu");
     lv_obj_set_style_text_font(el, TF(UI_12), 0); lv_obj_set_style_text_color(el, TC(TEXT_SECONDARY), 0); lv_obj_center(el);
     lv_obj_add_flag(g_ntm, LV_OBJ_FLAG_HIDDEN);
@@ -1029,7 +1037,7 @@ lv_obj_t *disco_title(lv_obj_t *root, const char *t){
     lv_obj_align(l, LV_ALIGN_TOP_MID, 0, th_null()?36:28);
     if(th_simple())simple_keep_label(l);
     if(th_null()){char upper[192];theme_upper(upper,sizeof upper,t);lv_label_set_text(l,upper);lv_obj_add_flag(l,THEME_TITLE_STEPPED);kit_keep(l);}
-    if(th_nt()){ char upper[192]; theme_upper(upper, sizeof upper, t); lv_label_set_text(l, upper);   /* NTDisk: the shared title look */
+    if(th_nt()){ char upper[192]; if(th_nt_caps()) theme_upper(upper, sizeof upper, t); else snprintf(upper, sizeof upper, "%s", t); lv_label_set_text(l, upper);   /* NTDisk: the shared title look */
                  lv_obj_align(l, LV_ALIGN_TOP_MID, 6, 34); nt_title_style(l); kit_keep(l); }
     return l;
 }

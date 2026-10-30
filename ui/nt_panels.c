@@ -16,6 +16,7 @@
 #include "config.h"
 #include "ipc.h"
 #include "quicksettings.h"
+#include "idisc.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -186,6 +187,7 @@ static void qs_construct(void){
     keep_all(q_panel);
 }
 void nt_qs_create(lv_obj_t *root){
+    if(th_idisc()){ idisc_qs_create(root); return; }                    /* iDisc: its Control Center */
     q_root = root; q_panel = NULL;
     lv_obj_set_style_bg_opa(root, 0, 0);                                   /* the screen below shows while it slides */
     lv_obj_remove_flag(root, LV_OBJ_FLAG_SCROLLABLE);
@@ -194,6 +196,7 @@ void nt_qs_create(lv_obj_t *root){
     nt_qs_build();
 }
 void nt_qs_build(void){
+    if(th_idisc()){ idisc_qs_build(); return; }
     if(!q_root) return;
     qs_construct();
     int items[QS_MAX_ITEMS]; q_n = quicksettings_items_load(items); if(q_n > 8) q_n = 8;
@@ -208,6 +211,7 @@ void nt_qs_build(void){
     nt_qs_refresh();
 }
 void nt_qs_refresh(void){
+    if(th_idisc()){ idisc_qs_refresh(); return; }
     if(!q_panel) return;
     time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm);
     char b[32]; int h24 = cfg_get_int("time_24h", 1);
@@ -229,6 +233,7 @@ void nt_qs_refresh(void){
     if(q_bright && !lv_obj_has_state(q_bright, LV_STATE_PRESSED)) lv_slider_set_value(q_bright, ui_get_brightness(), LV_ANIM_OFF);
 }
 void nt_qs_art(const void *cover){
+    if(th_idisc()){ idisc_qs_art(cover); return; }
     if(!q_art) return;
     lv_image_set_src(q_art, NULL);
     if(cover){
@@ -238,6 +243,7 @@ void nt_qs_art(const void *cover){
     } else lv_obj_add_flag(q_art, LV_OBJ_FLAG_HIDDEN);
 }
 void nt_qs_battery(int pct, int charging){
+    if(th_idisc()){ idisc_qs_battery(pct, charging); return; }
     if(!q_batt_fill || pct < 0) return;
     if(pct > 100) pct = 100;
     lv_obj_set_height(q_batt_fill, 140 * pct / 100 < 8 ? 8 : 140 * pct / 100);
@@ -254,6 +260,7 @@ void nt_qs_battery(int pct, int charging){
 static void q_pos(void *o, int32_t v){ lv_obj_set_y(o, v); }
 static void q_hidden(lv_anim_t *a){ (void)a; if(!q_open && q_root) lv_obj_add_flag(q_root, LV_OBJ_FLAG_HIDDEN); }
 void nt_qs_slide(int open){
+    if(th_idisc()){ idisc_qs_slide(open); return; }
     if(!q_panel) return;
     q_open = !!open;
     if(open){ nt_qs_refresh(); lv_timer_resume(q_tm); }
@@ -334,6 +341,7 @@ static lv_obj_t *step_btn(lv_obj_t *p, int x, const char *g, int d){
     return b;
 }
 void nt_volume_show(int vol){
+    if(th_idisc()){ idisc_volume_show(vol); return; }
     if(!v_root){
         v_root = plain(lv_layer_top()); lv_obj_set_size(v_root, 360, 360);
         lv_obj_set_style_bg_color(v_root, TC(SCRIM), 0); lv_obj_set_style_bg_opa(v_root, 90, 0);
@@ -368,8 +376,8 @@ void nt_volume_show(int vol){
     }
     lv_timer_reset(v_tm); lv_timer_resume(v_tm);
 }
-int nt_volume_visible(void){ return v_root && !lv_obj_has_flag(v_root, LV_OBJ_FLAG_HIDDEN); }
-lv_obj_t *nt_volume_root(void){ return v_root; }
+int nt_volume_visible(void){ if(th_idisc()) return idisc_volume_visible(); return v_root && !lv_obj_has_flag(v_root, LV_OBJ_FLAG_HIDDEN); }
+lv_obj_t *nt_volume_root(void){ return th_idisc() ? idisc_volume_root() : v_root; }
 
 /* ---- the NTDisk kit: one look for every screen ------------------------------------------------------------------
  * Titles: small capitals, spaced, quiet grey, with the red dot before them (Song Info, Working mode, Quick Settings
@@ -390,6 +398,7 @@ static void nt_dot_cb(lv_event_t *e){
 static void nt_dot_ext(lv_event_t *e){ lv_event_set_ext_draw_size(e, 16); }
 void nt_title_style(lv_obj_t *l){
     if(!l || !th_nt()) return;
+    if(th_idisc()){ idisc_title_style(l); return; }                      /* iDisc: bold, no dot */
     lv_obj_set_style_text_font(l, ui_font_cjk(14), 0);
     lv_obj_set_style_text_color(l, TC(TEXT_MUTED), 0);
     lv_obj_set_style_text_letter_space(l, 2, 0);

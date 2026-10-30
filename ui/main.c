@@ -1285,7 +1285,8 @@ void ui_shutdown_screen(void){
     lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
     lv_obj_add_flag(o, LV_OBJ_FLAG_CLICKABLE);                  /* taps do nothing now */
     lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
-    if(th_nt()){ void splash_nt_goodbye(lv_obj_t *); splash_nt_goodbye(o); }   /* NTDisk: the boot splash, backwards */
+    if(th_idisc()){ void splash_idisc_goodbye(lv_obj_t *); splash_idisc_goodbye(o); }   /* iDisc: the word fades, a spinner turns */
+    else if(th_nt()){ void splash_nt_goodbye(lv_obj_t *); splash_nt_goodbye(o); }   /* NTDisk: the boot splash, backwards */
     else if(th_braun()){
         br_face(o);
         lv_obj_t *k = br_knob(o, 180, 140, 52, LV_SYMBOL_POWER, TF(UI_38));

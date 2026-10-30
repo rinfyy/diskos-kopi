@@ -15,6 +15,8 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {NULL,apply_nt_restart,"Appearance","Restart to apply"},
     {"nt_style",NULL,"Appearance","Style"},
     {"nt_font",NULL,"Appearance","Font"},
+    {"id_style",NULL,"Appearance","Style"},
+    {"id_glass",NULL,"Appearance","Glass"},
     {"nt_music",NULL,"Music screen","Layout"},
     {"nt_lyrics",NULL,"Music screen","Lyrics as title"},
     {"nt_disc",NULL,"Music screen","Disc"},
@@ -118,6 +120,8 @@ static int display_variant_hidden(const setting_t *s){
     if(!th_disco()&&(s->apply==apply_lock_next||(s->cfg_key&&!strncmp(s->cfg_key,"dlock_",6))))return 1;
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"np_style"))return 1;
     if(s->cfg_key&&!th_nt()&&!strncmp(s->cfg_key,"nt_",3))return 1;
+    if(s->cfg_key&&!th_idisc()&&!strncmp(s->cfg_key,"id_",3))return 1;
+    if(s->cfg_key&&th_idisc()&&(!strcmp(s->cfg_key,"nt_style")||!strcmp(s->cfg_key,"nt_font")||!strcmp(s->cfg_key,"nt_music")||!strcmp(s->cfg_key,"nt_disc")))return 1;   /* iDisc: its own Style and Glass */
     if(s->apply==apply_nt_restart&&!(th_nt()&&g_nt_pending))return 1;
     if(s->apply==apply_nt_pic_next&&!(th_nt()&&(cfg_get_int("nt_disc",0)==1||cfg_get_int("nt_idle",0)>=1)))return 1;   /* only with a picture in use */   /* only while a change waits */
     if(!th_nt()&&(s->apply==apply_playkey_learn||(s->cfg_key&&(!strcmp(s->cfg_key,"pk_double")||!strcmp(s->cfg_key,"pk_hold")))))return 1;   /* NTDisk's play-button shortcuts */
@@ -149,6 +153,7 @@ static const char *display_disabled_reason(const setting_t *s){
     if(s->apply==apply_open_colorpick && (th_simple()||th_null()))return accent_disabled_reason();
     if(!strcmp(k,"disco_qs_style") && th_zune())return "Zune uses six circular quick actions. Choose and reorder them in Items.";
     if(!strcmp(k,"theme_variant") && th_zune())return "Zune uses a fixed dark appearance. Choose an accent colour instead.";
+    if(!strcmp(k,"theme_variant") && th_idisc())return "iDisc sets light and dark with its Style option (Dark, Light, Automatic).";
     if(!strcmp(k,"theme_variant") && th_nt())return "NTDisk sets light and dark with its Style option (Mix dark, Mix light, Dark, Light).";
     if(!strcmp(k,"theme_variant") && th_null())return "Null uses a fixed dark appearance. Choose a colour scheme instead.";
     if(!strcmp(k,"theme_auto") && !theme_auto_supported())return "Automatic light/dark switching is available in Disco, Ring and Braun.";
@@ -188,6 +193,7 @@ static const char *display_group_alias(const char *g){
 static const char *settings_page_title(const char *page){
     if(!strcmp(page,"Theme navigation"))return "Navigation";
     if(strcmp(page,"Theme settings"))return page;
+    if(th_idisc())return "iDisc settings";
     if(th_nt())return "NTDisk settings";
     if(th_disco())return "Disco settings";
     if(th_simple())return "Squash settings";

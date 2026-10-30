@@ -20,6 +20,7 @@
 #include "theme_kit.h"
 #include "onboarding.h"
 #include "ipc.h"
+#include "idisc.h"
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>
@@ -669,6 +670,7 @@ static void seek_cb(lv_event_t *e){
 static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
 
 void nt_home_create(lv_obj_t *root){
+    if(th_idisc()){ idisc_home_create(root); return; }                  /* iDisc draws its own */
     g_mode = cfg_get_int("nt_music", 0) == 1;
     g_lyr_on = cfg_get_int("nt_lyrics", 1) != 0; g_lyr_shown[0] = 0;
     for(lv_obj_t *o = root; o; o = lv_obj_get_parent(o)) lv_obj_remove_flag(o, LV_OBJ_FLAG_SCROLLABLE);   /* a drag on the CD moves nothing */
@@ -753,11 +755,17 @@ void nt_home_create(lv_obj_t *root){
 }
 /* the Disc or Idle screen setting, a new picture, or a picture finished decoding */
 void nt_home_pictures_apply(void){
+    if(th_idisc()){ idisc_pictures_apply(); return; }
     g_blur_ok = 0;
     if(g_art) art_apply(1);
     bg_apply(&g_ibg); bg_apply(&g_sbg);
 }
 void nt_home_now_playing(const char *title, const char *artist, int playing){
+    if(th_idisc()){                                                      /* (the lyrics sheet still reads these) */
+        g_have = title && title[0]; g_playing = !!playing;
+        snprintf(g_t, sizeof g_t, "%s", title ? title : ""); snprintf(g_a, sizeof g_a, "%s", artist ? artist : "");
+        idisc_home_now_playing(title, artist, playing); return;
+    }
     int have = title && title[0];
     int changed = have != g_have || !!playing != g_playing || strcmp(g_t, title ? title : "") || strcmp(g_a, artist ? artist : "");
     g_have = have; g_playing = !!playing;                                 /* (called on every position frame: work only on a change) */
@@ -767,21 +775,24 @@ void nt_home_now_playing(const char *title, const char *artist, int playing){
     if(strcmp(lv_label_get_text(g_artist), g_a)) lv_label_set_text(g_artist, g_a);
     view_apply();
 }
-void nt_home_art_changed(void){ art_apply(1); }
-void nt_home_lyrics_apply(int on){ g_lyr_on = on; g_lyr_rev = ~0u; if(g_layer) progress_paint(); }
+void nt_home_art_changed(void){ if(th_idisc()){ idisc_home_art_changed(); return; } art_apply(1); }
+void nt_home_lyrics_apply(int on){ if(th_idisc()){ idisc_home_lyrics_apply(on); return; } g_lyr_on = on; g_lyr_rev = ~0u; if(g_layer) progress_paint(); }
 void nt_home_clock(const char *t, const char *sub){
+    if(th_idisc()){ idisc_home_clock(t); return; }
     if(t) snprintf(g_clock, sizeof g_clock, "%s", t);
     if(sub) snprintf(g_sub, sizeof g_sub, "%s", sub);
     face_clock(&g_face, t, sub);
 }
 void nt_home_status(int batt, int charging, int wifi, int bt){
+    if(th_idisc()){ idisc_status(batt, charging); return; }
     g_st_b = batt; g_st_c = charging; g_st_w = wifi; g_st_bt = bt;
     stat_set(&g_stat, MC(TEXT_PRIMARY)); stat_set(&g_istat, MC(TEXT_PRIMARY)); stat_set(&g_sstat, TC(TEXT_PRIMARY));
     if(g_stat.row && !g_have) lv_obj_add_flag(g_stat.row, LV_OBJ_FLAG_HIDDEN);
 }
-void nt_home_weather(const char *s){ snprintf(g_wx, sizeof g_wx, "%s", s ? s : ""); face_weather(&g_face, s); }
+void nt_home_weather(const char *s){ if(th_idisc()){ idisc_home_weather(s); return; } snprintf(g_wx, sizeof g_wx, "%s", s ? s : ""); face_weather(&g_face, s); }
 /* main.c: a press here belongs to the CD or the seek line, not to the screen's swipes */
 int nt_home_owns_point(int x, int y){
+    if(th_idisc()) return idisc_home_owns_point(x, y);
     if(!g_layer || !g_have) return 0;
     int cx = 180, cy = g_mode ? 180 : DISC_CY, r = (g_mode ? BIG_D : DISC_D) / 2;
     if((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) return 1;
@@ -901,6 +912,7 @@ void nt_lyrics_open(void){
         keep_all(l_root);
     }
     const lv_image_dsc_t *c = g_have ? ui_current_sharp_img() : NULL;
+    if(c && th_idisc() && idisc_wash()) c = idisc_wash();                 /* iDisc: the lines over the album wash */
     lv_image_set_src(l_cover, NULL);
     if(c){ lv_image_set_src(l_cover, c); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (c->header.w ? c->header.w : 360)) + 1); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
     else lv_obj_add_flag(l_cover, LV_OBJ_FLAG_HIDDEN);
@@ -917,6 +929,7 @@ int nt_lyrics_visible(void){ return l_root && !lv_obj_has_flag(l_root, LV_OBJ_FL
 static face_t g_sface;
 static lv_obj_t *g_strack, *g_snote;
 void nt_saver_create(lv_obj_t *root){
+    if(th_idisc()){ idisc_saver_create(root); return; }
     memset(&g_sface, 0, sizeof g_sface);
     lv_obj_set_style_bg_color(root, TC(CANVAS), 0); lv_obj_set_style_bg_opa(root, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_image_src(root, NULL, 0);
@@ -936,9 +949,10 @@ void nt_saver_create(lv_obj_t *root){
     face_weather(&g_sface, g_wx);
     keep_all(root);
 }
-void nt_saver_clock(const char *t){ face_clock(&g_sface, t, g_sub[0] ? g_sub : NULL); }
-void nt_saver_weather(const char *s){ face_weather(&g_sface, s); }
+void nt_saver_clock(const char *t){ if(th_idisc()){ idisc_saver_clock(t); return; } face_clock(&g_sface, t, g_sub[0] ? g_sub : NULL); }
+void nt_saver_weather(const char *s){ if(th_idisc()){ idisc_saver_weather(s); return; } face_weather(&g_sface, s); }
 void nt_saver_track(const char *title, const char *artist){
+    if(th_idisc()){ idisc_saver_track(title, artist); return; }
     if(!g_strack) return;
     (void)artist;
     lv_label_set_text(g_strack, title ? title : "");

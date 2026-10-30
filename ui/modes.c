@@ -6,6 +6,7 @@
 #include <string.h>
 #include "orbit.h"
 #include "theme.h"
+#include "idisc.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -463,13 +464,16 @@ static void ntmodes_paint(int slot, int pending){
     for(int i = 0; i < N_MODES; i++){
         lv_obj_t *t = g_drow[i]; if(!t) continue;
         int on = i == slot;
-        lv_color_t bg = on ? TC(TEXT_PRIMARY) : TC(SURFACE), fg = on ? TC(CANVAS) : TC(TEXT_PRIMARY);
+        int id = th_idisc();                                              /* iDisc: glass tiles, the active one blue */
+        lv_color_t bg = on ? (id ? TC(ACCENT_PRIMARY) : TC(TEXT_PRIMARY)) : TC(SURFACE), fg = on ? (id ? TC(ON_ACCENT) : TC(CANVAS)) : TC(TEXT_PRIMARY);
+        if(id && !on) idisc_glass(t, 24);
+        else { lv_obj_set_style_bg_grad_dir(t, LV_GRAD_DIR_NONE, 0); lv_obj_set_style_bg_main_opa(t, LV_OPA_COVER, 0); lv_obj_set_style_border_width(t, 0, 0); }
         lv_obj_set_style_bg_color(t, bg, 0);
         lv_obj_set_style_text_color(g_nt_ic[i], fg, 0); lv_obj_set_style_text_color(g_nt_nm[i], fg, 0);
-        lv_obj_set_style_text_color(g_nt_sub[i], on ? TC(CANVAS) : TC(TEXT_MUTED), 0);
+        lv_obj_set_style_text_color(g_nt_sub[i], on ? fg : TC(TEXT_MUTED), 0);
         lv_obj_set_style_text_opa(g_nt_sub[i], on ? 170 : LV_OPA_COVER, 0);
         lv_label_set_text(g_nt_sub[i], on ? (pending ? "Switching..." : "Active") : NT_SUB[i]);
-        if(on) lv_obj_remove_flag(g_nt_dot[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(g_nt_dot[i], LV_OBJ_FLAG_HIDDEN);
+        if(on && !id) lv_obj_remove_flag(g_nt_dot[i], LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(g_nt_dot[i], LV_OBJ_FLAG_HIDDEN);
         lv_label_set_text(g_nt_ic[i], on && pending ? LV_SYMBOL_REFRESH : MODES[i].glyph);
         icon_spin(g_nt_ic[i], on && pending);
         lv_obj_set_style_bg_color(t, on ? TC(PRIMARY_PRESSED) : TC(SURFACE_PRESSED), LV_STATE_PRESSED);
@@ -483,6 +487,8 @@ static void ntmodes_create(lv_obj_t *root){
     lv_obj_t *t = lv_label_create(root); kit_keep(t); lv_label_set_text(t, "WORKING MODE");
     lv_obj_set_style_text_font(t, TF(UI_14), 0); lv_obj_set_style_text_color(t, TC(TEXT_MUTED), 0); lv_obj_set_style_text_letter_space(t, 3, 0);
     lv_obj_align(t, LV_ALIGN_TOP_MID, 6, 34); lv_obj_align_to(d, t, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+    if(th_idisc()){ lv_label_set_text(t, "Working Mode"); idisc_title_style(t); lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 30);
+                    lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN); idisc_wallpaper(root); }
     memset(g_drow, 0, sizeof g_drow);
     for(int k = 0; k < N_DISCO; k++){
         int i = DISCO_ORD[k], row = k / 2, col = k % 2, x = k == 4 ? 116 : 46 + col * 140, y = 66 + row * 86;

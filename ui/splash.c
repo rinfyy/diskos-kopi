@@ -99,9 +99,11 @@ static int disc_make(uint32_t bg){
 /* ---- the timeline ---- */
 static void zframe(float t);
 static void ntframe(float t);
+static void idframe(float t);
 static void splash_frame(int ms){
     float t = ms / (float)SP_MS;
     if(th_zune()){ zframe(t); return; }
+    if(th_idisc()){ idframe(t); return; }
     if(th_nt()){ ntframe(t); return; }
     /* spin: up to speed by 0.42, then slowing to a stop at 0.64 (the angle is the integral of the speed) */
     float ang;
@@ -175,8 +177,10 @@ static lv_obj_t *word_label(lv_obj_t *parent, const char *s, lv_color_t c){
 }
 static int zbuild(void);
 static int ntbuild(void);
+static int idbuild(void);
 static int build(void){
     if(th_zune()) return zbuild();
+    if(th_idisc()) return idbuild();
     if(th_nt()) return ntbuild();
     if(!disc_make((uint32_t)lv_color_to_u32(TC(FIXED_SPLASH_BG)) & 0xFFFFFF)) return 0;
     g_sp.root = plain(lv_layer_top());
@@ -430,3 +434,80 @@ void splash_nt_goodbye(lv_obj_t *parent){
     gb_frame(NULL);
 }
 void splash_nt_goodbye_test(int ms){ g_gb_t0 = lv_tick_get() - (uint32_t)ms; gb_frame(NULL); }   /* host renders */
+
+/* ==== iDisc: a glass disc fades up, "iDisc" under it, and a thin bar fills - then it all fades into the Music screen.
+ * Shutdown: the word fades and a spinner of twelve spokes turns until the screen goes dark. ==== */
+LV_FONT_DECLARE(font_id_semi_34)
+static lv_obj_t *g_idlogo, *g_idword, *g_idbar, *g_idfill;
+static lv_obj_t *id_disc(lv_obj_t *p, int d){
+    lv_obj_t *o = plain(p); lv_obj_set_size(o, d, d); lv_obj_set_style_radius(o, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(o, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_grad_color(o, TC(DECOR_1), 0);
+    lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_VER, 0); lv_obj_set_style_bg_opa(o, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(o, 2, 0); lv_obj_set_style_border_color(o, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(o, 110, 0);
+    lv_obj_t *sheen = plain(o); lv_obj_set_size(sheen, d - 16, d / 2 - 6); lv_obj_align(sheen, LV_ALIGN_TOP_MID, 0, 6);   /* the glass highlight */
+    lv_obj_set_style_radius(sheen, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(sheen, TC(FIXED_MEDIA_WHITE), 0);
+    lv_obj_set_style_bg_grad_color(sheen, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_grad_dir(sheen, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_opa(sheen, LV_OPA_COVER, 0); lv_obj_set_style_bg_main_opa(sheen, 90, 0); lv_obj_set_style_bg_grad_opa(sheen, 0, 0);
+    lv_obj_t *hole = plain(o); lv_obj_set_size(hole, d / 4, d / 4); lv_obj_center(hole);
+    lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(hole, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(hole, 2, 0); lv_obj_set_style_border_color(hole, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(hole, 90, 0);
+    return o;
+}
+static int idbuild(void){
+    g_sp.root = plain(lv_layer_top()); lv_obj_set_size(g_sp.root, 360, 360);
+    lv_obj_set_style_bg_color(g_sp.root, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(g_sp.root, LV_OPA_COVER, 0);
+    lv_obj_add_flag(g_sp.root, LV_OBJ_FLAG_CLICKABLE);
+    g_idlogo = id_disc(g_sp.root, 104); lv_obj_align(g_idlogo, LV_ALIGN_TOP_MID, 0, 92);
+    g_idword = lv_label_create(g_sp.root); kit_keep(g_idword); lv_label_set_text(g_idword, "iDisc");
+    lv_obj_set_style_text_font(g_idword, &font_id_semi_34, 0); lv_obj_set_style_text_color(g_idword, TC(FIXED_MEDIA_WHITE), 0);
+    lv_obj_align(g_idword, LV_ALIGN_TOP_MID, 0, 208);
+    g_idbar = plain(g_sp.root); lv_obj_set_size(g_idbar, 120, 4); lv_obj_align(g_idbar, LV_ALIGN_TOP_MID, 0, 272);
+    lv_obj_set_style_radius(g_idbar, 2, 0); lv_obj_set_style_bg_color(g_idbar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(g_idbar, 60, 0);
+    lv_obj_set_style_clip_corner(g_idbar, true, 0);
+    g_idfill = plain(g_idbar); lv_obj_set_size(g_idfill, 0, 4); lv_obj_set_style_bg_color(g_idfill, TC(FIXED_MEDIA_WHITE), 0);
+    lv_obj_set_style_bg_opa(g_idfill, LV_OPA_COVER, 0);
+    return 1;
+}
+static void idframe(float t){
+    float a = smooth(seg(t, 0.0f, 0.2f));
+    lv_obj_set_style_opa(g_idlogo, (lv_opa_t)(255 * a), 0);
+    lv_obj_align(g_idlogo, LV_ALIGN_TOP_MID, 0, 92 + (int)(14 * (1 - a)));
+    lv_obj_set_style_opa(g_idword, (lv_opa_t)(255 * smooth(seg(t, 0.14f, 0.34f))), 0);
+    lv_obj_set_style_opa(g_idbar, (lv_opa_t)(255 * smooth(seg(t, 0.2f, 0.3f))), 0);
+    lv_obj_set_width(g_idfill, (int)(120 * ease(seg(t, 0.24f, 0.86f))));
+    lv_obj_set_style_opa(g_sp.root, (lv_opa_t)(255 * (1 - seg(t, 0.9f, 1))), 0);
+}
+#define ID_SPOKES 12
+static lv_obj_t *g_idgb, *g_idgbword, *g_idsp[ID_SPOKES]; static uint32_t g_idgb_t0; static lv_timer_t *g_idgb_tm;
+static void idgb_frame(lv_timer_t *tm){
+    (void)tm;
+    if(!g_idgb) return;
+    uint32_t ms = lv_tick_elaps(g_idgb_t0); float t = clampf((float)ms / GB_MS);
+    lv_obj_set_style_opa(g_idgbword, (lv_opa_t)(255 * (1 - smooth(seg(t, 0.05f, 0.4f)))), 0);
+    int head = (int)(ms / 80) % ID_SPOKES; float vis = smooth(seg(t, 0.15f, 0.3f)) * (1 - smooth(seg(t, 0.85f, 1)));
+    for(int i = 0; i < ID_SPOKES; i++){
+        int age = (head - i + ID_SPOKES) % ID_SPOKES;                      /* the newest spoke brightest */
+        lv_obj_set_style_opa(g_idsp[i], (lv_opa_t)(vis * (255 - age * 17)), 0);
+    }
+    if(t >= 1 && g_idgb_tm){ lv_timer_delete(g_idgb_tm); g_idgb_tm = NULL; }
+}
+static void idgb_deleted(lv_event_t *e){ (void)e; g_idgb = NULL; if(g_idgb_tm){ lv_timer_delete(g_idgb_tm); g_idgb_tm = NULL; } }
+void splash_idisc_goodbye(lv_obj_t *parent){
+    g_idgb = plain(parent); lv_obj_set_size(g_idgb, 360, 360);
+    lv_obj_set_style_bg_color(g_idgb, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(g_idgb, LV_OPA_COVER, 0);
+    lv_obj_add_event_cb(g_idgb, idgb_deleted, LV_EVENT_DELETE, NULL);
+    g_idgbword = lv_label_create(g_idgb); kit_keep(g_idgbword); lv_label_set_text(g_idgbword, "iDisc");
+    lv_obj_set_style_text_font(g_idgbword, &font_id_semi_34, 0); lv_obj_set_style_text_color(g_idgbword, TC(FIXED_MEDIA_WHITE), 0);
+    lv_obj_align(g_idgbword, LV_ALIGN_TOP_MID, 0, 120);
+    for(int i = 0; i < ID_SPOKES; i++){                                  /* spokes: short rounded bars round a centre */
+        float an = (i * 360.0f / ID_SPOKES - 90) * 0.0174533f;
+        lv_obj_t *s = g_idsp[i] = plain(g_idgb); lv_obj_set_size(s, 6, 6);
+        lv_obj_set_pos(s, 180 + (int)lroundf(16 * cosf(an)) - 3, 214 + (int)lroundf(16 * sinf(an)) - 3);
+        lv_obj_set_style_radius(s, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(s, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
+    }
+    g_idgb_t0 = lv_tick_get();
+    if(g_idgb_tm) lv_timer_delete(g_idgb_tm);
+    g_idgb_tm = lv_timer_create(idgb_frame, 33, NULL);
+    idgb_frame(NULL);
+}
+void splash_idisc_goodbye_test(int ms){ g_idgb_t0 = lv_tick_get() - (uint32_t)ms; idgb_frame(NULL); }   /* host renders */

@@ -151,7 +151,7 @@ static void build_land(lv_obj_t *s){
         lv_obj_t *o = box(s, M[i].px - M[i].d / 2, M[i].py - M[i].d / 2, M[i].d, M[i].d, LV_RADIUS_CIRCLE, c, LV_OPA_80);
         lv_obj_set_style_shadow_width(o, M[i].d + 8, 0); lv_obj_set_style_shadow_color(o, c, 0); lv_obj_set_style_shadow_opa(o, LV_OPA_30, 0);
     }
-    lv_obj_t *ttl = ctext(s, th_nt() ? "SONGSPHERE" : "SongSphere", 44, 220, &B22, TC(TEXT_PRIMARY));
+    lv_obj_t *ttl = ctext(s, th_nt_caps() ? "SONGSPHERE" : "SongSphere", 44, 220, &B22, TC(TEXT_PRIMARY));
     if(th_nt()){ lv_obj_set_y(ttl, 40); nt_title_style(ttl); kit_keep(ttl); }
     ctext(s, "Place your music by mood.", 78, 270, &F16, TC(TEXT_PRIMARY));
     ctext(s, "Play what fits the moment.", 100, 270, &F16, TC(TEXT_SECONDARY));

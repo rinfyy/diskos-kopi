@@ -341,7 +341,7 @@ static const uint32_t DEFAULT_LIGHT[THEME_CLR_COUNT] = {
 #include "theme_presets.inc"   /* generated: tools/gen_theme_presets.py */
 
 typedef struct { const char *name; const uint32_t *dark, *light; } theme_preset_t;
-static uint32_t FORK_RING[2][THEME_CLR_COUNT], FORK_BRAUN[2][THEME_CLR_COUNT], FORK_DISCO[2][THEME_CLR_COUNT], FORK_NULL[2][THEME_CLR_COUNT], FORK_SIMPLE[2][THEME_CLR_COUNT], FORK_ZUNE[2][THEME_CLR_COUNT], FORK_NT[2][THEME_CLR_COUNT];
+static uint32_t FORK_RING[2][THEME_CLR_COUNT], FORK_BRAUN[2][THEME_CLR_COUNT], FORK_DISCO[2][THEME_CLR_COUNT], FORK_NULL[2][THEME_CLR_COUNT], FORK_SIMPLE[2][THEME_CLR_COUNT], FORK_ZUNE[2][THEME_CLR_COUNT], FORK_NT[2][THEME_CLR_COUNT], FORK_ID[2][THEME_CLR_COUNT];
 /* Sparse slots preserve every shipped theme ID; retired IDs are unavailable. */
 static const theme_preset_t PRESETS[THEME_PRESET_COUNT] = {
     THEME_PRESETS_GENERATED
@@ -352,10 +352,11 @@ static const theme_preset_t PRESETS[THEME_PRESET_COUNT] = {
     [THEME_PRESET_SIMPLE] = { "Squash", FORK_SIMPLE[0], FORK_SIMPLE[1] },
     [THEME_PRESET_ZUNE] = { "Zune", FORK_ZUNE[0], FORK_ZUNE[1] },
     [THEME_PRESET_NTDISK] = { "NTDisk", FORK_NT[0], FORK_NT[1] },
+    [THEME_PRESET_IDISC] = { "iDisc", FORK_ID[0], FORK_ID[1] },
 };
 _Static_assert(sizeof PRESETS / sizeof PRESETS[0] == THEME_PRESET_COUNT, "THEME_PRESET_COUNT (theme.h) is stale");
 const char *const theme_preset_names[THEME_PRESET_COUNT] = { THEME_PRESET_NAMES_GENERATED,
- [THEME_PRESET_RING]="Ring",[THEME_PRESET_BRAUN]="Braun",[THEME_PRESET_DISCO]="Disco",[THEME_PRESET_NULL]="Null",[THEME_PRESET_SIMPLE]="Squash",[THEME_PRESET_ZUNE]="Zune",[THEME_PRESET_NTDISK]="NTDisk" };
+ [THEME_PRESET_RING]="Ring",[THEME_PRESET_BRAUN]="Braun",[THEME_PRESET_DISCO]="Disco",[THEME_PRESET_NULL]="Null",[THEME_PRESET_SIMPLE]="Squash",[THEME_PRESET_ZUNE]="Zune",[THEME_PRESET_NTDISK]="NTDisk",[THEME_PRESET_IDISC]="iDisc" };
 int theme_preset_available(int preset){return preset>=0&&preset<THEME_PRESET_COUNT&&PRESETS[preset].name!=NULL;}
 static int g_preset;
 static uint32_t g_custom[2][THEME_CLR_COUNT];      /* the saved custom theme, fixed roles filled from Default */
@@ -685,6 +686,43 @@ static void nt_palettes_init(void){
         for(unsigned i = 0; i < sizeof T / sizeof T[0]; i++) p[T[i].r] = st == 4 ? T[i].cream : T[i].midnight;
     }
 }
+/* iDisc: iOS-style system colours. Dark: true black, #1C1C1E grouped rows, systemBlue; Light: #F2F2F7 paper, white
+ * rows, the light systemBlue. Switches are system green. The eight icon tints (th_id_tint) are the system hues. */
+static void id_palettes_init(void){
+    for(int v = 0; v < 2; v++){
+        uint32_t *p = FORK_ID[v];
+        memcpy(p, v ? DEFAULT_LIGHT : DEFAULT_DARK, sizeof FORK_ID[v]);
+        static const struct { theme_color_role_t r; uint32_t dark, light; } R[] = {
+            {THEME_CLR_CANVAS,0x000000,0xF2F2F7},{THEME_CLR_SURFACE,0x1C1C1E,0xFFFFFF},{THEME_CLR_SURFACE_RAISED,0x2C2C2E,0xE5E5EA},
+            {THEME_CLR_SURFACE_STRONG,0x3A3A3C,0xD1D1D6},{THEME_CLR_SURFACE_SELECTED,0x2C2C2E,0xE5E5EA},{THEME_CLR_LIST_PRESSED,0x3A3A3C,0xD1D1D6},
+            {THEME_CLR_SURFACE_PRESSED,0x3A3A3C,0xD1D1D6},{THEME_CLR_RAISED_PRESSED,0x48484A,0xC7C7CC},{THEME_CLR_ART_PLACEHOLDER,0x2C2C2E,0xE5E5EA},
+            {THEME_CLR_BORDER,0x38383A,0xC6C6C8},{THEME_CLR_BORDER_STRONG,0x48484A,0xB4B4B9},{THEME_CLR_CONNECTED_SURFACE,0x1C3A5E,0xD6E8FF},
+            {THEME_CLR_CONTROL_TRACK,0x3A3A3C,0xE5E5EA},{THEME_CLR_CONTROL_TRACK_STRONG,0x48484A,0xD1D1D6},
+            {THEME_CLR_CONTROL_FILL,0x0A84FF,0x007AFF},{THEME_CLR_CONTROL_KNOB,0xFFFFFF,0xFFFFFF},{THEME_CLR_CONTROL_OFF,0x2C2C2E,0xE5E5EA},
+            {THEME_CLR_ON_CONTROL,0xFFFFFF,0xFFFFFF},
+            {THEME_CLR_TEXT_PRIMARY,0xFFFFFF,0x000000},{THEME_CLR_TEXT_SECONDARY,0xAEAEB2,0x5C5C61},{THEME_CLR_TEXT_MUTED,0x8E8E93,0x6E6E73},
+            {THEME_CLR_TEXT_DISABLED,0x636366,0xAEAEB2},{THEME_CLR_TEXT_LYRICS,0xE5E5EA,0x1C1C1E},{THEME_CLR_TEXT_HINT,0x8E8E93,0x6E6E73},
+            {THEME_CLR_TEXT_FOOTNOTE,0x8E8E93,0x6E6E73},{THEME_CLR_TEXT_SEPARATOR,0x545458,0xC6C6C8},
+            {THEME_CLR_ACCENT_PRIMARY,0x0A84FF,0x007AFF},{THEME_CLR_ACCENT_EMPHASIS,0x0A84FF,0x007AFF},{THEME_CLR_ACCENT_IDLE,0x0A84FF,0x007AFF},
+            {THEME_CLR_PRIMARY_PRESSED,0x0064D2,0x0062CC},
+            {THEME_CLR_ON_ACCENT,0xFFFFFF,0xFFFFFF},{THEME_CLR_SWITCH_ON,0x30D158,0x34C759},{THEME_CLR_SWITCH_OFF,0x39393D,0xE9E9EB},
+            {THEME_CLR_SWITCH_KNOB,0xFFFFFF,0xFFFFFF},{THEME_CLR_WIDGET_PRIMARY,0x0A84FF,0x007AFF},{THEME_CLR_SIGNAL_ACTIVE,0xFFFFFF,0x000000},
+            {THEME_CLR_SIGNAL_INACTIVE,0x8E8E93,0x8E8E93},{THEME_CLR_GRABBER,0x8E8E93,0xAEAEB2},{THEME_CLR_PAGE_DOT_ACTIVE,0xFFFFFF,0x000000},
+            {THEME_CLR_PAGE_DOT_INACTIVE,0x545458,0xC7C7CC},{THEME_CLR_PAGE_DOT_DIM,0x3A3A3C,0xE5E5EA},{THEME_CLR_KEY_SURFACE,0x3A3A3C,0xFFFFFF},
+            {THEME_CLR_KEY_SELECTED,0x0A3D73,0xCCE4FF},{THEME_CLR_KEY_PRESSED,0x545458,0xD1D1D6},{THEME_CLR_KEY_TEXT,0xFFFFFF,0x000000},
+            {THEME_CLR_INPUT_CURSOR,0x0A84FF,0x007AFF},{THEME_CLR_INPUT_PLACEHOLDER,0x8E8E93,0x8E8E93},
+            {THEME_CLR_ACTION_SURFACE,0x0A84FF,0x007AFF},{THEME_CLR_ON_ACTION,0xFFFFFF,0xFFFFFF},
+            {THEME_CLR_FOLDER_ICON,0x0A84FF,0x007AFF},{THEME_CLR_DECOR_1,0x5E5CE6,0x5856D6},{THEME_CLR_DECOR_2,0xFF375F,0xFF2D55},
+            {THEME_CLR_STATUS_SUCCESS,0x30D158,0x34C759},{THEME_CLR_STATUS_WARNING,0xFF9F0A,0xFF9500},{THEME_CLR_STATUS_DANGER,0xFF453A,0xFF3B30},
+            {THEME_CLR_STATUS_INFO,0x64D2FF,0x32ADE6},{THEME_CLR_DOT_GRID,0x1C1C1E,0xE5E5EA},
+            {THEME_CLR_IMAGE_TINT,0x000000,0xF2F2F7},{THEME_CLR_WEATHER_SUN,0xFFD60A,0xFF9500},
+            {THEME_CLR_WEATHER_MOON,0xE5E5EA,0x8E8E93},{THEME_CLR_WEATHER_RAIN,0x64D2FF,0x007AFF},{THEME_CLR_WEATHER_BORDER,0x48484A,0xC6C6C8},
+            {THEME_CLR_ART_WALL_FRONT,0x2C2C2E,0xFFFFFF},{THEME_CLR_ART_WALL_SIDE,0x1C1C1E,0xF2F2F7},
+            {THEME_CLR_TOAST_SURFACE,0x2C2C2E,0xFFFFFF},{THEME_CLR_TOAST_BORDER,0x48484A,0xD1D1D6},
+        };
+        for(unsigned i = 0; i < sizeof R / sizeof R[0]; i++) p[R[i].r] = v ? R[i].light : R[i].dark;
+    }
+}
 static void null_palettes_init(void){
  int scheme=cfg_get_int("null_palette",0);
  int matrix=scheme==2, custom=scheme==3;
@@ -796,7 +834,7 @@ static void fork_config_migrate(void){
 void theme_init(void){
     fork_palettes_init();
     disco_palettes_init();
-    null_palettes_init(); simple_palettes_init(); zune_palettes_init(); nt_palettes_init();
+    null_palettes_init(); simple_palettes_init(); zune_palettes_init(); nt_palettes_init(); id_palettes_init();
     fork_config_migrate();
     int outdoor = cfg_get_int("outdoor", 0) == 1;
     g_outdoor = outdoor;
@@ -807,6 +845,10 @@ void theme_init(void){
     }
     if(g_preset==THEME_PRESET_NULL||g_preset==THEME_PRESET_ZUNE)g_variant=0;   /* dark-only themes */
     if(g_preset==THEME_PRESET_NTDISK){ int st = cfg_get_int("nt_style", 0); g_variant = outdoor || st == 1 || st == 3 || st == 4; }   /* NTDisk: its Style (4 Cream is a light one) */
+    if(g_preset==THEME_PRESET_IDISC){                                    /* iDisc: Dark, Light, or Automatic (light 7:00-20:00) */
+        int st = cfg_get_int("id_style", 0); time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm);
+        g_variant = outdoor || st == 1 || (st == 2 && tm.tm_hour >= 7 && tm.tm_hour < 20);
+    }
     if(theme_auto_supported() && cfg_get_int("theme_auto",0) && !outdoor){
         time_t now=time(NULL); struct tm tm; localtime_r(&now,&tm);
         g_variant = !(tm.tm_hour >= 20 || tm.tm_hour < 7);
@@ -1277,9 +1319,17 @@ const theme_kit_t *theme_kit_for_active(void){ return (g_def && g_def->kit) ? g_
 int theme_ring_light(void){return (g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_DISCO) && g_variant==1;}
 int theme_auto_supported(void){return g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_BRAUN || g_preset==THEME_PRESET_DISCO;}
 int th_null(void){return g_preset==THEME_PRESET_NULL;}
-int th_disco(void){return g_preset==THEME_PRESET_DISCO || g_preset==THEME_PRESET_NTDISK;}
-int th_nt(void){return g_preset==THEME_PRESET_NTDISK;}
-int th_nt_mix(void){ int st = cfg_get_int("nt_style", 0); return th_nt() && (st == 0 || st == 1); }
+int th_disco(void){return g_preset==THEME_PRESET_DISCO || g_preset==THEME_PRESET_NTDISK || g_preset==THEME_PRESET_IDISC;}
+int th_nt(void){return g_preset==THEME_PRESET_NTDISK || g_preset==THEME_PRESET_IDISC;}
+int th_idisc(void){return g_preset==THEME_PRESET_IDISC;}
+int th_nt_caps(void){return g_preset==THEME_PRESET_NTDISK;}
+int th_id_glass(void){return g_preset==THEME_PRESET_IDISC && cfg_get_int("id_glass", 0) == 0;}
+lv_color_t th_id_tint(int i){
+    static const theme_color_role_t R[8] = { THEME_CLR_ACCENT_PRIMARY, THEME_CLR_STATUS_SUCCESS, THEME_CLR_STATUS_WARNING, THEME_CLR_STATUS_DANGER,
+                                             THEME_CLR_DECOR_1, THEME_CLR_DECOR_2, THEME_CLR_STATUS_INFO, THEME_CLR_TEXT_MUTED };
+    return theme_color(R[(unsigned)i % 8]);
+}
+int th_nt_mix(void){ int st = cfg_get_int("nt_style", 0); return th_nt_caps() && (st == 0 || st == 1); }
 /* NTDisk Mix: Music is drawn in the other tone from the menus (a light "widget" among dark pages, or a dark one among light) */
 lv_color_t th_nt_music_color(theme_color_role_t role){
     if(!th_nt_mix() || role < 0 || role >= THEME_CLR_COUNT) return theme_color(role);

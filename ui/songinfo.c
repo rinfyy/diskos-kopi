@@ -2,6 +2,7 @@
 /* Copyright (C) 2026 diskOS contributors */
 #include "screens.h"
 #include "theme.h"
+#include "idisc.h"
 #include "braun.h"
 #include "theme_kit.h"
 #include "zune_dial.h"
@@ -330,12 +331,18 @@ void songinfo_create(lv_obj_t *root)
         lv_obj_t *dt = lv_obj_create(hd); lv_obj_remove_style_all(dt); lv_obj_set_size(dt, 6, 6);
         lv_obj_set_style_radius(dt, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(dt, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(dt, LV_OPA_COVER, 0);
         lv_obj_align_to(dt, ht, LV_ALIGN_OUT_LEFT_MID, -8, 0);
+        if(th_idisc()){ lv_label_set_text(ht, "Song Info"); idisc_title_style(ht); lv_obj_set_style_text_font(ht, TF(HEADER_SM), 0);
+                        lv_obj_align(ht, LV_ALIGN_CENTER, 0, 4); lv_obj_add_flag(dt, LV_OBJ_FLAG_HIDDEN); }   /* iDisc: a plain title */
         lv_obj_set_size(g_ring, 112, 112); lv_obj_align(g_ring, LV_ALIGN_TOP_MID, 0, 40);
         lv_obj_set_style_arc_width(g_ring, 2, LV_PART_MAIN); lv_obj_set_style_arc_width(g_ring, 2, LV_PART_INDICATOR);
         lv_obj_set_size(g_cover, 96, 96); lv_obj_align(g_cover, LV_ALIGN_TOP_MID, 0, 48);
         lv_obj_t *hole = lv_obj_create(root); lv_obj_remove_style_all(hole); lv_obj_set_size(hole, 16, 16); lv_obj_align(hole, LV_ALIGN_TOP_MID, 0, 88);
         lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(hole, TC(CANVAS), 0); lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(hole, 3, 0); lv_obj_set_style_border_color(hole, TC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(hole, 80, 0);
+        if(th_idisc()){ lv_obj_add_flag(hole, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_ring, LV_OBJ_FLAG_HIDDEN);   /* iDisc: a rounded cover card */
+                        lv_obj_set_size(g_cover, 108, 108); lv_obj_align(g_cover, LV_ALIGN_TOP_MID, 0, 44);
+                        lv_obj_set_style_radius(g_cover, 14, 0); lv_obj_set_style_clip_corner(g_cover, true, 0);
+                        lv_obj_set_style_border_width(g_cover, 0, 0); lv_obj_set_style_outline_width(g_cover, 0, 0); lv_obj_align(hd, LV_ALIGN_TOP_MID, 0, 14); }
         lv_obj_set_width(g_title, 250); lv_obj_set_style_text_font(g_title, ui_font_cjk(20), 0); lv_obj_align(g_title, LV_ALIGN_TOP_MID, 0, 160);
         lv_obj_set_width(g_artist, 230); lv_obj_set_style_text_font(g_artist, ui_font_cjk(14), 0);
         lv_obj_set_style_text_color(g_artist, TC(TEXT_MUTED), 0); lv_obj_align(g_artist, LV_ALIGN_TOP_MID, 0, 186);
@@ -350,6 +357,7 @@ void songinfo_create(lv_obj_t *root)
             lv_obj_set_style_text_letter_space(g_key[i], 1, 0);
             lv_obj_set_width(g_val[i], 140); lv_obj_set_style_text_font(g_val[i], ui_font_cjk(14), 0);
             lv_label_set_long_mode(g_val[i], LV_LABEL_LONG_WRAP);
+            if(th_idisc()){ lv_obj_set_style_text_font(g_key[i], TF(UI_12), 0); lv_obj_set_style_text_letter_space(g_key[i], 0, 0); continue; }
             char up[32]; snprintf(up, sizeof up, "%s", lv_label_get_text(g_key[i]));
             for(char *c = up; *c; c++) if(*c >= 'a' && *c <= 'z') *c -= 32;
             lv_label_set_text(g_key[i], up);
@@ -593,9 +601,9 @@ void songinfo_set(const track_state_t *st)
     /* Audiobook: relabel to "Book details" and turn the Album slot into reading progress. */
     int book = mdb_is_book_path(st->path);
     if(g_header){if(th_null()){lv_label_set_text(g_header,book?"BOOK INFO":"TRACK INFO");lv_obj_set_style_text_font(g_header,TF(HEADER),0);}else theme_title_text(g_header, book ? "Book details" : "Song Info");}
-    lv_label_set_text(g_key[F_ARTIST],   (th_null()||th_nt())?(book?"AUTHOR":"ARTIST"):(book ? "Author" : "Artist"));
-    lv_label_set_text(g_key[F_ALBUM],    (th_null()||th_nt())?(book?"READ":"ALBUM"):(book ? "Progress" : "Album"));
-    lv_label_set_text(g_key[F_DURATION], (th_null()||th_nt())?"LENGTH":(book ? "Total length" : "Duration"));
+    lv_label_set_text(g_key[F_ARTIST],   (th_null()||th_nt_caps())?(book?"AUTHOR":"ARTIST"):(book ? "Author" : "Artist"));
+    lv_label_set_text(g_key[F_ALBUM],    (th_null()||th_nt_caps())?(book?"READ":"ALBUM"):(book ? "Progress" : "Album"));
+    lv_label_set_text(g_key[F_DURATION], (th_null()||th_nt_caps())?"LENGTH":(book ? "Total length" : "Duration"));
     if(book){
         char pg[56]="-";
         if(st->duration_ms>0){

@@ -41,7 +41,12 @@ int         theme_variant(void);                    /* 0 dark, 1 light (the acti
 int         theme_outdoor(void);                    /* 1 = Outdoor mode (light variant + full backlight) this run */
 /* Built-in presets keep their shipped configuration IDs. Retired slots are unavailable.
  * Each active preset has dark/light palettes; Appearance / Outdoor selects the variant. */
-#define THEME_PRESET_COUNT 15 /* saved-ID capacity, including retired holes */
+#define THEME_PRESET_COUNT 16 /* saved-ID capacity, including retired holes */
+#define THEME_PRESET_IDISC 15  /* fork: iDisc, a glassy iOS-27-style theme on NTDisk's machinery (idisc.c) */
+int th_idisc(void);       /* the iDisc theme is active (th_nt() and th_disco() are true too: it reuses their screens) */
+int th_nt_caps(void);     /* NTDisk proper (not iDisc): titles and labels in spaced capitals */
+int th_id_glass(void);    /* iDisc with Clear glass: see-through surfaces over the wallpaper (0 = Tinted, solid) */
+lv_color_t th_id_tint(int i);   /* iDisc: the colour behind settings icon i (blue, green, orange, red, indigo, pink, teal, grey) */
 #define THEME_PRESET_NTDISK 14 /* fork: NTDisk, a monochrome dot-matrix theme on Disco's machinery (nt_home.c) */
 int th_nt(void);          /* the NTDisk theme is active (th_disco() is true too: it reuses Disco's screens) */
 int th_nt_mix(void);      /* NTDisk style Mix dark / Mix light: light and dark tiles together */
