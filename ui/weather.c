@@ -3,6 +3,7 @@
 /* Copyright (C) 2026 diskOS contributors */
 #include "screens.h"
 #include "theme.h"
+#include "idisc.h"
 #include "theme_kit.h"
 #include "config.h"
 #include <stdio.h>
@@ -505,6 +506,7 @@ void weather_app_create(lv_obj_t *root)
         lv_obj_set_style_radius(f, LV_RADIUS_CIRCLE, 0);
         lv_obj_set_style_bg_color(f, TC(SURFACE), 0); lv_obj_set_style_bg_opa(f, 204, 0);
         lv_obj_clear_flag(f, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+        if(th_idisc()) idisc_glass(f, LV_RADIUS_CIRCLE);                  /* iDisc: glass */
         lv_obj_move_to_index(f, 0);
         const int FX = disco_mirror() ? 180 - 256 : 256 - 180;      /* the field's free middle, clear of the closed sliver */
         lv_obj_align(g_wd_cicon, LV_ALIGN_CENTER, FX, -64);
@@ -521,6 +523,7 @@ void weather_app_create(lv_obj_t *root)
             lv_obj_set_pos(r, disco_mx(left, 190 - left), y); lv_obj_set_size(r, 190 - left, TH_ROW_H);
             lv_obj_set_style_radius(r, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(r, TC(SURFACE), 0); lv_obj_set_style_bg_opa(r, LV_OPA_70, 0);
             lv_obj_clear_flag(r, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+            if(th_idisc()) idisc_glass(r, LV_RADIUS_CIRCLE);
             lv_obj_set_parent(g_wd_hour[k], r); lv_obj_set_parent(g_wd_icon[k], r); lv_obj_set_parent(g_wd_temp[k], r);
             lv_obj_set_style_text_font(g_wd_hour[k], TH_F_LIST, 0); lv_obj_set_style_text_color(g_wd_hour[k], TC(TEXT_PRIMARY), 0);
             lv_obj_align(g_wd_hour[k], LV_ALIGN_LEFT_MID, 12, 0);

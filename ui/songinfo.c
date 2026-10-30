@@ -342,7 +342,10 @@ void songinfo_create(lv_obj_t *root)
         if(th_idisc()){ lv_obj_add_flag(hole, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_ring, LV_OBJ_FLAG_HIDDEN);   /* iDisc: a rounded cover card */
                         lv_obj_set_size(g_cover, 108, 108); lv_obj_align(g_cover, LV_ALIGN_TOP_MID, 0, 44);
                         lv_obj_set_style_radius(g_cover, 14, 0); lv_obj_set_style_clip_corner(g_cover, true, 0);
-                        lv_obj_set_style_border_width(g_cover, 0, 0); lv_obj_set_style_outline_width(g_cover, 0, 0); lv_obj_align(hd, LV_ALIGN_TOP_MID, 0, 14); }
+                        lv_obj_set_style_border_width(g_cover, 0, 0); lv_obj_set_style_outline_width(g_cover, 0, 0); lv_obj_align(hd, LV_ALIGN_TOP_MID, 0, 22);
+                        lv_obj_set_size(g_cover, 96, 96); lv_obj_align(g_cover, LV_ALIGN_TOP_MID, 0, 58);
+                        lv_obj_set_style_arc_opa(g_ring, 0, LV_PART_MAIN); lv_obj_set_style_arc_opa(g_ring, 0, LV_PART_INDICATOR);
+                        idisc_glass(hd, LV_RADIUS_CIRCLE); kit_keep(hd); }
         lv_obj_set_width(g_title, 250); lv_obj_set_style_text_font(g_title, ui_font_cjk(20), 0); lv_obj_align(g_title, LV_ALIGN_TOP_MID, 0, 160);
         lv_obj_set_width(g_artist, 230); lv_obj_set_style_text_font(g_artist, ui_font_cjk(14), 0);
         lv_obj_set_style_text_color(g_artist, TC(TEXT_MUTED), 0); lv_obj_align(g_artist, LV_ALIGN_TOP_MID, 0, 186);

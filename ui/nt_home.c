@@ -847,6 +847,7 @@ static void l_build(void){
         lv_label_set_text(l, l_lines[i].text[0] ? l_lines[i].text : "\xE2\x80\xA2");
         lv_obj_set_width(l, 276); lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0); lv_obj_set_style_text_font(l, ui_font_cjk(20), 0);
+        if(th_idisc()){ lv_obj_set_width(l, 264); lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_LEFT, 0); lv_obj_set_style_text_font(l, TF(HEADER), 0); }   /* iDisc: bold, from the left */
         lv_obj_set_style_text_color(l, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_opa(l, 110, 0);
         lv_obj_remove_flag(l, LV_OBJ_FLAG_CLICKABLE);                    /* the list takes the tap (and the scroll) */
         kit_keep(l);
@@ -864,10 +865,10 @@ static void l_tick(lv_timer_t *t){
     if(!l_lab || l_n <= 0) return;
     int cur = -1; for(int i = 0; i < l_n && l_lines[i].ms <= st.position_ms + 200; i++) cur = i;
     if(cur == l_cur) return;
-    if(l_cur >= 0 && l_cur < l_n){ lv_obj_set_style_text_opa(l_lab[l_cur], 110, 0); lv_obj_set_style_text_color(l_lab[l_cur], TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_font(l_lab[l_cur], ui_font_cjk(20), 0); }
+    if(l_cur >= 0 && l_cur < l_n){ lv_obj_set_style_text_opa(l_lab[l_cur], th_idisc() ? 90 : 110, 0); lv_obj_set_style_text_color(l_lab[l_cur], TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_font(l_lab[l_cur], th_idisc() ? TF(HEADER) : ui_font_cjk(20), 0); }
     l_cur = cur;
     if(cur < 0) return;
-    lv_obj_set_style_text_opa(l_lab[cur], LV_OPA_COVER, 0); lv_obj_set_style_text_font(l_lab[cur], ui_font_cjk(24), 0);
+    lv_obj_set_style_text_opa(l_lab[cur], LV_OPA_COVER, 0); lv_obj_set_style_text_font(l_lab[cur], th_idisc() ? TF(UI_32) : ui_font_cjk(24), 0);
     lv_obj_set_style_text_color(l_lab[cur], TC(FIXED_MEDIA_WHITE), 0);
     if(l_touch && lv_tick_elaps(l_touch) < 4000) return;                  /* the reader is scrolling: leave it */
     lv_obj_update_layout(l_list);
@@ -908,6 +909,7 @@ void nt_lyrics_open(void){
         lv_obj_set_style_radius(dotr, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(dotr, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(dotr, LV_OPA_COVER, 0);
         l_time = text(l_root, TF(UI_12), TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_opa(l_time, 180, 0);
         lv_obj_align(l_time, LV_ALIGN_BOTTOM_MID, 6, -26);
+        if(th_idisc()){ lv_obj_add_flag(dotr, LV_OBJ_FLAG_HIDDEN); lv_obj_align(l_time, LV_ALIGN_BOTTOM_MID, 0, -26); }
         l_tm = lv_timer_create(l_tick, 250, NULL); lv_timer_pause(l_tm);
         keep_all(l_root);
     }

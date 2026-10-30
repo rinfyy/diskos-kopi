@@ -16,6 +16,7 @@
 #include "modes.h"
 #include "braun.h"
 #include "theme.h"
+#include "idisc.h"
 #include "curvelist.h"
 #include "musicdb.h"
 #include "ipc.h"
@@ -541,6 +542,7 @@ static lv_obj_t *pill(const char *icon, const char *t, int x, int w, lv_event_cb
     lv_obj_set_style_border_width(b, 2, LV_STATE_PRESSED);
     lv_obj_set_style_border_color(b, TC(TEXT_PRIMARY), LV_STATE_PRESSED);
     lv_obj_set_style_border_opa(b, LV_OPA_COVER, LV_STATE_PRESSED);
+    if(th_idisc() && !accent) idisc_glass(b, LV_RADIUS_CIRCLE);
     lv_obj_set_style_opa(b, LV_OPA_40, LV_STATE_DISABLED);
     lv_obj_set_ext_click_area(b, 4);
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
@@ -569,8 +571,10 @@ void queue_create(lv_obj_t *root){
     lv_obj_set_style_text_font(tt, th_braun() ? br_font(18, 1) : TH_F_TITLE, 0); lv_obj_set_style_text_color(tt, th_braun() ? TC(TEXT_PRIMARY) : TC(TEXT_PRIMARY), 0); lv_obj_align(tt, LV_ALIGN_LEFT_MID, 34, 0);
     if(th_nt()){ lv_label_set_text(tt, th_nt_caps() ? "QUEUE" : "Queue"); nt_title_style(tt); lv_obj_align(tt, LV_ALIGN_LEFT_MID, 50, 0);
                  lv_obj_set_style_text_font(ar, TF(UI_16), 0); lv_obj_set_style_text_color(ar, TC(TEXT_MUTED), 0); kit_keep(tt); }
+    if(th_idisc()){ lv_obj_set_size(hb, 124, 32); lv_obj_align(hb, LV_ALIGN_TOP_MID, 0, 12); idisc_glass(hb, LV_RADIUS_CIRCLE); kit_keep(hb);   /* iDisc: a glass back capsule */
+                    lv_obj_set_style_text_color(ar, TC(TEXT_PRIMARY), 0); lv_obj_align(ar, LV_ALIGN_LEFT_MID, 14, 0); lv_obj_align(tt, LV_ALIGN_LEFT_MID, 40, 0); }
     g_sub = lv_label_create(root); lv_obj_set_style_text_font(g_sub, th_braun() ? br_font(14, 0) : ui_font_cjk(16), 0);   /* has the middle dot */ lv_obj_set_style_text_color(g_sub, TC(TEXT_SECONDARY), 0);
-    lv_obj_align(g_sub, LV_ALIGN_TOP_MID, 0, 44);
+    lv_obj_align(g_sub, LV_ALIGN_TOP_MID, 0, th_idisc() ? 47 : 44);
     g_play_btn = pill(LV_SYMBOL_PLAY, "Play", 44, 104, play_cb, 1);
     g_shuffle_btn = pill(LV_SYMBOL_SHUFFLE, NULL, 156, 48, shuffle_cb, 0);        /* Random: icon only */
     g_clear_btn = pill(LV_SYMBOL_TRASH, "Clear", 212, 104, clear_cb, 0);

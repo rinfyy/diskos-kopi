@@ -10,6 +10,7 @@
 #include "fork_build.h"
 #include "braun.h"
 #include "theme.h"
+#include "idisc.h"
 #include "curvelist.h"
 #include "orbit.h"
 #include "theme_kit.h"
@@ -197,6 +198,7 @@ static lv_obj_t *rs_btn(lv_obj_t *p, const char *t, int x, int primary, lv_event
     lv_obj_t *l = lv_label_create(b); lv_label_set_text(l, t); lv_obj_set_style_text_font(l, TF(UI_16), 0);
     lv_obj_set_style_text_color(l, primary ? TC(ON_ACCENT) : TC(TEXT_PRIMARY), 0); lv_obj_center(l);
     kit_keep(b); kit_keep(l);
+    if(th_idisc() && !primary) idisc_glass(b, 22);
     return b;
 }
 static void restart_prompt(const char *key){
@@ -218,6 +220,9 @@ static void restart_prompt(const char *key){
     lv_obj_set_style_text_font(s2, TF(UI_12), 0); lv_obj_set_style_text_color(s2, TC(TEXT_MUTED), 0); lv_obj_align(s2, LV_ALIGN_TOP_MID, 0, 62);
     rs_btn(c, "Later", -64, 0, rs_later_cb); rs_btn(c, "Restart", 64, 1, rs_now_cb);
     kit_keep(g_rs_dlg); kit_keep(c); kit_keep(d); kit_keep(t); kit_keep(s2);
+    if(th_idisc()){ idisc_glass(c, 32); lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN); lv_obj_set_style_text_font(t, TF(HEADER), 0);   /* iDisc: a glass alert */
+                    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 26); lv_obj_align(s2, LV_ALIGN_TOP_MID, 0, 58);
+                    lv_obj_set_style_bg_opa(g_rs_dlg, 110, 0); }
 }
 /* ---- Controls > Teach play button: find which GPIO pin is the play button (main.c reads it for its shortcuts) ----
  * Watch every port while nothing is pressed (bits that move on their own are ignored), then wait for one bit to change

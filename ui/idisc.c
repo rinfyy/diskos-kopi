@@ -899,9 +899,20 @@ static int tint_of(const char *s){                                         /* a 
 }
 static void id_style(lv_obj_t *o, kit_role_t role){
     if(role == KIT_SCREEN){ idisc_wallpaper(o); return; }
-    if(role == KIT_ROW && lv_obj_get_width(o) >= 160 && !(lv_obj_get_style_bg_opa(o, 0) >= LV_OPA_50
-       && (lv_color_eq(lv_obj_get_style_bg_color(o, 0), TC(SURFACE_SELECTED)) || lv_color_eq(lv_obj_get_style_bg_color(o, 0), TC(ACCENT_PRIMARY))))){
-        idisc_glass(o, 18); return;                                       /* (a picked row keeps its highlight) */
+    if(role == KIT_ROW && lv_obj_get_width(o) >= 160){
+        lv_color_t bg = lv_obj_get_style_bg_color(o, 0); int opaque = lv_obj_get_style_bg_opa(o, 0) >= LV_OPA_50;
+        if(opaque && lv_color_eq(bg, TC(ACCENT_PRIMARY))) return;         /* an accent row keeps its colour */
+        int picked = opaque && (lv_color_eq(bg, TC(SURFACE_SELECTED)) || lv_color_eq(bg, TC(CONNECTED_SURFACE)));
+        idisc_glass(o, 18);
+        if(picked && th_id_glass()){ lv_obj_set_style_bg_color(o, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_grad_color(o, TC(ACCENT_PRIMARY), 0);
+                                     lv_obj_set_style_bg_main_opa(o, 110, 0); lv_obj_set_style_bg_grad_opa(o, 70, 0); }   /* picked: blue glass */
+        else if(picked) lv_obj_set_style_bg_color(o, TC(SURFACE_SELECTED), 0);
+        return;
+    }
+    lv_obj_t *par = lv_obj_get_parent(o);
+    if((role == KIT_BUTTON || role == KIT_ICON_BUTTON) && par && lv_obj_get_parent(par) && lv_obj_get_width(par) >= 160
+       && lv_obj_get_height(par) <= 96 && lv_obj_get_width(o) < 80){                                       /* a button inside a row: just its mark */
+        lv_obj_set_style_bg_opa(o, LV_OPA_TRANSP, 0); lv_obj_set_style_border_width(o, 0, 0); lv_obj_set_style_shadow_width(o, 0, 0); return;
     }
     if(role == KIT_BUTTON && lv_obj_get_width(o) >= 40){
         lv_color_t bg = lv_obj_get_style_bg_color(o, 0);                    /* a coloured action keeps its colour */

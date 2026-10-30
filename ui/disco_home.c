@@ -603,6 +603,7 @@ static void ov_mood_pill(lv_obj_t *p, int y){
     lv_obj_set_style_bg_color(pl, TC(SURFACE), 0); lv_obj_set_style_bg_opa(pl, 205, 0);
     lv_obj_set_style_bg_color(pl, TC(SURFACE_RAISED), LV_STATE_PRESSED);
     lv_obj_set_style_border_width(pl, 1, 0); lv_obj_set_style_border_color(pl, src ? sphere_ui_mood_colour(x, yy) : g_acc, 0); lv_obj_set_style_border_opa(pl, 140, 0);
+    if(th_idisc()){ idisc_glass(pl, 20); if(src){ lv_obj_set_style_border_color(pl, sphere_ui_mood_colour(x, yy), 0); lv_obj_set_style_border_opa(pl, 200, 0); } }
     lv_obj_set_ext_click_area(pl, 8);
     lv_obj_t *d = lv_obj_create(pl); lv_obj_remove_style_all(d);
     lv_obj_set_size(d, 14, 14); lv_obj_align(d, LV_ALIGN_LEFT_MID, 18, 0); lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
@@ -738,6 +739,7 @@ static void nt_ov_build(int mood){
         ui_on(b, ov_act_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i, actions[i], UI_REACHABLE);
         g_ov_cap[i] = nm;
         kit_keep(b); kit_keep(ic); kit_keep(nm); kit_keep(d);
+        if(th_idisc()) idisc_glass(b, 23);
     }
     if(mood){
         lv_obj_t *before = lv_obj_get_child(g_ov, -1);

@@ -7,6 +7,7 @@
 #include "screens.h"
 #include "i18n.h"
 #include "theme.h"
+#include "idisc.h"
 #include "scanner.h"
 #include "braun.h"
 #include <math.h>
@@ -23,6 +24,9 @@ static void toast_hide_cb(lv_timer_t *t)
     (void)t;
     if(g_toast){ lv_obj_delete_async(g_toast); g_toast = NULL; }
     if(g_toast_timer){ lv_timer_delete(g_toast_timer); g_toast_timer = NULL; }
+}
+static void toast_drop(void *o, int32_t v){                    /* iDisc: from above, a little past, back */
+    lv_obj_set_style_translate_y(o, (int32_t)(-30 * (256 - v) / 256), 0); lv_obj_set_style_opa(o, (lv_opa_t)(v > 255 ? 255 : v < 0 ? 0 : v), 0);
 }
 void ui_toast_icon(const char *icon, lv_color_t icol, const char *msg)
 {
@@ -51,8 +55,14 @@ void ui_toast_icon(const char *icon, lv_color_t icol, const char *msg)
     lv_obj_align(g_toast, LV_ALIGN_TOP_MID, 0, 40);          /* near the top rim, inside the circle */
     lv_obj_clear_flag(g_toast, LV_OBJ_FLAG_CLICKABLE);       /* let touches pass through */
     lv_obj_clear_flag(g_toast, LV_OBJ_FLAG_SCROLLABLE);
+    int idc = th_idisc();                                      /* iDisc: a black island at the top that drops in */
+    if(idc){ lv_obj_set_style_bg_color(g_toast, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_border_width(g_toast, 0, 0);
+             lv_obj_set_style_pad_ver(g_toast, 11, 0); lv_obj_set_style_pad_hor(g_toast, 18, 0); lv_obj_align(g_toast, LV_ALIGN_TOP_MID, 0, 22);
+             lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_toast); lv_anim_set_exec_cb(&a, toast_drop);
+             lv_anim_set_values(&a, 0, 256); lv_anim_set_duration(&a, 320); lv_anim_set_path_cb(&a, lv_anim_path_overshoot); lv_anim_start(&a); }
 
-    if(!icon || !strcmp(icon, LV_SYMBOL_BULLET)){              /* the default mark: a small drawn dot (no glyph needed) */
+    if(idc && (!icon || !strcmp(icon, LV_SYMBOL_BULLET))){ /* (no mark: the island says it) */ }
+    else if(!icon || !strcmp(icon, LV_SYMBOL_BULLET)){              /* the default mark: a small drawn dot (no glyph needed) */
         lv_obj_t *lamp = lv_obj_create(g_toast); lv_obj_remove_style_all(lamp); lv_obj_set_size(lamp, 8, 8);
         lv_obj_set_style_radius(lamp, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(lamp, br ? TC(ACCENT_PRIMARY) : icol, 0); lv_obj_set_style_bg_opa(lamp, LV_OPA_COVER, 0);
     } else {
@@ -71,6 +81,7 @@ void ui_toast_icon(const char *icon, lv_color_t icol, const char *msg)
     if(!tf_init){ tf = *theme_font_original(14); tf.fallback = br_font(14, 0); tf_init = 1; }
     lv_obj_set_style_text_font(l, br ? br_font(14, 0) : &tf, 0);   /* some toasts embed a filename/name */
     lv_obj_set_style_text_color(l, br ? TC(TEXT_PRIMARY) : TC(TEXT_PRIMARY), 0);
+    if(idc){ lv_obj_set_style_text_color(l, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_font(l, TF(UI_14), 0); }
 
     g_toast_timer = lv_timer_create(toast_hide_cb, 2400, NULL);
 }

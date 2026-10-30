@@ -3,6 +3,7 @@
 #include "screens.h"
 #include "theme_kit.h"
 #include "theme.h"
+#include "idisc.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -76,6 +77,7 @@ static void bk_style(lv_obj_t *k, int radius){
     lv_obj_set_style_bg_color(k, TC(SURFACE), 0);
     lv_obj_set_style_bg_opa(k, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(k, TC(SURFACE_RAISED), LV_STATE_PRESSED);
+    if(th_idisc()) idisc_glass(k, radius);
 }
 static lv_obj_t *bk_small(lv_obj_t *parent, int x, int w, lv_event_cb_t cb, lv_obj_t **lbl){
     lv_obj_t *b = lv_button_create(parent);
@@ -141,6 +143,7 @@ static void pill(lv_obj_t *parent, int x, int y, const char *sym, lv_color_t col
     lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(b, TC(CONTROL_TRACK), LV_STATE_PRESSED);
     lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, NULL);
+    if(th_idisc()) idisc_glass(b, 20);
     lv_obj_t *l = lv_label_create(b);
     lv_label_set_text(l, sym);
     lv_obj_set_style_text_color(l, col, 0);
@@ -163,6 +166,7 @@ void kbinput_open(const char *title, const char *initial, kbinput_done_cb_t cb){
     lv_obj_center(g_modal);
     lv_obj_set_style_bg_color(g_modal, TC(CANVAS), 0);
     lv_obj_set_style_bg_opa(g_modal, LV_OPA_COVER, 0);
+    if(th_idisc()) idisc_wallpaper(g_modal);                          /* iDisc: over the wallpaper, glass keys */
     lv_obj_clear_flag(g_modal, LV_OBJ_FLAG_SCROLLABLE);
 
     g_ta = lv_textarea_create(g_modal);
@@ -184,6 +188,7 @@ void kbinput_open(const char *title, const char *initial, kbinput_done_cb_t cb){
     lv_obj_set_style_text_font(g_ta, TF(USER_16), 0);
     lv_obj_set_style_text_font(g_ta, TF(USER_16), LV_PART_TEXTAREA_PLACEHOLDER);
     lv_obj_set_style_border_width(g_ta, 0, 0);
+    if(th_idisc()) idisc_glass(g_ta, LV_RADIUS_CIRCLE);
     /* Pin the internal label to a FIXED one-line height so the textarea's vertical centering can't drift
      * as the measured text extent (ascenders/descenders/cursor) changes per keystroke -> no vertical bounce. */
     lv_obj_set_style_pad_top(g_ta, 8, 0); lv_obj_set_style_pad_bottom(g_ta, 8, 0);   /* 40 - 24 line = 16 -> 8/8 centres one full line */
