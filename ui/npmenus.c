@@ -862,7 +862,7 @@ void nphub_create(lv_obj_t *root){
     lv_obj_clear_flag(g_box_hub, LV_OBJ_FLAG_SCROLLABLE);
 }
 /* ---- tuning menu (SCR_TUNE): Play Mode + Equalizer cyclers --------------- */
-static const char *const T_MODE[] = { "Sequential","Shuffle","Repeat One","Repeat All","Single" };
+static const char *const T_MODE[] = { "Sequential","Shuffle","Repeat One","Repeat All","Single", "Vibe" };
 static const char *const T_EQ[]   = { "Off","Jazz","Rock","R&B","Hip-Hop","Pop","Dance","Classical","Retro","Sibilance 1","Sibilance 2",
                                       "USER1","USER2","USER3","USER4","USER5","USER6","USER7","USER8","USER9","USER10" };  /* 11..20 = user PEQ slots */
 
@@ -874,7 +874,7 @@ static int g_tune_built = 0;
  * so without this the labels go stale on re-open. Called on SCR_TUNE show. */
 void tune_refresh(void){
     if(!g_tune_built) return;
-    int m = simple_cfg_get_int("work_mode", 0); if(m<0||m>4) m=0;
+    int m = simple_cfg_get_int("work_mode", 0); if(m<0||m>5) m=0;
     int q = simple_cfg_get_int("eq_preset", 0); if(q<0||q>20) q=0;
     if(g_mode_val) lv_label_set_text(g_mode_val, T_MODE[m]);
     if(g_eq_val)   lv_label_set_text(g_eq_val,   T_EQ[q]);
@@ -889,7 +889,7 @@ static void cyc_apply(const char *key, const char *const *opts, int n, void *val
     else if(!strcmp(key,"eq_preset")){ if(ui_eq_select(v) < 0){ v = simple_cfg_get_int("eq_preset", 0); if(v<0||v>=n) v=0; } }   /* failed send -> label keeps the real preset (clamped: a corrupt stored value must not index opts[] OOB) */
     if(valobj) lv_label_set_text((lv_obj_t*)valobj, opts[v]);
 }
-static void mode_dir_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED) cyc_apply("work_mode", T_MODE, 5, g_mode_val, (int)(intptr_t)lv_event_get_user_data(e)); }
+static void mode_dir_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED) cyc_apply("work_mode", T_MODE, 6, g_mode_val, (int)(intptr_t)lv_event_get_user_data(e)); }
 static void eq_dir_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED) cyc_apply("eq_preset", T_EQ, 21, g_eq_val, (int)(intptr_t)lv_event_get_user_data(e)); }
 static void eq_custom_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED) screen_show(SCR_EQ); }
 
@@ -930,7 +930,7 @@ static lv_obj_t *cyc_row(lv_obj_t *parent, int y, const char *label,
 
 void tune_create(lv_obj_t *root){
     panel_header(root, "Playback");
-    int m = simple_cfg_get_int("work_mode", 0); if(m<0||m>4) m=0;
+    int m = simple_cfg_get_int("work_mode", 0); if(m<0||m>5) m=0;
     int q = simple_cfg_get_int("eq_preset", 0); if(q<0||q>20) q=0;
     cyc_row(root, 84,  "PLAY MODE",  mode_dir_cb, &g_mode_val, T_MODE[m]);
     cyc_row(root, 158, "EQ PRESET",  eq_dir_cb,   &g_eq_val,   T_EQ[q]);

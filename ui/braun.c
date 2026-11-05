@@ -54,15 +54,6 @@ static int th_index(void){
     if(g_theme < 0){ g_theme = theme_preset()==THEME_PRESET_BRAUN ? (theme_variant() ? 1 : 2) : 0; }
     return g_theme;
 }
-int th_braun(void){
-#ifdef TH_FORCE_BRAUN
-    return 1;
-#elif defined(TH_FORCE_BRAUN_DARK)
-    return 1;
-#else
-    const theme_def_t *d=theme_def(); return d && d->kit && !strcmp(d->kit->id,"braun");
-#endif
-}
 int th_night_now(void){ time_t now = time(NULL); struct tm tm; localtime_r(&now, &tm); return tm.tm_hour >= 20 || tm.tm_hour < 7; }
 /* the variant the current settings and clock ask for (Braun family only) */
 int th_want_dark(void){

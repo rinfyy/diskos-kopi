@@ -16,6 +16,8 @@
 #include "zune_dial.h"
 #include "config.h"
 #include "theme.h"
+#include "theme_kit.h"
+#include "idisc.h"
 #include "braun.h"
 #include <math.h>
 #include <stdint.h>
@@ -86,7 +88,12 @@ static void load(void){
 }
 /* from the 3 s status poll */
 void usage_note_battery(int pct, int charging){ if(pct >= 0 && pct <= 100){ g_batt = pct; g_chg = charging; } }
-int usage_charging(void){ return g_chg; }   /* the battery is being charged (positive charge current) */
+int usage_charging(void){ return g_chg; }
+int usage_battery(void){ return g_batt; }   /* the last level read, 0..100 (-1 = not yet) */
+/* Battery saver (cfg batt_saver: 0 Off, 1 On, 2 Auto = at 20 % or less, not charging) */
+static volatile int g_bs_on;                     /* worked out on the UI thread; read from any (the cover worker) */
+void usage_saver_refresh(void){ int m = cfg_get_int("batt_saver", 2); g_bs_on = m == 1 || (m == 2 && g_batt >= 0 && g_batt <= 20 && !g_chg); }
+int ui_batt_saver(void){ return g_bs_on; }   /* the battery is being charged (positive charge current) */
 /* Plugged in: any power source other than the battery reports online=1 (USB, a charger: whatever the kernel calls it,
  * so no name is assumed). Catches a full battery on the charger, which draws no charge current. Read at most every
  * 5 s; -1 when the Disc lists no such source (callers then rely on usage_charging()). */
@@ -131,6 +138,7 @@ static void read_gauge(void){
 }
 /* from every main-loop pass: cheap unless the minute just turned over */
 void usage_tick(int screen_on, int playing){
+    { static uint32_t at; if(!at || lv_tick_elaps(at) >= 1000){ at = lv_tick_get() | 1; usage_saver_refresh(); } }
     static int loaded;
     if(!loaded){ loaded = 1; load(); read_gauge(); }
     time_t now = time(NULL);
@@ -173,6 +181,7 @@ static lv_timer_t *g_tmr;
 
 static void fmt_dur(char *b, size_t n, int mins){
     if(mins < 60) snprintf(b, n, "%d min", mins);
+    else if(th_null()) snprintf(b, n, "%dh%02d", mins / 60, mins % 60);          /* Null's wide letters: one line */
     else snprintf(b, n, "%d h %02d m", mins / 60, mins % 60);
 }
 /* the time left from the drain over the last 3 h of battery-only samples (-1 = not enough data yet, -2 = barely draining).
@@ -244,6 +253,26 @@ static void place_tip(int pct, lv_color_t c){
     if(pct >= 0) lv_obj_remove_flag(g_tip, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(g_tip, LV_OBJ_FLAG_HIDDEN);
 }
 static int g_zu;static void zu_draw(void);
+static lv_obj_t *g_est, *g_bs; static void draw(void);
+/* minutes a full battery lasts with the screen off (music) and with it on, from the last 3 days of battery-only
+ * minutes: each 1% drop is put down to the kind of minutes it was spent over (-1 = not enough of that kind yet) */
+static void rates(int *off_full, int *on_full){
+    uint32_t now = g_n ? at(g_n - 1)->t : 0, from = now > 3 * 86400 ? now - 3 * 86400 : 0;
+    float m_off = 0, m_on = 0, d_off = 0, d_on = 0;
+    for(int j = 1; j < g_n; j++){
+        const usmp_t *p = at(j - 1), *c = at(j);
+        if(c->t < from || (p->fl & FL_CHG) || (c->fl & FL_CHG) || c->t <= p->t || c->t - p->t > US_GAP_S || c->pct > p->pct) continue;
+        float mins = (c->t - p->t) / 60.0f, drop = (float)(p->pct - c->pct);
+        if(c->fl & FL_SCR){ m_on += mins; d_on += drop; } else { m_off += mins; d_off += drop; }
+    }
+    *off_full = (m_off >= 90 && d_off >= 2) ? (int)(100.0f * m_off / d_off) : -1;
+    *on_full = (m_on >= 30 && d_on >= 2) ? (int)(100.0f * m_on / d_on) : -1;
+    if(*off_full > 0 && *on_full > 0 && *on_full > *off_full) *on_full = -1;    /* (noise: the screen never saves power) */
+}
+static void bs_cb(lv_event_t *e){                                         /* tap: Battery saver Off > On > Auto */
+    (void)e; int m = (cfg_get_int("batt_saver", 2) + 1) % 3; cfg_set_int("batt_saver", m);
+    void usage_saver_refresh(void); usage_saver_refresh(); ui_backlight(ui_effective_brightness()); draw();
+}
 static void draw(void){
     if(g_zu){zu_draw();return;}
     if(!g_pct) return;
@@ -252,7 +281,10 @@ static void draw(void){
     if(pct >= 0) snprintf(b, sizeof b, "%d%%", pct); else snprintf(b, sizeof b, "-");
     lv_label_set_text(g_pct, b);
     lv_arc_set_value(g_ring, pct >= 0 ? pct : 0);
-    lv_color_t c = g_chg ? TC(STATUS_SUCCESS) : (pct >= 0 && pct <= 15) ? TC(STATUS_DANGER) : th_braun() ? TC(ACCENT_PRIMARY) : ui_current_accent();
+    lv_color_t c = g_chg ? TC(STATUS_SUCCESS) : (pct >= 0 && pct <= 15) ? TC(STATUS_DANGER) : th_braun() ? TC(ACCENT_PRIMARY)
+                 : th_nt_caps() ? (ui_batt_saver() ? TC(ACCENT_PRIMARY) : TC(TEXT_PRIMARY))             /* NTDisk: white, red when saving */
+                 : th_idisc() ? (ui_batt_saver() ? TC(STATUS_WARNING) : TC(STATUS_SUCCESS))             /* iDisc: green, amber when saving */
+                 : ui_current_accent();
     lv_obj_set_style_arc_color(g_ring, c, LV_PART_INDICATOR);
     if(g_chg) lv_obj_remove_flag(g_chg_ic, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(g_chg_ic, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_text_color(g_chg_ic, c, 0);
@@ -273,12 +305,28 @@ static void draw(void){
             if(m >= 48 * 60) snprintf(b, sizeof b, "~%d days left", (m / 60 + 12) / 24);
             else if(m >= 120) snprintf(b, sizeof b, "~%d h left", (m + 30) / 60);
             else { char d[24]; fmt_dur(d, sizeof d, m); snprintf(b, sizeof b, "~%s left", d); }
-            if(m < 48 * 60){ char t[24]; fmt_clock(t, sizeof t, time(NULL) + (time_t)m * 60); snprintf(b2, sizeof b2, "Until %s at this pace", t); }
+            if(m < 48 * 60){ char t[24]; fmt_clock(t, sizeof t, time(NULL) + (time_t)m * 60); snprintf(b2, sizeof b2, th_null() ? "Until %s" : "Until %s at this pace", t); }
             else snprintf(b2, sizeof b2, "At your recent pace");
         }
     }
     lv_label_set_text(g_sub2, b2);
     place_tip(pct, c);
+    if(g_est){                                                             /* the time left, by use (kopi.27) */
+        int mo = -1, ms = -1; rates(&mo, &ms);
+        char x[96] = "";
+        if(!g_chg && pct >= 0 && (mo > 0 || ms > 0)){
+            char a1[24] = "", a2[24] = "";
+            if(mo > 0) snprintf(a1, sizeof a1, "%dh", (pct * mo / 100 + 30) / 60 < 1 ? 1 : (pct * mo / 100 + 30) / 60);
+            if(ms > 0) snprintf(a2, sizeof a2, "%dh", (pct * ms / 100 + 30) / 60 < 1 ? 1 : (pct * ms / 100 + 30) / 60);
+            if(mo > 0 && ms > 0) snprintf(x, sizeof x, "Screen off ~%s, on ~%s", a1, a2);   /* (a comma: Null's font has no middle dot) */
+            else if(mo > 0) snprintf(x, sizeof x, "Screen off ~%s left", a1); else snprintf(x, sizeof x, "Screen on ~%s left", a2);
+        }
+        lv_label_set_text(g_est, x);
+        static const char *const BS[3] = { "Battery saver: Off", "Battery saver: On", "Battery saver: Auto (20%)" };
+        static const char *const BSN[3] = { "Saver off", "Saver on", "Saver auto" };   /* Null's wide letters */
+        int m = cfg_get_int("batt_saver", 2); lv_label_set_text(lv_obj_get_child(g_bs, 0), (th_null() ? BSN : BS)[m >= 0 && m < 3 ? m : 2]);
+        lv_obj_set_style_text_color(lv_obj_get_child(g_bs, 0), ui_batt_saver() ? (th_idisc() ? TC(STATUS_WARNING) : TC(ACCENT_PRIMARY)) : TC(TEXT_SECONDARY), 0);
+    }
     lv_label_set_text(g_sub, b);
     time_t nowt = time(NULL);
     if(nowt < 1600000000){ lv_label_set_text(g_play_v, "-"); lv_label_set_text(g_scr_v, "-"); return; }   /* clock not set: no "last 24 h" */
@@ -422,7 +470,7 @@ void usage_create(lv_obj_t *root){
     lv_obj_set_style_bg_color(root,TC(CANVAS),0);lv_obj_set_style_bg_opa(root,LV_OPA_COVER,0);
     lv_obj_clear_flag(root,LV_OBJ_FLAG_SCROLLABLE);
     if(th_braun())br_face(root);
-    int centered=th_simple()||th_null();
+    int centered=th_simple()||th_null()||th_nt();                     /* (NTDisk / iDisc: no navigation sliver to clear) */
     int left=centered?0:disco_mirror(),dx=centered?0:(left?30:-30);
     g_start=centered?130:(left?220:40);
     g_ring=lv_arc_create(root);lv_obj_remove_style(g_ring,NULL,LV_PART_KNOB);
@@ -435,7 +483,8 @@ void usage_create(lv_obj_t *root){
     lv_obj_t *title=lv_label_create(root);lv_label_set_text(title,"Battery");
     lv_obj_set_style_text_font(title,TF(UI_24),0);lv_obj_set_style_text_color(title,TC(TEXT_PRIMARY),0);
     lv_obj_align(title,LV_ALIGN_TOP_MID,0,40);
-    g_pct=lv_label_create(root);lv_obj_set_style_text_font(g_pct,TF(UI_46),0);
+    if(th_nt()){ lv_label_set_text(title, th_nt_caps() ? "BATTERY" : "Battery"); nt_title_style(title); lv_obj_align(title, LV_ALIGN_TOP_MID, th_nt_caps() ? 6 : 0, 38); kit_keep(title); }
+    g_pct=lv_label_create(root);lv_obj_set_style_text_font(g_pct,th_nt_caps()?TF(UI_48):th_idisc()?TF(UI_40):TF(UI_46),0);   /* NTDisk: dot matrix; iDisc: bold */
     lv_obj_set_style_text_color(g_pct,TC(TEXT_PRIMARY),0);lv_obj_align(g_pct,LV_ALIGN_TOP_MID,dx,92);
     g_chg_ic=lv_label_create(root);lv_label_set_text(g_chg_ic,LV_SYMBOL_CHARGE);
     lv_obj_set_style_text_font(g_chg_ic,TF(UI_20),0);lv_obj_align(g_chg_ic,LV_ALIGN_TOP_MID,(left?-78:78),109);
@@ -467,7 +516,18 @@ void usage_create(lv_obj_t *root){
     lv_obj_set_style_border_width(g_tip,3,0);lv_obj_set_style_border_color(g_tip,TC(CANVAS),0);
     lv_obj_set_style_shadow_width(g_tip,16,0);lv_obj_set_style_shadow_opa(g_tip,LV_OPA_70,0);
     lv_obj_clear_flag(g_tip,LV_OBJ_FLAG_CLICKABLE|LV_OBJ_FLAG_SCROLLABLE);
-    if(!g_tmr)g_tmr=lv_timer_create(us_tick_cb,30000,NULL);draw();
+    g_est=lv_label_create(root);lv_label_set_text(g_est,"");lv_obj_set_width(g_est,220);   /* the time left, by use */
+    lv_label_set_long_mode(g_est,LV_LABEL_LONG_SCROLL_CIRCULAR);lv_obj_set_style_text_align(g_est,LV_TEXT_ALIGN_CENTER,0);
+    lv_obj_set_style_text_font(g_est,TF(UI_12),0);lv_obj_set_style_text_color(g_est,TC(TEXT_SECONDARY),0);lv_obj_align(g_est,LV_ALIGN_TOP_MID,dx,298);
+    if(th_null())lv_obj_add_flag(g_est,LV_OBJ_FLAG_HIDDEN);              /* Null: no room under its big rows ("~29 h left" says it) */
+    g_bs=lv_button_create(root);lv_obj_remove_style_all(g_bs);lv_obj_set_size(g_bs,176,30);lv_obj_align(g_bs,LV_ALIGN_TOP_MID,dx,316);   /* tap: Battery saver */
+    lv_obj_set_style_radius(g_bs,15,0);lv_obj_set_style_bg_color(g_bs,TC(SURFACE),0);lv_obj_set_style_bg_opa(g_bs,LV_OPA_COVER,0);
+    lv_obj_set_style_bg_color(g_bs,TC(SURFACE_PRESSED),LV_STATE_PRESSED);
+    if(th_idisc())idisc_glass(g_bs,15);
+    lv_obj_t *bl=lv_label_create(g_bs);lv_label_set_text(bl,"");lv_obj_set_style_text_font(bl,TF(UI_12),0);lv_obj_center(bl);
+    lv_obj_add_event_cb(g_bs,bs_cb,LV_EVENT_CLICKED,NULL);kit_keep(g_bs);kit_keep(bl);
+    if(!g_tmr)g_tmr=lv_timer_create(us_tick_cb,30000,NULL);
+    draw();
 }
 void usage_refresh(void){ draw(); }
 /* host renders only: six hours of made-up use (never called on the Disc) */

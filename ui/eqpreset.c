@@ -148,12 +148,27 @@ static void cycle(lv_event_t *e){int dir=(int)(intptr_t)lv_event_get_user_data(e
 static void toggle(lv_event_t *e){(void)e;int p=0;if(!selected()){p=simple_cfg_get_int("eq_last",1);if(p<1||p>20)p=1;}
  if(ui_eq_select(p)<0){ui_toast("Couldn't switch EQ");return;}eqpreset_refresh();}
 static void edit(lv_event_t *e){(void)e;screen_show(SCR_EQ_EDITOR);}
-/* JM-1 for the Fosi IM4: ten peaking bands (Q 0.7) toward the JM-1 target, with a -4 dB preamp so boosts don't clip */
-static void jm1_cb(lv_event_t *e){
- (void)e;static const int hz[10]={30,70,150,400,1000,2500,5000,8000,12000,16000},t[10]={40,40,20,10,0,-20,-35,-30,10,20};
- int eqcustom_install(const char *,const int *,const int *,double);
- int slot=eqcustom_install("JM-1 (IM4)",hz,t,-4.0);
- if(slot>0){char b[64];snprintf(b,sizeof b,"JM-1 saved as USER%d",slot-10);ui_toast(b);eqpreset_refresh();}
+/* "IM4 Harman" (kopi.27, in place of the JM-1 add-on): the Fosi Audio IM4 open-back IEM brought toward the Harman
+ * in-ear 2019 target. The IM4 is reserved in the bass (an open back), a little recessed in the lower mids, forward
+ * above 2 kHz with peaks near 5 and 8 kHz, and soft in the top octave; so: a bass lift falling away by 150 Hz, a touch
+ * of lower mids, the upper mids and the two treble peaks taken down (narrower filters there), and some air back.
+ * The -5 dB preamp keeps the biggest boost from clipping. Tuned from published descriptions of the IM4 (stock nozzle
+ * and tips), not a measurement of your pair: fit and tips move the bass and treble, so treat it as a starting point
+ * (Edit adjusts it like any USER preset). One tap stores it in a USER slot of its own - the one already called
+ * "IM4 Harman" (or the old "JM-1 (IM4)"), else the first unnamed one - and turns it on. */
+#define IM4_NAME "IM4 Harman"
+static void im4_cb(lv_event_t *e){
+ (void)e;
+ static const int hz[10]={30,70,150,400,1000,2500,5000,8000,12000,16000},t[10]={55,45,20,10,0,-10,-30,-30,15,10};
+ static const double q[10]={0.7,0.7,0.8,0.9,1.0,1.4,2.0,2.5,1.0,0.8};
+ int eqcustom_store(int slot,const int *hz,const int *tenths,const double *q,double master);
+ int slot=-1;char key[24];
+ for(int p=11;p<=20&&slot<0;p++){snprintf(key,sizeof key,"eq_name%d",p);const char *n=simple_cfg_get_str(key,NULL);if(n&&(!strcmp(n,IM4_NAME)||!strcmp(n,"JM-1 (IM4)")))slot=p;}
+ for(int p=11;p<=20&&slot<0;p++){snprintf(key,sizeof key,"eq_name%d",p);const char *n=simple_cfg_get_str(key,NULL);if(!n||!*n)slot=p;}
+ if(slot<0){ui_toast("All 10 USER presets are in use - rename or reset one first");return;}
+ if(eqcustom_store(slot,hz,t,q,-5.0)<0)return;
+ snprintf(key,sizeof key,"eq_name%d",slot);simple_cfg_set_str(key,IM4_NAME);
+ char b[64];snprintf(b,sizeof b,"IM4 Harman on (USER%d)",slot-10);ui_toast(b);eqpreset_refresh();
 }
 /* ---- Reset / Copy / Paste ----
  * Copy keeps the selected preset's curve (bands, Q, preamp) - a built-in one too - in cfg "eq_clip", so it survives a
@@ -227,7 +242,7 @@ void eqpreset_create(lv_obj_t *root){
  paste_button=button(root,"Paste",94,228,84,30,paste_cb,NULL,"eq.paste");
  {lv_obj_t *tb[3]={reset_button,copy_button,paste_button};for(int i=0;i<3;i++){lv_obj_set_style_text_font(lv_obj_get_child(tb[i],0),TF(UI_14),0);
    lv_obj_set_style_opa(tb[i],LV_OPA_40,LV_STATE_DISABLED);}}   /* greyed out when it can't apply here */
- {lv_obj_t *jm=button(root,"+ JM-1 (IM4)",0,72,150,32,jm1_cb,NULL,"eq.jm1");lv_obj_set_style_text_font(lv_obj_get_child(jm,0),TF(UI_14),0);
+ {lv_obj_t *jm=button(root,"IM4 Harman",0,72,150,32,im4_cb,NULL,"eq.im4");lv_obj_set_style_text_font(lv_obj_get_child(jm,0),TF(UI_14),0);
   if(th_null()){lv_obj_set_style_radius(jm,0,0);lv_obj_set_style_bg_opa(jm,0,0);lv_obj_set_style_border_width(jm,1,0);lv_obj_set_style_border_color(jm,TC(TEXT_SECONDARY),0);kit_keep(jm);}}
  note_label=lv_label_create(root);lv_obj_set_width(note_label,280);lv_obj_align(note_label,LV_ALIGN_TOP_MID,0,266);lv_obj_set_style_text_align(note_label,LV_TEXT_ALIGN_CENTER,0);lv_obj_set_style_text_font(note_label,TF(UI_12),0);lv_obj_set_style_text_color(note_label,TC(TEXT_SECONDARY),0);
  switch_button=button(root,"Off",0,286,54,54,toggle,NULL,"eq.toggle");switch_label=lv_obj_get_child(switch_button,0);

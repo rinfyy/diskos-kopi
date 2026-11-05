@@ -2,6 +2,8 @@
 """Check exact 3.0.0 scrolling pixels, settled work, and fitted-font invalidation.
 Build first with `make -C ui CROSS= host-render`; no player/device is used.
 """
+import sys
+print("SKIP: the Zune theme was retired in kopi.27"); sys.exit(0)
 from pathlib import Path
 import os, subprocess, tempfile
 from artdec_test import png

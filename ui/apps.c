@@ -91,7 +91,7 @@ static void scan_apps(void){
  * (Weather, Immersive, Equalizer, Folders, Lyrics, Queue, Audiobooks, Search, Battery, Song Info, Last.fm,
  * All apps) plus every homebrew app. "All apps" shows the full app orbit (six to a page, the hub pages). */
 #define PER_PAGE 6
-#define NSC 5
+#define NSC 8          /* (kopi.27: eight, any of the actions below, any settings page or setting, any app) */
 extern const lv_font_t font_theme_20;
 typedef struct { const char *key, *name, *glyph; int big; } scdef_t;          /* big: glyph from the large icon font role */
 static const scdef_t SC[] = {
@@ -107,9 +107,25 @@ static const scdef_t SC[] = {
     { "info",     "Song Info",  LV_SYMBOL_EYE_OPEN, 0 },
     { "lastfm",   "Last.fm",    LFM_ICON, 1 },
     { "allapps",  "All apps",   LV_SYMBOL_DRIVE, 0 },
+    { "sleep",    "Sleep timer", LV_SYMBOL_EYE_CLOSE, 0 },                          /* (kopi.27 from here) */
+    { "quick",    "Quick Settings", LV_SYMBOL_SETTINGS, 0 },
+    { "library",  "Library",    LV_SYMBOL_LIST, 0 },
+    { "favs",     "Favourites", "\xEF\x80\x84", 0 },
+    { "upnext",   "Up Next",    LV_SYMBOL_NEXT, 0 },
+    { "videos",   "Videos",     LV_SYMBOL_VIDEO, 0 },
+    { "modes",    "Working mode", LV_SYMBOL_USB, 0 },
+    { "wifi",     "Wi-Fi",      LV_SYMBOL_WIFI, 0 },
+    { "bt",       "Bluetooth",  LV_SYMBOL_BLUETOOTH, 0 },
+    { "settings", "Settings",   LV_SYMBOL_SETTINGS, 0 },
+    { "playpause","Play / Pause", LV_SYMBOL_PLAY, 0 },
+    { "next",     "Next song",  LV_SYMBOL_NEXT, 0 },
+    { "vibe",     "Vibe mode",  LV_SYMBOL_AUDIO, 0 },
+    { "bsaver",   "Battery saver", LV_SYMBOL_BATTERY_2, 0 },
+    { "screenoff","Screen off", LV_SYMBOL_POWER, 0 },
+    { "filexfer", "File transfer", LV_SYMBOL_UPLOAD, 0 },
 };
 #define NSCDEF ((int)(sizeof SC / sizeof SC[0]))
-static const char *const SC_DEFAULT[NSC] = { "weather", "eq", "folders", "immersive", "allapps" };
+static const char *const SC_DEFAULT[NSC] = { "weather", "eq", "folders", "immersive", "allapps", "sleep", "", "" };
 typedef struct { const char *icon; char name[64]; int kind; int idx; int font; } aitem_t;  /* kind: 0 Last.fm, 1 app, 2 Settings, 3 shortcut */
 static aitem_t g_items[MAX_APPS + 2];
 static int g_nitems, g_page, g_all;          /* g_all: showing All apps instead of the shortcuts */
@@ -157,6 +173,25 @@ void shortcut_run(const char *key){
     else if(!strcmp(key, "info")){ songinfo_unpin(); screen_show(SCR_SONGINFO); }
     else if(!strcmp(key, "lastfm")) lastfm_open();
     else if(!strcmp(key, "allapps")){ g_all = 1; g_page = 0; apps_reload(); }
+    else if(!strcmp(key, "sleep")) sleep_sheet_open();
+    else if(!strcmp(key, "quick")) screen_show(SCR_QUICK);
+    else if(!strcmp(key, "library")) screen_show(SCR_LIBRARY);
+    else if(!strcmp(key, "favs")){ library_open_favourites(); screen_show(SCR_LIBRARY); }
+    else if(!strcmp(key, "upnext")) upnext_open();
+    else if(!strcmp(key, "videos")) folderbrowser_open_videos();
+    else if(!strcmp(key, "modes")) modes_open();
+    else if(!strcmp(key, "wifi")) screen_show(SCR_WIFI);
+    else if(!strcmp(key, "bt")) screen_show(SCR_BT);
+    else if(!strcmp(key, "settings")) screen_show(SCR_SETTINGS);
+    else if(!strcmp(key, "playpause")) ui_transport_command("0201000C0000");
+    else if(!strcmp(key, "next")) ui_transport_command("0201000C0001");
+    else if(!strcmp(key, "vibe")){ int on = simple_cfg_get_int("work_mode", 0) != 5; ui_set_workmode(on ? 5 : 0); ui_toast(on ? "Vibe: similar songs follow" : "Vibe off - in order"); }
+    else if(!strcmp(key, "bsaver")){ int m = cfg_get_int("batt_saver", 2) == 1 ? 2 : 1; cfg_set_int("batt_saver", m); void usage_saver_refresh(void); usage_saver_refresh();
+                                     ui_backlight(ui_effective_brightness()); ui_toast(m == 1 ? "Battery saver on" : "Battery saver: Auto (20%)"); }
+    else if(!strcmp(key, "screenoff")) disco_nav_action_run(DISCO_NAV_SCREENOFF);
+    else if(!strcmp(key, "filexfer")) webfiles_toggle();
+    else if(!strncmp(key, "set:", 4)) settings_open_page(key + 4);              /* a settings page */
+    else if(!strncmp(key, "key:", 4)) settings_open_key(key + 4);               /* one setting */
 }
 /* label + glyph for a key (built-in or app) */
 static int sc_describe(const char *key, const char **glyph, char *name, size_t n, int *font){
@@ -167,10 +202,16 @@ static int sc_describe(const char *key, const char **glyph, char *name, size_t n
         return 1;
     }
     for(int i = 0; i < NSCDEF; i++) if(!strcmp(SC[i].key, key)){ *glyph = SC[i].glyph; *font = SC[i].big; snprintf(name, n, "%s", SC[i].name); return 1; }
+    if(!strncmp(key, "set:", 4)){ *glyph = LV_SYMBOL_SETTINGS; *font = 0; snprintf(name, n, "%s", key + 4); return 1; }
+    if(!strncmp(key, "key:", 4)){
+        const char *k[200], *l[200]; int m = settings_pick_keys(k, l, 200);
+        for(int i = 0; i < m; i++) if(!strcmp(k[i], key + 4)){ *glyph = LV_SYMBOL_EDIT; *font = 0; snprintf(name, n, "%s", l[i]); return 1; }
+        *glyph = LV_SYMBOL_EDIT; *font = 0; snprintf(name, n, "Setting"); return 1;
+    }
     return 0;
 }
 static void apps_pick(int i){
-    int k = (g_all ? g_page * ((th_disco_family() || th_null()) ? 5 : PER_PAGE) : 0) + i;
+    int k = ((g_all || th_disco_family() || th_null()) ? g_page * ((th_disco_family() || th_null()) ? 5 : PER_PAGE) : 0) + i;
     if(k < 0 || k >= g_nitems) return;
     switch(g_items[k].kind){
         case 0: lastfm_open(); break;
@@ -188,18 +229,21 @@ static void hub_cb(lv_event_t *e){
     g_all = 0; g_page = 0; apps_reload();                                  /* All apps: the last page's hub goes back to the shortcuts */
 }
 static void disco_pick_cb(lv_event_t *e){ apps_pick((int)(intptr_t)lv_event_get_user_data(e)); }
-static void disco_more_cb(lv_event_t *e){ (void)e; hub_cb(e); }
+static void disco_more_cb(lv_event_t *e){
+    if(!g_all){ int pages = (g_nitems + 4) / 5; g_page = pages > 1 ? (g_page + 1) % pages : 0; build_page(); return; }   /* the next page of shortcuts */
+    hub_cb(e);
+}
 /* Disco: the Settings look, five rows in view (All apps pages five at a time; the title row turns the page) */
 static void disco_build(void){
     int per = 5;
-    int pages = g_all ? (g_nitems + per - 1) / per : 1; if(pages < 1) pages = 1;
+    int pages = (g_nitems + per - 1) / per; if(pages < 1) pages = 1;      /* (kopi.27: more than five shortcuts page too) */
     if(g_page >= pages) g_page = 0;
-    int first = g_all ? g_page * per : 0, cnt = g_nitems - first; if(cnt > per) cnt = per;
-    char t[32];
-    if(g_all && pages > 1) snprintf(t, sizeof t, "All apps  %d/%d " LV_SYMBOL_RIGHT, g_page + 1, pages);
+    int first = g_page * per, cnt = g_nitems - first; if(cnt > per) cnt = per;
+    char t[40];
+    if(pages > 1) snprintf(t, sizeof t, "%s  %d/%d " LV_SYMBOL_RIGHT, g_all ? "All apps" : "Shortcuts", g_page + 1, pages);
     else snprintf(t, sizeof t, "%s", g_all ? "All apps" : "Shortcuts");
     lv_obj_t *tl = disco_title(g_box, t);
-    if(g_all){ lv_obj_add_flag(tl, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(tl, 12); lv_obj_add_event_cb(tl, disco_more_cb, LV_EVENT_CLICKED, NULL); }
+    if(g_all || pages > 1){ lv_obj_add_flag(tl, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(tl, 12); lv_obj_add_event_cb(tl, disco_more_cb, LV_EVENT_CLICKED, NULL); }
     if(cnt < 1){
         lv_obj_t *l = lv_label_create(g_box); lv_label_set_text(l, "Choose shortcuts in\nSettings > Display > Shortcuts");
         lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0); lv_obj_set_style_text_color(l, TC(TEXT_SECONDARY), 0);
@@ -321,7 +365,7 @@ lv_obj_t *apps_scroller(void){ return NULL; }      /* an orbit has no long list 
 /* ---- Settings > Display > Shortcuts: five slots; tap one to pick what it opens ----------------------------- */
 static lv_obj_t *g_cfg_root, *g_cfg_list, *g_cfg_title;
 static int g_cfg_slot = -1;                                                  /* -1: the slot list; 0..4: picking for a slot */
-static char g_opt_keys[NSCDEF + MAX_APPS + 1][80];
+static char g_opt_keys[NSCDEF + MAX_APPS + 64 + 200 + 1][80];
 static void cfg_build(void);
 static void cfg_row(const char *left, const char *right, lv_event_cb_t cb, intptr_t ud, int on){
     lv_obj_t *r = lv_button_create(g_cfg_list);
@@ -340,6 +384,11 @@ static void cfg_row(const char *left, const char *right, lv_event_cb_t cb, intpt
                lv_obj_set_width(v, 110); lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_RIGHT, 0);
                lv_obj_set_style_text_font(v, ui_font_cjk(14), 0); lv_obj_set_style_text_color(v, TC(TEXT_SECONDARY), 0);
                lv_obj_align(v, LV_ALIGN_RIGHT_MID, -14, 0); }
+}
+static void cfg_section(const char *t){                                     /* a heading between kinds */
+    lv_obj_t *l = lv_label_create(g_cfg_list); lv_label_set_text(l, t); lv_obj_set_width(l, 240);
+    lv_obj_set_style_text_font(l, TF(UI_14), 0); lv_obj_set_style_text_color(l, TC(TEXT_MUTED), 0); lv_obj_set_style_pad_top(l, 8, 0);
+    lv_obj_set_style_pad_left(l, 16, 0);
 }
 static void slot_cb(lv_event_t *e){ g_cfg_slot = (int)(intptr_t)lv_event_get_user_data(e); cfg_build(); }
 static void opt_cb(lv_event_t *e){
@@ -367,12 +416,20 @@ static void cfg_build(void){
     scan_apps();
     const char *cur = sc_key(g_cfg_slot);
     cfg_row("Empty", NULL, opt_cb, -1, !cur[0]);
-    int n = 0;
-    for(int i = 0; i < NSCDEF; i++){ snprintf(g_opt_keys[n], sizeof g_opt_keys[0], "%s", SC[i].key); cfg_row(SC[i].name, NULL, opt_cb, n, !strcmp(cur, SC[i].key)); n++; }
-    for(int i = 0; i < g_napps && n < (int)(sizeof g_opt_keys / sizeof g_opt_keys[0]); i++){
+    int n = 0, cap = (int)(sizeof g_opt_keys / sizeof g_opt_keys[0]);
+    cfg_section("Actions");
+    for(int i = 0; i < NSCDEF && n < cap; i++){ snprintf(g_opt_keys[n], sizeof g_opt_keys[0], "%s", SC[i].key); cfg_row(SC[i].name, NULL, opt_cb, n, !strcmp(cur, SC[i].key)); n++; }
+    cfg_section("Apps");
+    for(int i = 0; i < g_napps && n < cap; i++){
         snprintf(g_opt_keys[n], sizeof g_opt_keys[0], "appid:%s", g_apps[i].id);
         cfg_row(g_apps[i].name, "App", opt_cb, n, app_for_key(cur) == i); n++;
     }
+    cfg_section("Settings pages");
+    { const char *pg[64]; int m = settings_pick_pages(pg, 64);
+      for(int i = 0; i < m && n < cap; i++){ snprintf(g_opt_keys[n], sizeof g_opt_keys[0], "set:%s", pg[i]); cfg_row(pg[i], "Page", opt_cb, n, !strcmp(cur, g_opt_keys[n])); n++; } }
+    cfg_section("One setting");
+    { const char *k[200], *l[200]; int m = settings_pick_keys(k, l, 200);
+      for(int i = 0; i < m && n < cap; i++){ snprintf(g_opt_keys[n], sizeof g_opt_keys[0], "key:%s", k[i]); cfg_row(l[i], "Setting", opt_cb, n, !strcmp(cur, g_opt_keys[n])); n++; } }
     lv_obj_scroll_to_y(g_cfg_list, 0, LV_ANIM_OFF);
 }
 void shortcuts_config_create(lv_obj_t *root){

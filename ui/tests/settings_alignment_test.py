@@ -10,8 +10,8 @@ audio=['Balance','DAC Filter','DSD Output','Gain','Max Volume','ReplayGain','Wor
 all_cases=[]
 with tempfile.TemporaryDirectory(prefix='settings-alignment-') as tmp:
  p=Path(tmp);art=p/'art.png';art.write_bytes(png(64,64,(110,50,160)))
- for theme in [6,8,9,10,11,12,13]:
-  for variant in ([0] if theme in [11,13] else [0,1]):
+ for theme in [14,15,11]:                       # (kopi.27: the themes left - NTDisk, iDisc, Null)
+  for variant in ([0] if theme in [11] else [0,1]):
    (ui/'tests/host_build/diskos.conf').unlink(missing_ok=True)
    r=subprocess.run([str(ui/'tests/host_build/host-render'),str(theme),str(variant),'preview-home','0',str(p/'out.ppm')],env={**os.environ,'REVIEW_SETTINGS_ALIGNMENT':'1','ZNP_PATH':str(art),'CFG_INT':'disco_hints=2'},capture_output=True,text=True,timeout=60)
    assert r.returncode==0,(theme,variant,r.stdout[-2000:],r.stderr[-2500:])
@@ -28,7 +28,7 @@ with tempfile.TemporaryDirectory(prefix='settings-alignment-') as tmp:
    for page,items in pages.items():
     labels=[x['label'] for x in items];assert len(labels)==len(set(labels)),(theme,page,'duplicate',labels)
     anchors={
-      'Display':['Brightness','Theme', {6:'Stone',8:'Ring',9:'Braun',10:'Disco',11:'Null',12:'Squash',13:'Zune'}[theme]+' settings'],
+      'Display':['Brightness','Theme', {14:'NTDisk',15:'iDisc',11:'Null'}[theme]+' settings'],
       'Connectivity':['Wi-Fi','Bluetooth'], 'System':['Language'],
       'Battery & power':['Details','Idle Power-off'], 'Help':['How to'],
       'Text & layout':['Text size'], 'Library appearance':['Album view'],
@@ -45,7 +45,7 @@ with tempfile.TemporaryDirectory(prefix='settings-alignment-') as tmp:
    assert 'Power' not in pages and 'Network' not in pages
    assert all(x['label']!='Power' for x in pages['System'])
    assert pages['Battery & power'][-1]['label']=='Charging Limit'
-   for name in ['Screen-off delay','Screensaver delay','Restart','Shut down player','Sleep timer']:
+   for name in ['Screen-off delay','Screensaver delay','Restart','Shut down player','Set sleep timer','Sleep timer options','Battery saver']:
     assert name in [x['label'] for x in pages['Battery & power']],(theme,name)
    assert not any(x['key']=='disc_colour' for rows in pages.values() for x in rows)
    assert not any(x['key']=='eq_preset' for rows in pages.values() for x in rows)
@@ -55,4 +55,4 @@ with tempfile.TemporaryDirectory(prefix='settings-alignment-') as tmp:
    print(f'PASS theme {theme}/{variant}: common roots, {sum(map(len,pages.values()))} settings rows, ordering and real navigation',flush=True)
 # Optional export supports the review document without changing production settings.
 if os.environ.get('SETTINGS_MANIFEST_OUT'):Path(os.environ['SETTINGS_MANIFEST_OUT']).write_text(json.dumps(all_cases,indent=2)+'\n')
-print('PASS settings alignment across all seven themes / 12 appearances')
+print('PASS settings alignment across the three themes / 5 appearances')

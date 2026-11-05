@@ -25,6 +25,7 @@
 #include <sys/ioctl.h>
 #include <sys/mount.h>     /* mount(): direct SD mount fallback when the player's uevent listener won't (V2.40) */
 #include <sys/stat.h>
+#include <poll.h>
 #include <dirent.h>      /* mkdir() for the SD mount point */
 #include <linux/input.h>   /* EVIOCGKEY / KEY_MAX for the boot-time Vol-Up override */
 #include <net/if.h>
@@ -58,6 +59,7 @@ int ds_fetch_entry(int argc,char **argv);
 #include "braun.h"
 
 static lv_indev_t *g_touch = NULL;
+static int g_pwr_press, g_pwr_intent, g_pwr_last_cbr = -1; static uint32_t g_pwr_settle;   /* the power key (main loop) */
 static int         g_screen_off = 0;   /* mirrors (bl_state==2) each main-loop iteration; read by the
                                           slow polls (status/clock) so screen-off work can be skipped
                                           without exposing main()'s local bl_state. */
@@ -781,6 +783,7 @@ static int book_session_active(void);   /* fwd: an audiobook is the active playb
  * applied one, which Up Next needs to pick the right order. Every 0102 send goes through send_play_mode. */
 static int g_mode_applied = -2;
 static int send_play_mode(int mode){
+    if(mode == 5) mode = 0;                                              /* Vibe (ours): the player plays in order */
     char m[16]; snprintf(m, sizeof m, "0102000C%04X", mode & 0xFFFF);
     int rc = ipc_send_cmd(m);
     g_mode_applied = (rc == 0 && mode >= 0 && mode <= 4) ? mode : -1;
@@ -795,7 +798,7 @@ int ui_play_mode_now(void){
     if(book_session_active()) return -1;
     int wm = simple_cfg_get_int("work_mode", -1);
     if(wm < 0) return mdb_sysconfig_play_mode();
-    if(g_mode_applied == -2 && wm <= 4) return wm;
+    if(g_mode_applied == -2 && wm <= 5) return wm == 5 ? 0 : wm;
     return -1;
 }
 static void reapply_audio_body(void);
@@ -855,7 +858,7 @@ static void reapply_sends(void){
     {
         int wm = simple_cfg_get_int("work_mode", -1);
         if(book_session_active()) send_play_mode(4);                      /* an active book must stay in Single mode across a reconnect, not be reset to the music mode */
-        else if(wm >= 0 && wm <= 4) ui_set_workmode(wm);                  /* stored play mode; don't let a garbage cfg get rewritten to 0 */
+        else if(wm >= 0 && wm <= 5) ui_set_workmode(wm);                  /* stored play mode (5 = Vibe); don't let a garbage cfg get rewritten to 0 */
         int mp = simple_cfg_get_int("memory_play", -1); if(mp >= 0)             ui_set_memory(mp);    /* Resume Playback */
         int gp = simple_cfg_get_int("gapless", -1);     if(gp >= 0)             ui_set_gapless(gp);
         int mv = simple_cfg_get_int("max_vol", -1);     if(mv >= 10)            ui_set_maxvol(mv);    /* <10 or unset = skip */
@@ -1051,6 +1054,11 @@ static void play_note_sent(void){ g_play_last_gen = ipc_generation(); g_play_las
  * 1=playing while position advances, else 0). Exposed so lastfm/route logic share ONE source of
  * truth instead of re-deriving play/pause from position deltas. */
 int ui_is_playing(void){ return g_playing; }
+/* Play / Pause answers at once (kopi.27): the play state is inferred from the position moving, which takes the
+ * player up to ~1.6 s to show, so the button used to change back and forth. After a tap the state the tap asked for
+ * is shown straight away, for up to 2.5 s or until the player agrees. */
+static int g_pp_expect = -1; static uint32_t g_pp_expect_at;
+void ui_note_toggle_sent(void){ g_pp_expect = !g_playing; g_pp_expect_at = lv_tick_get(); g_playing = g_pp_expect; }
 /* Admission for an output-route switch (modes.c): NULL = go, else the toast reason. 0666 re-inits the output, so never
  * during a start-up, a book, another source, a BT route or the post-restart settle. */
 const char *ui_output_blocked(void){
@@ -1258,7 +1266,7 @@ int ui_play_context(int *type, char *name, int cap, long *pid){
 int ui_play_restore(int type, const char *name, long pid, int pos){
     if(modes_output_busy() || !ui_local_playback_allowed()) return 0;
     int was=g_q_internal, sent=0; g_q_internal=1;
-    char mode[16]; snprintf(mode,sizeof mode,"0102000C%04X",simple_cfg_get_int("work_mode",0)&0xFFFF);
+    char mode[16]; { int wm=simple_cfg_get_int("work_mode",0); snprintf(mode,sizeof mode,"0102000C%04X",(wm==5?0:wm)&0xFFFF); }   /* (5 Vibe = in order) */
     if(type==5 && pid>0) sent=ui_play_playlist(pid,pos);
     else if(ipc_send_cmd(mode)>=0){
         if(type>=0 && type!=5){ ui_invalidate_play_scope(); sent=ui_play_list(type,name,pos); }
@@ -1696,7 +1704,7 @@ void ui_set_workmode(int mode){
      * modes 0..4: 0=Sequential, 1=Shuffle, 2=Repeat One, 3=Repeat All, 4=Single.
      * (This replaces the WRONG 0657, which is the audio SOURCE switch and could
      * wedge the device.) */
-    if(mode < 0 || mode > 4) mode = 0;
+    if(mode < 0 || mode > 5) mode = 0;                                  /* 5 = Vibe (kopi.27): sent to the player as Sequential */
     /* Persist here so cfg is the single source of truth: every play path that sets the
      * mode (Playlist Play/Shuffle, Library long-press, NP toggle, Settings, Tune) goes
      * through here, so the NP icon / Settings / Tune (all read cfg) can't drift from the
@@ -3548,6 +3556,10 @@ int main(int argc, char **argv){
          * original heuristic except a backward/rewind jump no longer counts as advancing. max_adv_ms=0
          * keeps "any forward change counts"; the paused-forward-seek bound is device-tunable. */
         int playing = playstate_playing(&g_ps, st.have_track, st.position_ms, lv_tick_get(), 1600, 0);
+        if(g_pp_expect >= 0){                                                   /* a tap's answer, until the player shows it */
+            if(playing == g_pp_expect || lv_tick_elaps(g_pp_expect_at) > 2500 || !st.have_track) g_pp_expect = -1;
+            else playing = g_pp_expect;
+        }
         if(playing) g_play_sent_gen = ipc_generation();   /* playback observed this generation (any start, incl. hardware keys): its one-shot is moot */
         queue_tick(&st, playing);
         {void zthumb_tick(void);zthumb_tick();} if(th_zune()){void zune_ui_tick(void);zune_ui_tick();}
@@ -3711,7 +3723,7 @@ int main(int argc, char **argv){
                     sleep_touch = ui_volume_overlay_visible() || ui_np_overlay_active() || azjump_owns_point(p.x,p.y)   /* latch: the sleep popover owns this whole gesture, */
                                || (screen_current()==SCR_EQ_EDITOR && eqcustom_owns_point(p.x, p.y))    /* and so does the EQ dial (fork) */
                                || (screen_current()==SCR_SPHERE && sphere_ui_owns_point(p.x, p.y))      /* and SongSphere's marker */
-                               || (th_nt() && nt_lyrics_visible());                                       /* and NTDisk's full-screen lyrics (closed below) */
+                               || (th_nt() && nt_imm_visible()) || sleep_sheet_visible() || webfiles_sheet_visible();                                       /* and NTDisk's full-screen lyrics (closed below) */
                     seek_touch = dhome_owns_point(p.x, p.y) || simple_owns_point(p.x,p.y);
                     if(th_null() && null_owns_point(p.x,p.y))sleep_touch=1;   /* fork: Disco Music's seek line / ring (no swipe to Apps) */
                     if(fsart_touch || sleep_touch){
@@ -3791,10 +3803,10 @@ int main(int argc, char **argv){
                         seek_consumed = ui_np_seek_release(lastx, lasty);
                     }
                     int vert = ady > adx*2, horiz = adx > ady*2;
-                    if(th_nt() && nt_lyrics_visible()){
+                    if(th_nt() && nt_imm_visible()){
                         /* NTDisk's full-screen lyrics: a sideways swipe anywhere (Back) closes them - Music itself has
                          * no Back to go to, so the swipe used to do nothing and the lyrics stayed */
-                        if(horiz && adx >= 50 && dt < 900) nt_lyrics_close();
+                        if(horiz && adx >= 50 && dt < 900) nt_imm_back();
                     } else if(lvgl_owned || ui_np_fsart_active()){
                         /* swallow - LVGL handled (or will handle) the open/close */
                     } else if(!seek_consumed){
@@ -3906,20 +3918,36 @@ int main(int argc, char **argv){
          * brightness==0 && bl_power==0 is unambiguously a player-side blank. Catch it on a slow poll,
          * fully power the rail down (bl_power=4) and sync bl_state=2 so only a touch wakes. When the
          * player raises brightness again (a second power press), bring the panel back to match. */
-        if(lv_tick_elaps(last_blpoll) >= 250){
+        /* The power key (kopi.27). The player owns it and, on each short press, toggles ITS idea of the screen: it writes
+         * brightness 0 to blank, or its remembered level to unblank. Our own sleep (bl_power 4, brightness kept) is
+         * invisible to it, so after an auto screen-off the two disagreed and a press did nothing: the player "blanked"
+         * an already dark panel (brightness 0 under bl_power 4 - the old check needed bl_power 0) and the next press
+         * "unblanked" it with nothing to show for it. Holding the key then reached the 5 s shutdown.
+         * Now a press is ours to judge, seen two ways: the key's own GPIO level (below, fast while lit), and any
+         * brightness change we did not write (the player reacting, which also catches a press too quick for the
+         * GPIO poll while the screen sleeps). Dark -> wake; lit -> off. For a moment after each decision the
+         * player's own reaction to that press is overruled instead of being read as a second press. */
+        if(lv_tick_elaps(last_blpoll) >= (bl_state == 2 ? 150u : 100u) || g_pwr_press){
             last_blpoll = lv_tick_get();
             int cbr = read_int_file("/sys/class/backlight/backlight/brightness");
             int cbp = read_int_file("/sys/class/backlight/backlight/bl_power");
-            if(cbr == 0 && cbp == 0){
-                /* player blanked via brightness-only -> cut the rail. Won't re-fire (bl_power now 4). */
-                ui_backlight(0); bl_state = 2; player_blanked = 1;
-            } else if(player_blanked && cbr > 0){
-                /* player un-blanked (2nd power press restored brightness) -> restore the panel. */
-                /* The player restores ITS OWN remembered level, not the one set in Quick Settings / Display, so the
-                 * brightness looked reset after every off > on cycle (fork fix): put the diskOS brightness back. */
-                ui_backlight(ui_effective_brightness());
-                bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
+            int settling = g_pwr_settle && lv_tick_elaps(g_pwr_settle) < 900;
+            if(!settling) g_pwr_settle = 0;
+            int press = g_pwr_press; g_pwr_press = 0;
+            static unsigned seen_w;                                             /* our own writes since the last look don't count */
+            int ours = ui_backlight_writes() != seen_w;
+            if(!press && !settling && !ours && g_pwr_last_cbr >= 0 && cbr >= 0 && cbr != g_pwr_last_cbr) press = 1;
+            if(!press && !settling && cbr == 0 && cbp == 0) press = 1;        /* (the player blanked a lit panel) */
+            if(press && !settling){
+                g_pwr_intent = bl_state ? 1 : 0; g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;
+                if(g_pwr_intent){ ui_backlight(ui_effective_brightness()); bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
+                                  power_note_input(); if(screen_current() == SCR_SAVER) screen_back(); }
+                else { ui_backlight(0); bl_state = 2; player_blanked = 1; if(screen_current() == SCR_SAVER) screen_back(); }
+            } else if(settling){                                                /* the player answering that same press */
+                if(g_pwr_intent && (cbr == 0 || cbp != 0)) ui_backlight(ui_effective_brightness());
+                else if(!g_pwr_intent && cbp == 0) ui_backlight(0);
             }
+            g_pwr_last_cbr = read_int_file("/sys/class/backlight/backlight/brightness"); seen_w = ui_backlight_writes();
         }
 
         {   /* fork: the play button's shortcuts (double-click, hold) - see playkey_action */
@@ -3966,7 +3994,9 @@ int main(int argc, char **argv){
                 int d = gpe ? (((*gpe >> 31) & 1u) == 0) : 0;
                 if(!d) pk_seen_up = 1;
                 if(d && !pk_down && pk_seen_up){ pk_down = 1; pk_since = lv_tick_get(); }
-                else if(!d && pk_down){ pk_down = 0; pk_rel = lv_tick_get(); }
+                else if(!d && pk_down){ pk_down = 0; pk_rel = lv_tick_get();
+                    if(!pk_shown && lv_tick_elaps(pk_since) < 1200 && !(g_pwr_settle && lv_tick_elaps(g_pwr_settle) < 900)) g_pwr_press = 1;   /* a short press */
+                }
                 int hold = simple_cfg_get_int("pwr_hold_ms", 5000); if(hold < 300) hold = 300;
                 if(pk_down && !pk_shown && lv_tick_elaps(pk_since) >= (uint32_t)hold){
                     pk_shown = 1;
@@ -3985,6 +4015,15 @@ int main(int argc, char **argv){
         int si = simple_cfg_get_int("saver_idx", 2), oi = simple_cfg_get_int("screenoff_idx", 3);
         int saver_timeout   = (si>=0 && si<5) ? TMAP[si] : 60;
         int screenoff_extra = (oi>=0 && oi<5) ? TMAP[oi] : 120;
+        {   /* Battery saver (kopi.27): the screen - the biggest drain - dims after 20 s and goes dark 10 s later */
+            static int was_saving = -1; int saving = ui_batt_saver();
+            if(saving){ if(saver_timeout <= 0 || saver_timeout > 20) saver_timeout = 20; if(screenoff_extra <= 0 || screenoff_extra > 10) screenoff_extra = 10; }
+            if(was_saving >= 0 && saving != was_saving && bl_state == 0){
+                ui_backlight(ui_effective_brightness());                    /* its brightness cap, on or off */
+                ui_toast(saving ? "Battery saver on" : "Battery saver off");
+            }
+            was_saving = saving;
+        }
         /* Never sleep while the on-screen keyboard is open: it owns all touch, so a
          * dimmed/off saver couldn't be woken mid-typing (e.g. entering a Wi-Fi password). */
         /* Screen-off/dim wake on RAW touch: drain the raw evdev fd; ANY event means a finger touched,
@@ -4111,7 +4150,9 @@ int main(int argc, char **argv){
              * queue across the 200ms sleep; we no longer rely on catching an LVGL press-edge. */
             wait = 200;
         } else {
-            uint32_t cap = busy ? 5 : 30;
+            /* lit and nothing moving: wake when a timer is due, or at once on a touch (the poll below), instead of
+             * 33 times a second for nothing. Kept at 30 ms while the play-button shortcuts need the GPIO watched. */
+            uint32_t cap = busy ? 5 : (simple_cfg_get_int("pk_port", -1) >= 0 ? 30 : 100);
             if(wait > cap) wait = cap;
         }
 #ifdef DISKOS_PROFILE
@@ -4119,7 +4160,10 @@ int main(int argc, char **argv){
           unsigned long long body = (unsigned long long)(pc.tv_sec - pa.tv_sec) * 1000000000ULL + (unsigned long long)(pc.tv_nsec - pa.tv_nsec) - prof_h;
           prof_loop(busy, bl_state, lv_anim_count_running(), prof_h, body); }
 #endif
-        usleep(wait*1000);
+        if(g_touch_raw >= 0){                                                   /* sleep, but a finger wakes us at once */
+            struct pollfd pf = { .fd = g_touch_raw, .events = POLLIN };
+            (void)poll(&pf, 1, (int)wait);
+        } else usleep(wait*1000);
     }
     return 0;
 }

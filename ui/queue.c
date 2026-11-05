@@ -11,7 +11,9 @@
  * and plays the first queued song from its start. No mid-song reload, no seeking back. As queued songs
  * start they drop off the queue; when playback reaches your list again the UI switches back to it at that
  * song, in your own play mode. Going back (Previous) is left alone. The queue is kept in
- * /usr/data/diskos_queue.tsv. */
+ * /usr/data/diskos_queue.tsv.
+ * kopi.27: the next queued song starts the moment the current one ends (not after the player has begun its own next
+ * one), also in Repeat One and Single; with nothing to return to, similar songs carry on (vibe.c). */
 #include "screens.h"
 #include "modes.h"
 #include "braun.h"
@@ -245,7 +247,7 @@ static void pop_through(int k){ memmove(&g_q[0], &g_q[k+1], (size_t)(g_qn - k - 
                                 if(screen_current() == SCR_QUEUE) view_reload(); }
 /* Nothing to come back to (nothing loaded, or nothing playing whose song we can identify): the queue is the whole
  * list. Song `first` starts now and the rest follow in order; in the Shuffle play mode the queue is shuffled first.
- * When the queue is done, playback simply stops (there is no album or playlist to return to). */
+ * When the queue is done, similar songs carry on (Vibe, kopi.27) - there is no album or playlist to return to. */
 static int start_fresh(int first){
     if(first < 0 || first >= g_qn) return 0;
     if(!g_copy) g_copy = malloc(sizeof(*g_copy) * (QMAX + RMAX));
@@ -292,8 +294,34 @@ void queue_jump(int i){                                       /* play queued son
     if(!g_active && !capture_context(current, 0)){ ui_toast("Couldn't start queued song - try again"); return; }
     if(play_copy(i)){ g_prev2=current; g_last_id=g_q[i].id; pop_through(i); }
 }
+/* ---------------------------------------------------------------- Vibe (kopi.27) */
+int vibe_pick(int seed_id, const char *seed_path, int *out, int want);
+static int vibe_mode(void){ return simple_cfg_get_int("work_mode", 0) == 5; }
+/* the next songs in the vibe of `seed`: handed to the player as its list, the first starting now */
+static int vibe_next(int seed, const char *seed_path){
+    int ids[24], n = vibe_pick(seed, seed_path, ids, 24);
+    if(n <= 0) return 0;
+    int pos = mdb_queue_slot_set(ids, n, ids[0]);
+    if(!pos || !ui_play_slot(pos)) return 0;
+    g_active = 0; g_nrest = 0; g_skip_change = 0;                   /* (not a queue copy: the next song is simply new) */
+    return 1;
+}
+/* Whatever should follow the song now playing - the queue's head, or in Vibe mode (or when the queue has just run
+ * out with nothing to return to) a similar song - starts the moment this one ends, not after the player has already
+ * begun its own next song (that was audible for a second or two, and in Repeat One / Single the queue never came at
+ * all). The position is projected from the last report (they come about once a second). */
+#define END_LEAD_MS 600
+static int follow_up(const track_state_t *st, int current){
+    if(g_qn > 0){
+        if(!g_active && !capture_context(current, 0)) return 0;          /* your list resumes after this song */
+        if(!play_copy(0)) return 0;
+        g_prev2 = current; g_last_id = g_q[0].id; pop_through(0);
+        return 1;
+    }
+    if(vibe_mode() || (g_active && g_nrest == 0)) return vibe_next(current, st->path);
+    return 0;
+}
 void queue_tick(const track_state_t *st, int playing){
-    (void)playing;
     if(!st || !st->have_track || !ui_local_playback_allowed() || modes_output_busy()) return;
     load();
     /* The song's ID only changes with the track: look it up once per (path, list position, title), not every frame.
@@ -310,6 +338,22 @@ void queue_tick(const track_state_t *st, int playing){
     }
     int current = k_id;
     if(!current) return;  /* unverified subtrack metadata never advances the editable queue */
+    {   /* the end of this song coming up: start what follows on time */
+        static long seen_pos = -1; static uint32_t seen_at; static int fired_for, stop_since;
+        if(st->position_ms != seen_pos){ seen_pos = st->position_ms; seen_at = lv_tick_get(); }
+        long est = seen_pos + (playing ? (long)lv_tick_elaps(seen_at) : 0);
+        int due = st->duration_ms > 5000 && est >= st->duration_ms - END_LEAD_MS && !mdb_is_book_path(st->path);
+        int want = g_qn > 0 || vibe_mode() || (g_active && g_nrest == 0);
+        /* stopped right at the end (the player reached it before we did): also - but not a pause short of it (the
+         * sleep timer's "end of song" pauses 1.2 s before) */
+        if(!playing && want && st->duration_ms > 5000 && seen_pos >= st->duration_ms - 400){ if(!stop_since) stop_since = (int)(lv_tick_get() | 1); }
+        else stop_since = 0;
+        if(want && due && fired_for != current && (playing || (stop_since && lv_tick_elaps((uint32_t)stop_since) > 1500))){
+            fired_for = current;
+            if(follow_up(st, current)){ g_last_pos = 0; return; }
+        }
+        if(!due) { if(fired_for == current && est < st->duration_ms - 3000) fired_for = 0; }   /* sought back: may fire again */
+    }
     if(current != g_last_id){                        /* a new song began */
         int prev=g_last_id;
         int before=g_prev2;

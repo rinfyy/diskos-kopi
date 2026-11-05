@@ -19,6 +19,7 @@ static const display_entry_t DISPLAY_ENTRIES[]={
     {"id_glass",NULL,"Appearance","Glass"},
     {"nt_music",NULL,"Music screen","Layout"},
     {"nt_lyrics",NULL,"Music screen","Lyrics as title"},
+    {"nt_imm",NULL,"Music screen","Immersive"},
     {"nt_disc",NULL,"Music screen","Disc"},
     {"nt_idle",NULL,"Music screen","Idle screen"},
     {NULL,apply_nt_pic_next,"Music screen","Change picture"},
@@ -113,7 +114,16 @@ static const display_entry_t *display_entry(const setting_t *s){
     }
     return NULL;
 }
+static const char *display_disabled_reason(const setting_t *s);
+static int display_retired_reason(const setting_t *s){            /* (kopi.27) a row disabled "for" a theme that's gone: hide it */
+    const char *r = display_disabled_reason(s); if(!r) return 0;
+    static const char *const GONE[] = { "Disco", "Squash", "Zune", "Ring", "Braun", "Stone" };
+    for(size_t i = 0; i < sizeof GONE / sizeof GONE[0]; i++) if(strstr(r, GONE[i])) return 1;
+    return 0;
+}
 static int display_variant_hidden(const setting_t *s){
+    if(display_retired_reason(s))return 1;
+    if(th_nt()&&s->apply==apply_grp_discoqs)return 1;              /* NTDisk / iDisc have one Quick settings layout: an empty page */
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"saver_style"))return 1;
     if(s->apply==apply_grp_zune&&!th_zune())return 1;
     if(s->cfg_key&&!strncmp(s->cfg_key,"null_custom_",12)&&!(th_null()&&cfg_get_int("null_palette",0)==3))return 1;   /* only with Null > Custom */

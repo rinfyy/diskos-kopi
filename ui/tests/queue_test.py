@@ -31,6 +31,7 @@ int ui_play_context(int *type,char *name,int cap,long *pid){ *type=3;snprintf(na
 static int playing_now;
 int ui_is_playing(void){return playing_now;}
 int ui_play_slot(int pos){sends++;last_pos=pos;return !slot_fail;}
+int vibe_pick(int seed_id,const char *seed_path,int *out,int want){(void)seed_id;(void)seed_path;(void)out;(void)want;return 0;}
 int ui_play_restore(int type,const char *name,long pid,int pos){(void)name;(void)pid;assert(type==3);restores++;last_pos=pos;return !rest_fail;}
 static void view_reload(void){}
 '''

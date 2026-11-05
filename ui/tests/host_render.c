@@ -809,7 +809,7 @@ int main(int argc, char **argv){
     }
     if(!strncmp(argv[3],"shortcuts-",10)){
         screen_set_anim(0); screens_init();
-        setlist_open("Display");
+        settings_open_page("Navigation");                    /* (kopi.27: Display > Navigation > Shortcuts) */
         lv_obj_t *root=screen_get_root(SCR_SETLIST);
         lv_obj_t *label=find_text(root,"Shortcuts"); assert(label);
         assert(!find_text(root,"Quick Settings"));
@@ -824,7 +824,7 @@ int main(int argc, char **argv){
                 lv_obj_t *slot_list=NULL;
                 for(uint32_t i=0;i<lv_obj_get_child_count(root);i++){
                     lv_obj_t *child=lv_obj_get_child(root,i);
-                    if(lv_obj_get_child_count(child)==5 && lv_obj_check_type(lv_obj_get_child(child,0),&lv_button_class)) slot_list=child;
+                    if(lv_obj_get_child_count(child)==8 && lv_obj_check_type(lv_obj_get_child(child,0),&lv_button_class)) slot_list=child;
                 }
                 assert(slot_list);
                 lv_obj_send_event(lv_obj_get_child(slot_list,0),LV_EVENT_CLICKED,NULL);
@@ -1420,8 +1420,14 @@ int main(int argc, char **argv){
             if(getenv("NT_PK")){void settings_test_playkey(void);settings_test_playkey();nav_wait(100);}
             if(getenv("NT_OV")){disco_track_overlay_open();nav_wait(200);}
             if(getenv("NT_MENU")){disco_nav_set_open(1);nav_wait(300);}
+            if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}
+            if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}
+            if(getenv("NT_SPIN")){nt_spin_open();for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();}
+                if(!strcmp(getenv("NT_SPIN"),"0")){for(int i=0;i<460;i++){lv_tick_inc(10);lv_timer_handler();}}}   /* 0: after the controls hide */
             if(getenv("NT_IMM")){nt_lyrics_open();for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}
                 if(getenv("NT_JUMP")){void nt_lyrics_test_jump(int);nt_lyrics_test_jump(atoi(getenv("NT_JUMP")));nav_wait(100);}}}
+        if(!th_nt()){if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}
+            if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("DOOM_LANDING")){doom_landing();nav_wait(60);}
         if(getenv("VIDEOS_OPEN")){folderbrowser_open_videos();nav_wait(80);}

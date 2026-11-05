@@ -337,12 +337,25 @@ void ui_request_sleep(void);  /* Quick Settings "Sleep": manual screen-off reque
 void ui_set_brightness(int v);   /* persist + apply */
 int  ui_get_brightness(void);
 int  ui_effective_brightness(void);   /* what the backlight runs at (Outdoor mode = full) */
-void ui_backlight(int v);        /* transient backlight write, no persist */
+void ui_backlight(int v);
+unsigned ui_backlight_writes(void);
+int ui_batt_saver(void);              /* usage.c: Battery saver is on now (On, or Auto at 20 % and below) */
+int usage_battery(void);   /* bumps on every ui_backlight() */        /* transient backlight write, no persist */
 void ui_set_sleep_timer(int minutes);   /* 0 = off; pauses playback when it elapses */
 void ui_set_sleep_eoc(long target_ms, const char *path, int at_book_end);  /* pause when THAT book's position reaches target_ms (end of chapter); at_book_end=1 if the target is the file end (last/chapterless chapter) so a rollover can fulfil it */
 void ui_disarm_book_eoc(void);  /* disarm any end-of-chapter sleep; call on explicit track navigation */
 int  ui_book_active(void);      /* 1 if an audiobook is the active playback context (suppress play-mode changes) */
-int  ui_sleep_state(int *secs_left);    /* 0 off, 1 duration (fills secs_left), 2 end-of-chapter */
+int  ui_sleep_state(int *secs_left);
+void sleep_sheet_open(void);
+void settings_open_page(const char *page);   /* settings.c: a settings page (a category or a sub-page) */
+void settings_open_key(const char *key);
+int  settings_pick_pages(const char *names[], int cap);
+int  settings_pick_keys(const char *keys[], const char *labels[], int cap);
+void webfiles_toggle(void);                  /* webfiles.c: Wi-Fi file transfer on / off */
+int  webfiles_running(void);
+void webfiles_open(void);                    /* the File transfer sheet (address, code, Stop) */
+int  webfiles_sheet_visible(void);           /* sleepsheet.c: the Sleep timer picker, over any screen */
+int  sleep_sheet_visible(void);    /* 0 off, 1 duration (fills secs_left), 2 end-of-chapter */
 void ui_np_close_overlays(void);        /* dismiss the Now Playing sleep-timer popover (on screen change) */
 int  ui_np_overlay_active(void);        /* 1 while the sleep popover is up (suppress ring seek/nav) */
 long ui_smart_rewind_ms(long idle_seconds);  /* how far to back up on resume, by idle time */
@@ -514,6 +527,8 @@ int nt_home_owns_point(int x, int y); void nt_home_lyrics_apply(int on);
 void nt_home_status(int batt, int charging, int wifi, int bt);
 void nt_home_pictures_apply(void);   /* NTDisk Disc / Idle screen pictures changed */
 void nt_lyrics_open(void); void nt_lyrics_close(void); int nt_lyrics_visible(void);
+void nt_spin_open(void); void nt_spin_close(void); int nt_spin_visible(void);   /* Immersive: the spinning album */
+int nt_imm_visible(void); void nt_imm_back(void); void nt_imm_open(void);        /* either Immersive (the chosen one) */
 void nt_saver_create(lv_obj_t *root); void nt_saver_clock(const char *t); void nt_saver_weather(const char *s);
 void nt_saver_track(const char *title, const char *artist);
 int  disco_mirror(void);

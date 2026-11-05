@@ -444,47 +444,55 @@ static void tick_cb(lv_timer_t *t){ (void)t; if(screen_current() == SCR_HOME) pr
 
 /* touch: the cover - tap for the lyrics, hold for the track actions, swipe sideways to skip, up for Immersive;
  * the title - tap for the track actions, hold for the Title hold; the bar - drag to seek; the buttons. */
-static lv_point_t g_down; static uint32_t g_t0; static int g_moved;
+/* The cover (kopi.27): its upper half does nothing (it sits under the top edge's Quick Settings pull). Its lower
+ * half: tap = lyrics, hold = track actions, swipe up = Immersive, slide sideways = move through the song (the card's
+ * width ~ the whole song; the time shows under the bar, which itself only shows). */
+static lv_point_t g_down; static uint32_t g_t0; static int g_moved, g_cmode; static long g_pos0, g_dur0, g_target;
 static void card_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p = { 0, 0 };
     if(in) lv_indev_get_point(in, &p);
-    if(c == LV_EVENT_PRESSED){ g_down = p; g_t0 = lv_tick_get(); g_moved = 0; return; }
-    if(c == LV_EVENT_PRESSING){ if(abs(p.x - g_down.x) > 10 || abs(p.y - g_down.y) > 10) g_moved = 1; return; }
-    if(c == LV_EVENT_RELEASED){
+    if(c == LV_EVENT_PRESSED){
+        g_down = p; g_t0 = lv_tick_get(); g_moved = 0; g_cmode = p.y < ART_CY ? -1 : 1;
+        track_state_t st; ipc_get_state(&st); g_pos0 = st.position_ms; g_dur0 = st.duration_ms; g_target = g_pos0;
+        return;
+    }
+    if(g_cmode < 0) return;
+    if(c == LV_EVENT_PRESSING){
+        int dx = p.x - g_down.x, dy = p.y - g_down.y;
+        if(abs(dx) > 10 || abs(dy) > 10) g_moved = 1;
+        if(g_cmode == 1 && g_moved) g_cmode = (abs(dy) > 2 * abs(dx) && dy < 0) ? 3 : 2;
+        if(g_cmode == 2 && g_dur0 > 0){
+            g_target = g_pos0 + (long)((long long)dx * g_dur0 / 240);
+            if(g_target < 0) g_target = 0;
+            if(g_target > g_dur0 - 1000) g_target = g_dur0 - 1000;
+            g_drag = 1; lv_obj_set_height(g_bar, 10); lv_obj_set_style_radius(g_bar, 5, 0); lv_obj_set_height(g_fill, 10);
+            lv_obj_set_width(g_fill, (int)(216LL * g_target / g_dur0));
+            char b[24]; fmt_time(g_target, b, sizeof b); set_text(g_el, b);
+        }
+        return;
+    }
+    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
         int dx = p.x - g_down.x, dy = p.y - g_down.y; uint32_t dt = lv_tick_elaps(g_t0);
-        if(dt < 800 && abs(dx) >= 50 && abs(dx) > 2 * abs(dy)){
-            if(dx < 0){ ui_transport_command("0201000C0001"); ui_toast_icon(LV_SYMBOL_NEXT, TC(ACCENT_PRIMARY), "Next"); }
-            else { ui_transport_command("0201000C0002"); ui_toast_icon(LV_SYMBOL_PREV, TC(ACCENT_PRIMARY), "Previous"); }
-        } else if(dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
+        if(g_cmode == 2){
+            if(c == LV_EVENT_RELEASED && g_dur0 > 0) ui_seek_to(g_target);
+            g_drag = 0; lv_obj_set_height(g_bar, 6); lv_obj_set_style_radius(g_bar, 3, 0); lv_obj_set_height(g_fill, 6);
+            progress_paint();
+        } else if(g_cmode == 3 && dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
         return;
     }
     if(c == LV_EVENT_SHORT_CLICKED && !g_moved){ onboarding_discovered(HINT_MUSIC); nt_lyrics_open(); }
-    else if(c == LV_EVENT_LONG_PRESSED && !g_moved) disco_track_overlay_open();
+    else if(c == LV_EVENT_LONG_PRESSED && !g_moved && g_cmode == 1) disco_track_overlay_open();
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
     if(c == LV_EVENT_SHORT_CLICKED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }
     else if(c == LV_EVENT_LONG_PRESSED){ int h = cfg_get_int("disco_title_hold", 0); if(h == 0) disco_open_np_immersive(); else if(h == 1) ui_np_fav_toggle(); }
 }
-static void seek_cb(lv_event_t *e){
-    lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p;
-    if(!in) return;
-    lv_indev_get_point(in, &p);
-    lv_area_t a; lv_obj_get_coords(g_bar, &a);
-    int frac = (int)((p.x - a.x1) * 1000 / (a.x2 - a.x1 + 1)); if(frac < 0) frac = 0; if(frac > 1000) frac = 1000;
-    if(c == LV_EVENT_PRESSED || c == LV_EVENT_PRESSING){
-        if(!g_drag){ g_drag = 1; lv_obj_set_height(g_bar, 10); lv_obj_set_style_radius(g_bar, 5, 0); lv_obj_set_height(g_fill, 10); }
-        lv_obj_set_width(g_fill, 216 * frac / 1000);
-        track_state_t st; ipc_get_state(&st);
-        if(st.duration_ms > 0){ char b[24]; fmt_time((long)((long long)st.duration_ms * frac / 1000), b, sizeof b); set_text(g_el, b); }
-    } else if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
-        g_drag = 0; lv_obj_set_height(g_bar, 6); lv_obj_set_style_radius(g_bar, 3, 0); lv_obj_set_height(g_fill, 6);
-        track_state_t st; ipc_get_state(&st);
-        if(c == LV_EVENT_RELEASED && st.have_track && st.duration_ms > 0) ui_seek_to((long)((long long)st.duration_ms * frac / 1000));
-        progress_paint();
-    }
+static void btn_cb(lv_event_t *e){
+    const char *cmd = lv_event_get_user_data(e);
+    ui_transport_command(cmd);
+    if(!strcmp(cmd, "0201000C0000") && g_have){ g_playing = ui_is_playing(); glyph_set(g_pp_g, g_playing ? G_PAUSE : G_PLAY); card_breathe(g_playing); }   /* at once */
 }
-static void btn_cb(lv_event_t *e){ ui_transport_command(lv_event_get_user_data(e)); }
 static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
 static lv_obj_t *tbtn(lv_obj_t *p, int cx, int cy, int box, int kind, int size, const char *cmd){
     lv_obj_t *b = plain(p); lv_obj_set_size(b, box, box); lv_obj_set_pos(b, cx - box / 2, cy - box / 2);
@@ -529,7 +537,6 @@ void idisc_home_create(lv_obj_t *root){
 
     /* the scrubber and its times */
     lv_obj_t *seek = plain(g_layer); lv_obj_set_size(seek, 236, 30); lv_obj_set_pos(seek, 62, 244);
-    lv_obj_add_flag(seek, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(seek, seek_cb, LV_EVENT_ALL, NULL);
     g_bar = plain(seek); lv_obj_set_size(g_bar, 216, 6); lv_obj_center(g_bar);
     lv_obj_set_style_radius(g_bar, 3, 0); lv_obj_set_style_clip_corner(g_bar, true, 0);
     lv_obj_set_style_bg_color(g_bar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(g_bar, 64, 0);
@@ -585,8 +592,8 @@ void idisc_home_weather(const char *s){ snprintf(g_wx, sizeof g_wx, "%s", s ? s 
 int idisc_home_owns_point(int x, int y){
     if(!g_layer || !g_have) return 0;
     int r = g_card_d / 2;
-    if(abs(x - 180) <= r && abs(y - ART_CY) <= r) return 1;
-    return y >= 244 && y <= 344 && x >= 60 && x <= 300;                  /* the scrubber and the buttons */
+    if(abs(x - 180) <= r && y >= ART_CY && y <= ART_CY + r) return 1;       /* the cover's lower half */
+    return y >= 283 && y <= 345 && x >= 72 && x <= 288;                  /* the buttons */
 }
 
 /* ---- standby ----------------------------------------------------------------------------------------------------- */

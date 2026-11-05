@@ -794,7 +794,7 @@ static void np_immersive_now(void){
     g_np_want = 1; screen_show(SCR_NOWPLAYING); g_np_want = 0;
 }
 void disco_open_np_immersive(void){
-    if(th_nt()){ nt_lyrics_open(); return; }                           /* NTDisk: full-screen lyrics over the cover */
+    if(th_nt()){ nt_imm_open(); return; }                              /* NTDisk / iDisc: full-screen lyrics, or the spinning album */
     if(th_disco_family() && !th_simple() && screen_current() == SCR_HOME && screen_get_anim()) dhome_imm_leave(np_immersive_now);   /* Music's pieces step aside first */
     else np_immersive_now();
 }
@@ -827,7 +827,7 @@ int screen_popping(void);
 void disco_screen_entering(int which){
     if(th_simple()){onboarding_dismiss();if(which==SCR_SEARCH&&!screen_popping())search_landing_reset();simple_nav_screen(which);dhome_overlay_close();ed_close();return;}
     onboarding_dismiss();
-    if(th_nt()) nt_lyrics_close();                                       /* NTDisk's lyrics never outlive their screen */
+    if(th_nt()){ nt_lyrics_close(); nt_spin_close(); }                 /* NTDisk's Immersive never outlives its screen */
     nav_cancel_tap();
     if(which == SCR_SEARCH && !screen_popping()) search_landing_reset();  /* Menu > Search: the landing page first; back keeps results */
     dhome_overlay_close(); ed_close();                                    /* top-layer panels never outlive their screen (standby, keys) */

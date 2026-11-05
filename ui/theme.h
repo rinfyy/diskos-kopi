@@ -51,18 +51,18 @@ lv_color_t th_id_tint(int i);   /* iDisc: the colour behind settings icon i (blu
 int th_nt(void);          /* the NTDisk theme is active (th_disco() is true too: it reuses Disco's screens) */
 int th_nt_mix(void);      /* NTDisk style Mix dark / Mix light: light and dark tiles together */
 #define THEME_PRESET_ZUNE 13   /* fork: Zune HD / Metro-inspired round theme */
-int th_zune(void);
+#define th_zune() 0          /* kopi.27: only NTDisk, iDisc and Null ship; the retired themes' code folds away */
 #define THEME_PRESET_STONE 6
 int theme_preset_available(int preset);
 #define THEME_PRESET_SQUASH 12
 #define THEME_PRESET_SIMPLE THEME_PRESET_SQUASH /* saved ID / internal compatibility */
-int th_simple(void);
-int th_disco_family(void);
+#define th_simple() 0
+#define th_disco_family() th_disco()
 #define THEME_PRESET_NULL 11
 int th_null(void);
 #define THEME_PRESET_RING 8
-int theme_ring_light(void);
-int theme_auto_supported(void);
+#define theme_ring_light() 0
+#define theme_auto_supported() 0
 #define THEME_PRESET_BRAUN 9
 #define THEME_PRESET_DISCO 10   /* fork: Ring-family theme on the album cover (disco.c) */
 #define NULL_SWATCH_COUNT 16
@@ -71,8 +71,8 @@ extern const char *const null_swatch_names[NULL_SWATCH_COUNT];   /* Null custom 
 extern const char *const null_bg_names[NULL_BG_COUNT];           /* ... and background names */
 int theme_disco_kopi(void);   /* Disco with the Kopi Ungu palette */
 int theme_backdrop_keep(int light);   /* Disco backdrop: of 256, how much cover shows (thread-safe after theme_init) */
-int th_disco(void);        /* the Disco theme is active */
-int th_ringlike(void);     /* Ring or Disco: the Ring interface (buttons, Now Playing ring, accent rules) */
+int th_disco(void);        /* Disco's machinery is in use (NTDisk, iDisc) */
+#define th_ringlike() 0      /* (Ring and Disco are retired) */
 extern const char *const theme_preset_names[THEME_PRESET_COUNT];
 int         theme_preset(void);                     /* the active preset index (THEME_PRESET_CUSTOM = the saved one) */
 #define THEME_PRESET_CUSTOM 100                     /* cfg theme_preset value: use /usr/data/diskos-custom-theme.json */

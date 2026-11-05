@@ -544,6 +544,7 @@ static int transport_now(const char *cmd)
     if(ipc_send_cmd(cmd) < 0){ ui_toast("Player busy - try again"); return -1; }
     if(is_next || is_prev) ui_perf_note("transport-accepted");
     if(is_toggle){
+        { void ui_note_toggle_sent(void); ui_note_toggle_sent(); }       /* show the new state now */
         ui_pp_tap_hint();
         ui_pp_glyph(btn_pp, ui_pp_icon_playing(ui_is_playing()));
     } else {
@@ -1755,7 +1756,7 @@ static void fav_click_cb(lv_event_t *e)
  *   3 loop
  *   4 arrow + "1"   (single = play-one)
  * The "1" overlay (mode_one) is shown for Repeat One and Single. */
-#define WORKMODE_COUNT 5
+#define WORKMODE_COUNT 6   /* + 5 Vibe (kopi.27): similar songs follow, the player in order */
 static void mode_refresh(int wm)
 {
     if(!btn_mode || !mode_icon) return;
@@ -1763,6 +1764,7 @@ static void mode_refresh(int wm)
     g_np_mode = wm;
     const char *icon = (wm == 1) ? LV_SYMBOL_SHUFFLE
                      : (wm == 2 || wm == 3) ? LV_SYMBOL_LOOP
+                     : wm == 5 ? LV_SYMBOL_AUDIO          /* Vibe: a note */
                      : MODE_ARROW;                       /* 0 and 4 use the arrow */
     lv_label_set_text(mode_icon, icon);
     lv_obj_set_style_text_color(mode_icon, wm ? (th_braun() ? TC(ACCENT_PRIMARY) : accent) : th_braun() ? TC(TEXT_SECONDARY) : TC(TEXT_MUTED), LV_PART_MAIN);
@@ -1787,7 +1789,7 @@ static void mode_click_cb(lv_event_t *e)
         ui_set_workmode(wm);
         mode_refresh(wm);
         static const char *const MODE_NAMES[WORKMODE_COUNT] =
-            { "Sequential", "Shuffle", "Repeat One", "Repeat All", "Single" };
+            { "Sequential", "Shuffle", "Repeat One", "Repeat All", "Single", "Vibe: similar songs follow" };
         if(wm >= 0 && wm < WORKMODE_COUNT) ui_toast(MODE_NAMES[wm]);
     }
 }
@@ -3232,6 +3234,7 @@ static int pw_charging(void){
 static int pw_window_open(void){
     int m=g_prewarm_mode; if(m==0) return 0;
     if(!ui_main_is_idle()) return 0;   /* screen dimmed/off required */
+    if(ui_batt_saver() && !pw_charging()) return 0;
     if(m==2) return pw_charging();     /* idle & charging */
     return 1;                          /* m==1: when idle */
 }
@@ -3240,6 +3243,7 @@ static int pw_window_open(void){
 static void pw_wait_window(int *hot){
     for(;;){
         if(!ui_main_is_idle()){usleep(500000);continue;}
+        if(ui_batt_saver() && !pw_charging()){ sleep(30); continue; }      /* Battery saver: covers wait for the charger */
         int t = pw_temp_dc();                       /* battery temp, tenths-C; fail-closed if unreadable */
         if(t < 0){ sleep(15); continue; }
         if(*hot){ if(t < 400) *hot=0; else { sleep(15); continue; } }   /* hysteresis: pause >=42C, resume <40C */
@@ -4467,7 +4471,7 @@ int ui_np_mode_next(void){                          /* as the Now Playing play-m
     simple_cfg_set_int("work_mode", wm);
     ui_set_workmode(wm);
     mode_refresh(wm);
-    static const char *const MODE_NAMES[WORKMODE_COUNT] = { "Sequential", "Shuffle", "Repeat One", "Repeat All", "Single" };
+    static const char *const MODE_NAMES[WORKMODE_COUNT] = { "Sequential", "Shuffle", "Repeat One", "Repeat All", "Single", "Vibe: similar songs follow" };
     ui_toast(MODE_NAMES[wm]);
     return wm;
 }

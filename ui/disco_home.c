@@ -858,8 +858,8 @@ static void wx_cb(lv_event_t *e){
 
 static void mode_paint(void){
     int wm = simple_cfg_get_int("work_mode", 0);
-    static const char *const G[5] = { LV_SYMBOL_RIGHT, LV_SYMBOL_SHUFFLE, LV_SYMBOL_LOOP "1", LV_SYMBOL_LOOP, LV_SYMBOL_RIGHT "1" };
-    dl_text(&L_MODE, G[wm >= 0 && wm < 5 ? wm : 0]);
+    static const char *const G[6] = { LV_SYMBOL_RIGHT, LV_SYMBOL_SHUFFLE, LV_SYMBOL_LOOP "1", LV_SYMBOL_LOOP, LV_SYMBOL_RIGHT "1", LV_SYMBOL_AUDIO };
+    dl_text(&L_MODE, G[wm >= 0 && wm < 6 ? wm : 0]);
 }
 static void mode_cb(lv_event_t *e){ if(lv_event_get_code(e) == LV_EVENT_CLICKED){ ui_np_mode_next(); mode_paint(); if(th_simple())simple_action_feedback(); } }   /* toasts the new mode */
 /* ---- build ---------------------------------------------------------------------------------------- */

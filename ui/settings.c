@@ -462,7 +462,8 @@ static void apply_import_m3u(int v){ (void)v;
     else       snprintf(b, sizeof b, "Imported %d playlist%s", n, n==1 ? "" : "s");
     ui_toast(b);
 }
-static void apply_wifi(int v){ (void)v; wifi_open(); }   /* opens SCR_WIFI */
+static void apply_wifi(int v){ (void)v; wifi_open(); }
+static void apply_webfiles(int v){ (void)v; webfiles_open(); }   /* Settings > Connectivity > File transfer (kopi.27) */   /* opens SCR_WIFI */
 static void apply_volkeys_group(int v);                   /* Settings > System > Volume Keys */
 static void apply_ma_group(int v);                        /* Settings > Network > Music Assistant */
 static void apply_ma_on(int v){ ma_set_on(v); }
@@ -495,6 +496,7 @@ static void apply_theme_settings(int v);
 static void apply_theme_navigation(int v);
 static void apply_library_appearance(int v);
 static void apply_sleep_settings(int v);
+static void apply_sleep_sheet(int v){ (void)v; sleep_sheet_open(); }
 static void apply_bluetooth_settings(int v);
 static void apply_bluetooth_connection(int v);
 static void apply_grp_musictext(int v);
@@ -554,6 +556,7 @@ static void apply_nt_music(int v){ (void)v; theme_reload_or_revert("nt_music"); 
 static void apply_nt_lyrics(int v){ nt_home_lyrics_apply(v); }
 static const char *OPT_NTDISC[] = { "Album", "My picture" };
 static const char *OPT_NTIDLE[] = { "Plain", "My picture", "Blurred" };
+static const char *OPT_NTIMM[] = { "Lyrics", "Spinning album" };
 static const char *OPT_IDSTYLE[] = { "Dark", "Light", "Automatic" };
 static const char *OPT_IDGLASS[] = { "Clear", "Tinted" };
 static void apply_nt_pics(int v){ (void)v; nt_home_pictures_apply(); setlist_refresh(); }
@@ -789,7 +792,10 @@ static void apply_restart(int v){ (void)v;
  * v==0 fully powers the panel backlight DOWN: writing brightness 0 alone leaves the
  * LED driver enabled at its minimum (screen looks black but the backlight glows), so
  * we also toggle bl_power (0 = FB_BLANK_UNBLANK on, 4 = FB_BLANK_POWERDOWN off). */
+static unsigned g_bl_writes;
+unsigned ui_backlight_writes(void){ return g_bl_writes; }   /* main.c: tells our own backlight writes from the player's */
 void ui_backlight(int v){
+    g_bl_writes++;
     if(v < 0) v = 0; if(v > 40) v = 40;
     if(v > 0){                     /* set target level first, then power on (no flash) */
         FILE *f = fopen("/sys/class/backlight/backlight/brightness", "w");
@@ -847,15 +853,17 @@ int ui_get_brightness(void){
 }
 /* the level the screen actually runs at: full in Outdoor mode, else the user's. The user's own level stays saved
  * and comes back when Outdoor mode is turned off. */
-int ui_effective_brightness(void){ return theme_outdoor() ? 40 : ui_get_brightness(); }
+int ui_effective_brightness(void){ if(theme_outdoor()) return 40; int b = ui_get_brightness(); return ui_batt_saver() && b > 12 ? 12 : b; }   /* Battery saver: at most 12 */
 static void apply_brightness_row(int v){ if(!theme_outdoor()) apply_brightness(v); }   /* Outdoor holds full */
 
-static const char *const OPT_MODE[] = { "Sequential", "Shuffle", "Repeat One", "Repeat All", "Single" };
+static const char *const OPT_MODE[] = { "Sequential", "Shuffle", "Repeat One", "Repeat All", "Single", "Vibe" };
 /* 0..10 = built-in presets; 11..20 = the ten user PEQ slots (USER1..USER10), edited in Custom EQ.
  * Index here maps 1:1 to STYLE_PRESET, so the cycler value is exactly what ui_apply_eq() selects. */
 static const char *const OPT_EQ[]   = { "Off","Jazz","Rock","R&B","Hip-Hop","Pop","Dance","Classical","Retro","Sibilance 1","Sibilance 2",
                                         "USER1","USER2","USER3","USER4","USER5","USER6","USER7","USER8","USER9","USER10" };
 static const char *const OPT_SLEEP[] = { "Off","15 min","30 min","45 min","60 min","90 min" };
+static const char *const OPT_BSAVER[] = { "Off", "On", "Auto (20%)" };
+static void apply_bsaver(int v){ (void)v; void usage_saver_refresh(void); usage_saver_refresh(); ui_backlight(ui_effective_brightness()); }
 static const char *const OPT_SLEEP_ACT[] = { "Pause","Shut down" };
 static const char *const OPT_IDLE_OFF[POWER_IDLE_N] = { "Off","5 min","10 min","30 min","60 min","90 min","120 min" };
 static const char *const OPT_POWER[] = { "Off","30 sec","1 min","2 min","5 min" };  /* idx->TMAP secs in main.c */
@@ -912,10 +920,12 @@ static void apply_shared_navigation(int v);
 static const setting_t TABLE[] = {
     {"Display","Navigation",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_shared_navigation,0,"Shared navigation preferences",NULL},
     {"Bluetooth","Devices",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_bluetooth_connection,0,"",NULL},
-    {"Battery & power","Sleep timer",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_sleep_settings,0,"",NULL},
+    {"Battery & power","Set sleep timer",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_sleep_sheet,0,"Pause after 15 min to 2 hours, or at the end of the song.",NULL},   /* (kopi.27: one tap) */
+    {"Battery & power","Sleep timer options",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_sleep_settings,0,"",NULL},
     {"Theme settings","Navigation",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_theme_navigation,0,"",NULL},
     {"Display","Library appearance",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_library_appearance,0,"",NULL},
     {"Display","Theme settings",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_theme_settings,0,"",NULL},
+    {"Battery & power","Battery saver",ST_CYCLER,"batt_saver",0,0,0,OPT_BSAVER,3,NULL,apply_bsaver,2,"Dims the screen sooner (20 s, dark 10 s later), caps brightness, keeps the CD still and saves background work for the charger. Auto: at 20 % and below.",NULL},
     {"Battery & power","Details",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_battery,0,"Charge level and recorded listening/screen usage.",NULL},
     {"Music screen","Zune",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_grp_zune,0,"Set the main icon and its double-tap and hold actions.",NULL},
     {"Zune","Main icon",ST_CHOICE,"zune_main",0,0,0,zune_main_names,ZMAIN_COUNT,NULL,apply_zune_main,ZMAIN_UPNEXT,"Tap the edge icon on the main menu.",NULL},
@@ -924,7 +934,7 @@ static const setting_t TABLE[] = {
     {"Controls","Menu hold",ST_CYCLER,"zune_nav_hold",0,0,0,OPT_NAV_ACTION,DISCO_NAV_COUNT,NULL,NULL,DISCO_NAV_MUSIC,"Hold a row on the Zune main menu. Shuffle! starts the whole library.",NULL},
     { "Playback", "Library seek", ST_CYCLER,"library_seeking",0,0,0,OPT_LIBRARY_SEEK,2,NULL,NULL,0,
       "A-Z keys use the letter grid. A-Z wheel: hold the scrollbar letter, turn around the screen, then tap the centre to jump. After release, 1 second without touching also jumps.",NULL },
-    { "Playback", "Play Mode",   ST_CYCLER, "work_mode", 0,0,0, OPT_MODE, 5, NULL, apply_mode, 0,
+    { "Playback", "Play Mode",   ST_CYCLER, "work_mode", 0,0,0, OPT_MODE, 6, NULL, apply_mode, 0,
       "How the player advances through tracks.", D_MODE },
     { "Playback", "Up Next", ST_TOGGLE, "up_next", 0,1,0, NULL,0, NULL, apply_upnext, 0,
       "Up Next sits beside Home favourites. Hold Queue for Up Next; tap for the editable queue.", NULL },
@@ -1002,7 +1012,7 @@ static const setting_t TABLE[] = {
       "What the screen does when you leave it: screensaver and when the screen switches off.", NULL },
     { "Display", "Online & Extras", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_grp_onlineextras, 0,
       "Online album art and lyrics, the art cache, weather on Home, Shortcuts and the album view.", NULL },
-    { "Theme Colours",  "Theme",       ST_CHOICE, "theme_preset", 0,0,0, theme_preset_names, THEME_PRESET_COUNT, NULL, apply_theme_preset, THEME_PRESET_DISCO,
+    { "Theme Colours",  "Theme",       ST_CHOICE, "theme_preset", 0,0,0, theme_preset_names, THEME_PRESET_COUNT, NULL, apply_theme_preset, THEME_PRESET_NTDISK,
       "Choose the UI theme. Restarts the screen; music continues.", NULL },
     { "Theme Colours",  "Appearance",  ST_CYCLER, "theme_variant", 0,0,0, OPT_APPEARANCE, 2, NULL, apply_appearance, 0,
       "Dark or light screens. Changing it redraws the screen in a moment; music keeps playing.", NULL },
@@ -1115,6 +1125,8 @@ static const setting_t TABLE[] = {
       "A dot-matrix clock with Space Mono or Space Grotesk text, or Space Mono throughout.", NULL },
     { "Music Screen", "Layout", ST_CYCLER, "nt_music", 0,0,0, OPT_NTMUSIC, 2, NULL, apply_nt_music, 0,
       "The CD with the audio form, title and time; or just the CD with a red ring.", NULL },
+    { "Music Screen", "Immersive", ST_CYCLER, "nt_imm", 0,0,0, OPT_NTIMM, 2, NULL, NULL, 0,
+      "Swipe up on Music: the song's lyrics full screen, or the album spinning full screen (tap for controls, hold for lyrics).", NULL },
     { "Music Screen", "Lyrics as Title", ST_TOGGLE, "nt_lyrics", 0,1,1, NULL,0, NULL, apply_nt_lyrics, 1,
       "Synced lyrics replace the title on Music while the song plays.", NULL },
     { "Music Screen", "Disc", ST_CYCLER, "nt_disc", 0,0,0, OPT_NTDISC, 2, NULL, apply_nt_pics, 0,
@@ -1212,6 +1224,8 @@ static const setting_t TABLE[] = {
       "What the volume keys do when held: adjust the volume or switch track.", NULL },
     { "Connectivity",  "Wi-Fi",       ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_wifi, 0,
       "Scan for and connect to Wi-Fi networks.", NULL },
+    { "Connectivity",  "File transfer", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_webfiles, 0,
+      "Copy files between the Disc and a PC on the same Wi-Fi, in the PC's browser. Turns itself off after 10 minutes unused.", NULL },
     { "Connectivity",  "MA Sendspin", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_ma_group, 0,
       "Appear as a Music Assistant speaker via Sendspin. Requires Wi-Fi; uses AirPlay while active.", NULL },
     { "MA Sendspin", "Sendspin", ST_TOGGLE, "ma_on", 0,1,1, NULL,0, NULL, apply_ma_on, 0,
@@ -1802,7 +1816,7 @@ void setting_detail_refresh(void){
         int is_theme = !strcmp(s->cfg_key, "theme_preset");
         /* Themes: Disco first, then Ring, Braun and Stone; the other presets stay in the code and keep working if
          * already selected, but are not offered here for now. Rows still carry the real preset index. */
-        int THEME_SHOWN[9] = { THEME_PRESET_DISCO, THEME_PRESET_NTDISK, THEME_PRESET_IDISC, THEME_PRESET_NULL, THEME_PRESET_SIMPLE, THEME_PRESET_ZUNE, THEME_PRESET_RING, THEME_PRESET_BRAUN, THEME_PRESET_STONE }, nshown = 9;
+        int THEME_SHOWN[3] = { THEME_PRESET_NTDISK, THEME_PRESET_IDISC, THEME_PRESET_NULL }, nshown = 3;   /* kopi.27: the themes kept */
         int nrows = is_theme ? nshown : s->nopts;
         for(int r = 0; r < nrows; r++){
             int i = is_theme ? THEME_SHOWN[r] : r;
@@ -1927,6 +1941,37 @@ void settings_open_detail(int idx){
 }
 
 /* open a setting's detail page by its cfg key (robust to TABLE reordering). No-op if not found. */
+/* ---- for Shortcuts (kopi.27): every settings page, and every single setting, can be a shortcut ---- */
+void settings_open_page(const char *page){
+    if(!page) return;
+    page = display_group_alias(page);
+    for(int i = 0; i < N_GROUPS; i++) if(!strcmp(page, GROUPS[i])){ g_active_group = GROUPS[i]; screen_show(SCR_SETLIST); return; }
+    for(size_t i = 0; i < sizeof SUBGROUP / sizeof SUBGROUP[0]; i++) if(!strcmp(page, SUBGROUP[i].child)){ g_active_group = SUBGROUP[i].child; screen_show(SCR_SETLIST); return; }
+    ui_toast("That settings page isn't here any more");
+}
+static int pick_page_ok(const char *child){                               /* pages that apply to the theme in use */
+    if(!strcmp(child, "Zune") || !strcmp(child, "Theme navigation") || !strcmp(child, "Gestures")) return 0;
+    if((!strcmp(child, "Music text") || !strcmp(child, "Music info") || !strcmp(child, "Clock and info") || !strcmp(child, "Music progress")) && th_nt()) return 0;
+    return 1;
+}
+int settings_pick_pages(const char *names[], int cap){
+    int n = 0;
+    for(int i = 0; i < N_GROUPS && n < cap; i++) names[n++] = GROUPS[i];
+    for(size_t i = 0; i < sizeof SUBGROUP / sizeof SUBGROUP[0] && n < cap; i++) if(pick_page_ok(SUBGROUP[i].child)) names[n++] = SUBGROUP[i].child;
+    return n;
+}
+/* the settings that can be opened on their own (a switch or a choice, shown for this theme): their keys, labels */
+int settings_pick_keys(const char *keys[], const char *labels[], int cap){
+    int n = 0;
+    for(int i = 0; i < N_SETTINGS && n < cap; i++){
+        const setting_t *t = &TABLE[i];
+        if(!t->cfg_key || t->type == ST_READONLY || t->type == ST_ACTION || setting_unavailable(t) || display_variant_hidden(t)) continue;
+        int dup = 0; for(int k = 0; k < n; k++) if(!strcmp(keys[k], t->cfg_key)) dup = 1;
+        if(dup) continue;
+        keys[n] = t->cfg_key; labels[n] = display_original_label(t); n++;
+    }
+    return n;
+}
 void settings_open_key(const char *key){
     if(!key) return;
     if(th_null() && !strcmp(key,"null_hints"))key="disco_hints";

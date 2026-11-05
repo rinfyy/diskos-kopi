@@ -23,7 +23,7 @@ int  br_dark(void);                                          /* 1 when Braun run
 #define BR_PTR theme_rgb(THEME_CLR_GRABBER)
 #define BR_PRESS theme_rgb(THEME_CLR_SURFACE_PRESSED)
 #define BR_SHADOW theme_rgb(THEME_CLR_ACTION_SHADOW)
-int  th_braun(void);
+#define th_braun() 0   /* (Braun is retired) */
 const lv_font_t *br_font(int size, int bold);                /* Inter: Medium 12/14/16, Bold 16/18/22, 44 (digits) */                                        /* 1 when the Braun theme is active (read once at boot) */
 void br_face(lv_obj_t *root);                               /* off-white face + the grille (shared image) */
 lv_obj_t *br_segment(lv_obj_t *root, int y);                /* the lower panel: straight top at y, down to the rim */

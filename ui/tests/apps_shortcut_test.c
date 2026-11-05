@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "../apps.c"
+int settings_pick_keys(const char *keys[], const char *labels[], int cap){ (void)keys; (void)labels; (void)cap; return 0; }   /* (settings.c, not linked here) */
 int main(void){
     assert(mkdir(CFG_DIR,0755)==0 || errno==EEXIST); unlink(CFG_PATH);
     cfg_load(); g_napps=2;
@@ -22,5 +23,9 @@ int main(void){
     puts("PASS: a 63-byte display name saves and resolves without increasing configuration limits");
     assert(app_for_key("app:Radio")==0); assert(app_for_key("appid:missing")==-1);
     puts("PASS: unique legacy name shortcuts remain compatible; missing apps do not resolve");
+    assert(sc_describe("sleep",&glyph,name,sizeof name,&font)); assert(!strcmp(name,"Sleep timer"));
+    assert(sc_describe("set:Navigation",&glyph,name,sizeof name,&font)); assert(!strcmp(name,"Navigation"));
+    assert(sc_describe("key:batt_saver",&glyph,name,sizeof name,&font)); assert(!strcmp(name,"Setting"));
+    puts("PASS: kopi.27 shortcuts (actions, a settings page, one setting) describe themselves");
     unlink(CFG_PATH); rmdir(CFG_DIR); return 0;
 }

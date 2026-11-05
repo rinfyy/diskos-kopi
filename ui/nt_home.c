@@ -6,8 +6,9 @@
  * moves while music plays, then the artist, the title - or, when the song has synced lyrics and nt_lyrics is on, the
  * current lyric line in its place - a short progress line and "elapsed / total". "Disc only" (nt_music 1): just the
  * CD with the album as its label and a thin red progress ring round it.
- * Touch: tap the CD for play/pause, swipe it for next/previous, tap the text for the track actions, hold the text
- * for the configured Title hold (Immersive or favourite), drag the progress line to seek. Nothing playing: a dot
+ * Touch: on the CD's lower half (its upper half does nothing - see disc_cb) tap the hub for play/pause, slide
+ * sideways to move through the song; tap the text for the track actions, hold the text for the configured Title
+ * hold (Immersive or favourite); double-tap right / left for next / previous. Nothing playing: a dot
  * weather icon, the weather, a dot-matrix clock, the date and "tap to start" (the Library).
  * Standby (saver.c forwards here): the same clock face; while a song plays, its title and a small audio form.
  *
@@ -276,8 +277,10 @@ static void fmt_time(long ms, char *o, size_t n){ long s = ms > 0 ? ms / 1000 : 
 /* The CD turns while music plays (about one turn every 8 s). The cover is resampled once per album into a square
  * buffer; each frame rotates it into a round ARGB image (bilinear, antialiased edge) - only the rows that are on screen,
  * and only while Music is showing and playing. No clip mask, so LVGL just blends one image. */
+int ui_main_is_idle(void);
 #define SPIN_MS   40                  /* 25 frames a second */
 #define SPIN_TURN 14000               /* one turn in 14 s */
+static lv_obj_t *g_imm_img, *g_imm_img_keep;                                 /* Immersive: the spinning album (else NULL) */
 static uint32_t *g_src, *g_out; static uint8_t *g_mask; static int g_sd;   /* d x d */
 static int16_t *g_span;                                                     /* per row: the disc's first and last+1 column */
 static uint32_t g_bgpx = 0xFFFFFFFFu;                                       /* the canvas colour g_out's corners hold */
@@ -426,7 +429,7 @@ static void spin_render(void){
     const int64_t K = 32768 - c16;                                         /* xx = x * 65536 + K */
     /* The picture is opaque (XRGB): the disc is put onto the canvas colour here, once per pixel, so LVGL copies rows
      * instead of alpha-blending 60 000 pixels a frame. Outside the disc the corners are plain canvas. */
-    uint32_t bgpx = px_of(MC(CANVAS)) & 0xFFFFFF, sfpx = px_of(MC(SURFACE)) & 0xFFFFFF;
+    uint32_t bgpx = px_of(g_imm_img ? TC(FIXED_MEDIA_BLACK) : MC(CANVAS)) & 0xFFFFFF, sfpx = px_of(g_imm_img ? TC(FIXED_MEDIA_BLACK) : MC(SURFACE)) & 0xFFFFFF;
     if(bgpx != g_bgpx){ for(size_t i = 0; i < (size_t)d * d; i++) g_out[i] = 0xFF000000u | bgpx; g_bgpx = bgpx; }
     for(int y = g_row0; y < d; y++){
         int32_t yy = y * 65536 + 32768 - c16;
@@ -457,11 +460,11 @@ static void spin_render(void){
             o[x] = 0xFF000000u | px;
         }
     }
-    if(g_art) lv_obj_invalidate(g_art);
+    if(g_imm_img) lv_obj_invalidate(g_imm_img); else if(g_art) lv_obj_invalidate(g_art);
 }
 static void spin_tick(lv_timer_t *t){
     (void)t;
-    if(!g_playing || !g_have || screen_current() != SCR_HOME){ lv_timer_pause(g_spin_tm); return; }
+    if(!g_playing || !g_have || screen_current() != SCR_HOME || ui_batt_saver() || ui_main_is_idle() || (g_imm_img && nt_lyrics_visible())){ lv_timer_pause(g_spin_tm); return; }   /* (dimmed: still) */
     static uint32_t last; static int frac;                              /* by the clock, not by frames: no stutter */
     uint32_t now = lv_tick_get(), dt = last ? now - last : SPIN_MS; last = now;
     if(dt > 200) dt = SPIN_MS;                                           /* (after a pause: carry on from here) */
@@ -470,16 +473,18 @@ static void spin_tick(lv_timer_t *t){
 }
 static void spin_run(void){                                              /* start or stop the turning */
     if(!g_spin_tm) return;
-    if(g_playing && g_have && screen_current() == SCR_HOME) lv_timer_resume(g_spin_tm); else lv_timer_pause(g_spin_tm);
+    if(g_playing && g_have && screen_current() == SCR_HOME && !ui_batt_saver() && !ui_main_is_idle() && !(g_imm_img && nt_lyrics_visible())) lv_timer_resume(g_spin_tm); else lv_timer_pause(g_spin_tm);   /* Battery saver: still */
 }
 static void art_apply(int force){
-    if(!g_art) return;
+    if(!g_art && !g_imm_img) return;                                     /* (iDisc has no CD: only Immersive's) */
     static int last_have = -1;
-    spin_alloc(g_mode ? BIG_D : DISC_D);
-    if(!g_sd){ lv_obj_add_flag(g_art, LV_OBJ_FLAG_HIDDEN); return; }
+    spin_alloc(g_imm_img ? 360 : g_mode ? BIG_D : DISC_D);
+    if(!g_sd){ if(g_art) lv_obj_add_flag(g_art, LV_OBJ_FLAG_HIDDEN); return; }
     if(!force && g_src_ok && last_have == g_have && g_src_rev == ui_art_revision()) return;   /* nothing new */
     last_have = g_have;
     spin_source(); spin_render();
+    if(g_imm_img){ lv_image_set_src(g_imm_img, NULL); lv_image_set_src(g_imm_img, &g_spin_dsc); }
+    if(!g_art) return;
     lv_image_set_src(g_art, NULL); lv_image_set_src(g_art, &g_spin_dsc);   /* same buffer, new pixels */
     lv_obj_remove_flag(g_art, LV_OBJ_FLAG_HIDDEN); lv_obj_center(g_art);
 }
@@ -563,13 +568,11 @@ static lv_point_t g_down;
 /* The CD's gestures: tap = play / pause; swipe left / right = next / previous; swipe up = Immersive; hold = track
  * actions; put a finger on the outer part of the CD and turn it = scrub (one turn = 60 s), the time shows in the hub
  * and the CD turns with the finger. */
-#define SCRUB_TURN_MS 60000
 #define HUB_R 36                                                          /* the play / pause hit circle */
-static int g_g_mode, g_g_moved; static float g_g_ang0, g_g_acc; static long g_g_pos0, g_g_dur, g_g_target;
+static int g_g_mode, g_g_moved; static float g_g_acc; static long g_g_pos0, g_g_dur, g_g_target;
 static uint32_t g_g_t0;
 static int disc_cx(void){ return 180; }
 static int disc_cy(void){ return g_mode ? 180 : DISC_CY; }
-static float pt_angle(lv_point_t p){ return atan2f((float)(p.y - disc_cy()), (float)(p.x - disc_cx())) * 57.29578f; }
 static void scrub_show(long ms){
     char b[16]; fmt_time(ms, b, sizeof b);
     lv_anim_delete(g_state, hub_opa); lv_obj_set_style_opa(g_state, LV_OPA_COVER, 0);
@@ -599,52 +602,60 @@ static void dtap(int kind){                                               /* kin
     lv_timer_reset(g_dtap_tm); lv_timer_resume(g_dtap_tm);
 }
 static void layer_cb(lv_event_t *e){ if(lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED && g_have) dtap(2); }
+/* The CD (kopi.27): only its lower half answers - the upper half sits under the top edge, where the Quick Settings
+ * pull starts, so a touch there does nothing at all. On the lower half: tap the hub = play / pause (at once);
+ * slide sideways = move through the song like the old progress line (the CD's width is the whole song, the time
+ * shows in the hub, the CD turns with the finger, the song jumps there on lifting); swipe up = Immersive; hold =
+ * track actions; double-tap = next (right) / previous (left). The progress line under it only shows. */
+#define SCRUB_SPAN 260                                                    /* px of sliding = the whole song */
 static void disc_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p = { 0, 0 };
     if(in) lv_indev_get_point(in, &p);
     if(c == LV_EVENT_PRESSED){
-        g_down = p; g_g_mode = 0; g_g_moved = 0; g_g_acc = 0; g_g_ang0 = pt_angle(p); g_g_t0 = lv_tick_get();
-        int dx = p.x - disc_cx(), dy = p.y - disc_cy(), r = (g_mode ? BIG_D : DISC_D) / 2;
-        (void)dx; (void)dy; (void)r;                                     /* (no turn-to-scrub: the CD never scrolls the song) */
+        g_down = p; g_g_moved = 0; g_g_acc = 0; g_g_t0 = lv_tick_get();
+        int hx = p.x - disc_cx(), hy = p.y - disc_cy();
+        g_g_mode = (p.y < disc_cy() && hx * hx + hy * hy > HUB_R * HUB_R) ? -1 : 1;   /* -1: the upper half (bar the hub), ignored */
         track_state_t st; ipc_get_state(&st); g_g_pos0 = st.position_ms; g_g_dur = st.duration_ms; g_g_target = g_g_pos0;
-        hub_flash();
+        if(g_g_mode > 0) hub_flash();
         return;
     }
+    if(g_g_mode < 0) return;
     if(c == LV_EVENT_PRESSING){
         int dx = p.x - g_down.x, dy = p.y - g_down.y;
         if(abs(dx) > 10 || abs(dy) > 10) g_g_moved = 1;
-        if(g_g_mode == 1 || g_g_mode == 2){
-            float a = pt_angle(p), d = a - g_g_ang0; while(d > 180) d -= 360; while(d < -180) d += 360;
-            g_g_ang0 = a; g_g_acc += d;
-            if(g_g_mode == 1 && fabsf(g_g_acc) > 14) g_g_mode = 2;                   /* it's a turn, not a swipe */
-            if(g_g_mode == 2 && g_g_dur > 0){
-                g_g_target = g_g_pos0 + (long)(g_g_acc / 360.0f * SCRUB_TURN_MS);
-                if(g_g_target < 0) g_g_target = 0;
-                if(g_g_target > g_g_dur - 1000) g_g_target = g_g_dur - 1000;
-                scrub_show(g_g_target);
-                g_angle10 = ((g_angle10 + (int)(d * 10)) % 3600 + 3600) % 3600; spin_render();   /* the CD follows */
-            }
+        if(g_g_mode == 1 && g_g_moved) g_g_mode = (abs(dy) > 2 * abs(dx) && dy < 0) ? 3 : 2;   /* 3 = upward, 2 = sliding */
+        if(g_g_mode == 2 && g_g_dur > 0){
+            g_g_target = g_g_pos0 + (long)((long long)dx * g_g_dur / SCRUB_SPAN);
+            if(g_g_target < 0) g_g_target = 0;
+            if(g_g_target > g_g_dur - 1000) g_g_target = g_g_dur - 1000;
+            scrub_show(g_g_target);
+            float turn = (float)(dx - g_g_acc) * 0.6f; g_g_acc = (float)dx;      /* the CD follows the finger */
+            g_angle10 = ((g_angle10 + (int)(turn * 10)) % 3600 + 3600) % 3600; spin_render();
+            if(g_line_fill){ g_drag = 1; lv_obj_set_width(g_line_fill, (int)(120LL * g_g_target / g_g_dur)); }
         }
         return;
     }
-    if(c == LV_EVENT_RELEASED){
+    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
         int dx = p.x - g_down.x, dy = p.y - g_down.y; uint32_t dt = lv_tick_elaps(g_g_t0);
         if(g_g_mode == 2){
-            if(g_g_dur > 0) ui_seek_to(g_g_target);
+            if(g_g_dur > 0 && c == LV_EVENT_RELEASED) ui_seek_to(g_g_target);
+            g_drag = 0;
             lv_obj_set_style_text_font(g_state, TF(UI_14), 0);
             lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY); hub_flash();
-        } else if(dt < 800 && abs(dx) >= 50 && abs(dx) > 2 * abs(dy)){
-            if(dx < 0){ ui_transport_command("0201000C0001"); ui_toast_icon(LV_SYMBOL_NEXT, MC(ACCENT_PRIMARY), "Next"); }
-            else { ui_transport_command("0201000C0002"); ui_toast_icon(LV_SYMBOL_PREV, MC(ACCENT_PRIMARY), "Previous"); }
-        } else if(dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
-        g_g_mode = 0;
+        } else if(g_g_mode == 3 && dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
+        if(c == LV_EVENT_PRESS_LOST) g_g_mode = 0;
         return;
     }
-    if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved){                      /* play / pause: the hub in the middle only */
+    if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved){
         int dx = g_down.x - disc_cx(), dy = g_down.y - disc_cy();
-        dtap(dx * dx + dy * dy <= HUB_R * HUB_R ? 0 : 2);
+        if(dx * dx + dy * dy <= HUB_R * HUB_R){                           /* the hub: at once, no double-tap wait */
+            g_dtap_kind = -1; if(g_dtap_tm) lv_timer_pause(g_dtap_tm);
+            ui_transport_command("0201000C0000");
+            g_playing = ui_is_playing();
+            lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY); hub_flash(); spin_run();
+        } else dtap(2);
     }
-    else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode != 2) disco_track_overlay_open();
+    else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode == 1) disco_track_overlay_open();
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
@@ -652,19 +663,6 @@ static void info_cb(lv_event_t *e){
     else if(c == LV_EVENT_LONG_PRESSED){
         int h = cfg_get_int("disco_title_hold", 0);
         if(h == 0) disco_open_np_immersive(); else if(h == 1) ui_np_fav_toggle();
-    }
-}
-static void seek_cb(lv_event_t *e){
-    lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p;
-    if(!in) return;
-    lv_indev_get_point(in, &p);
-    lv_area_t a; lv_obj_get_coords(g_line, &a);
-    int frac = (int)((p.x - a.x1) * 1000 / (a.x2 - a.x1 + 1)); if(frac < 0) frac = 0; if(frac > 1000) frac = 1000;
-    if(c == LV_EVENT_PRESSED || c == LV_EVENT_PRESSING){ g_drag = 1; lv_obj_set_width(g_line_fill, 120 * frac / 1000); }
-    else if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
-        g_drag = 0;
-        track_state_t st; ipc_get_state(&st);
-        if(c == LV_EVENT_RELEASED && st.have_track && st.duration_ms > 0) ui_seek_to((long)((long long)st.duration_ms * frac / 1000));
     }
 }
 static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
@@ -715,8 +713,7 @@ void nt_home_create(lv_obj_t *root){
     lv_obj_set_style_text_line_space(g_lyric, LYR_GAP, 0); lv_obj_set_style_text_align(g_lyric, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_long_mode(g_lyric, LV_LABEL_LONG_DOT); lv_obj_set_height(g_lyric, 2 * lv_font_get_line_height(ui_font_cjk(18)));
     lv_obj_align(g_lyric, LV_ALIGN_TOP_MID, 0, 38); lv_obj_add_flag(g_lyric, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_t *seek = plain(g_info); lv_obj_set_size(seek, 160, 26); lv_obj_align(seek, LV_ALIGN_TOP_MID, 0, 88);   /* the line: seek */
-    lv_obj_add_flag(seek, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(seek, seek_cb, LV_EVENT_ALL, NULL);
+    lv_obj_t *seek = plain(g_info); lv_obj_set_size(seek, 160, 26); lv_obj_align(seek, LV_ALIGN_TOP_MID, 0, 88);   /* the line: shows only (kopi.27: seek on the CD) */
     g_line = plain(seek); lv_obj_set_size(g_line, 120, 3); lv_obj_center(g_line);
     lv_obj_set_style_radius(g_line, 2, 0); lv_obj_set_style_bg_color(g_line, MC(CONTROL_TRACK), 0); lv_obj_set_style_bg_opa(g_line, LV_OPA_COVER, 0);
     g_line_fill = plain(g_line); lv_obj_set_size(g_line_fill, 0, 3);
@@ -775,7 +772,7 @@ void nt_home_now_playing(const char *title, const char *artist, int playing){
     if(strcmp(lv_label_get_text(g_artist), g_a)) lv_label_set_text(g_artist, g_a);
     view_apply();
 }
-void nt_home_art_changed(void){ if(th_idisc()){ idisc_home_art_changed(); return; } art_apply(1); }
+void nt_home_art_changed(void){ if(th_idisc()){ idisc_home_art_changed(); if(g_imm_img) art_apply(1); return; } art_apply(1); }
 void nt_home_lyrics_apply(int on){ if(th_idisc()){ idisc_home_lyrics_apply(on); return; } g_lyr_on = on; g_lyr_rev = ~0u; if(g_layer) progress_paint(); }
 void nt_home_clock(const char *t, const char *sub){
     if(th_idisc()){ idisc_home_clock(t); return; }
@@ -795,8 +792,8 @@ int nt_home_owns_point(int x, int y){
     if(th_idisc()) return idisc_home_owns_point(x, y);
     if(!g_layer || !g_have) return 0;
     int cx = 180, cy = g_mode ? 180 : DISC_CY, r = (g_mode ? BIG_D : DISC_D) / 2;
-    if((x - cx) * (x - cx) + (y - cy) * (y - cy) <= r * r) return 1;
-    return !g_mode && y >= 200 + 78 && y <= 200 + 112 && x >= 90 && x <= 270;
+    int d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+    return (y >= cy && d2 <= r * r) || d2 <= HUB_R * HUB_R;              /* the CD's lower half, and its hub */
 }
 
 /* ---- full-screen lyrics (NTDisk's Immersive) ---------------------------------------------------------------------
@@ -811,7 +808,13 @@ static void l_gesture_cb(lv_event_t *e){                                  /* a s
     (void)e; lv_indev_t *in = lv_indev_active(); lv_dir_t d = in ? lv_indev_get_gesture_dir(in) : LV_DIR_NONE;
     if(d == LV_DIR_RIGHT || d == LV_DIR_LEFT){ nt_lyrics_close(); if(in) lv_indev_wait_release(in); }
 }
-static void l_scroll_cb(lv_event_t *e){ (void)e; l_touch = lv_tick_get(); }
+/* Only the reader's own scrolling pauses the follow. (The follow's own animated scroll also sends SCROLL_BEGIN, and
+ * counting that kept the list from re-centring whenever lines came less than 4 s apart: the current line drifted
+ * off the middle - kopi.27 fix.) */
+static void l_scroll_cb(lv_event_t *e){
+    lv_indev_t *in = lv_indev_active();
+    if(lv_event_get_code(e) == LV_EVENT_PRESSED || (in && lv_indev_get_state(in) == LV_INDEV_STATE_PRESSED)) l_touch = lv_tick_get();
+}
 /* hold a line: the song jumps to it, the line lights red for a moment. A tap anywhere brings the list back to the
  * line that's playing now. */
 static void l_jump(int i){
@@ -864,7 +867,13 @@ static void l_tick(lv_timer_t *t){
     snprintf(b, sizeof b, "%s / %s", e, d); if(strcmp(lv_label_get_text(l_time), b)) lv_label_set_text(l_time, b);
     if(!l_lab || l_n <= 0) return;
     int cur = -1; for(int i = 0; i < l_n && l_lines[i].ms <= st.position_ms + 200; i++) cur = i;
-    if(cur == l_cur) return;
+    if(cur == l_cur){                                                     /* the reader stopped scrolling 4 s ago: back to now */
+        if(!(l_touch && lv_tick_elaps(l_touch) >= 4000 && cur >= 0)) return;
+        l_touch = 0; lv_obj_update_layout(l_list);
+        lv_area_t la, ll; lv_obj_get_coords(l_lab[cur], &la); lv_obj_get_coords(l_list, &ll);
+        int y = (la.y1 + la.y2) / 2 - ll.y1 + lv_obj_get_scroll_y(l_list) - 180;
+        lv_obj_scroll_to_y(l_list, y < 0 ? 0 : y, LV_ANIM_ON); return;
+    }
     if(l_cur >= 0 && l_cur < l_n){ lv_obj_set_style_text_opa(l_lab[l_cur], th_idisc() ? 90 : 110, 0); lv_obj_set_style_text_color(l_lab[l_cur], TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_font(l_lab[l_cur], th_idisc() ? TF(HEADER) : ui_font_cjk(20), 0); }
     l_cur = cur;
     if(cur < 0) return;
@@ -889,7 +898,7 @@ void nt_lyrics_open(void){
         lv_obj_add_flag(l_list, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE); lv_obj_set_scroll_dir(l_list, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(l_list, LV_SCROLLBAR_MODE_OFF);
         lv_obj_set_flex_flow(l_list, LV_FLEX_FLOW_COLUMN); lv_obj_set_flex_align(l_list, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-        lv_obj_set_style_pad_row(l_list, 14, 0); lv_obj_set_style_pad_top(l_list, 160, 0); lv_obj_set_style_pad_bottom(l_list, 160, 0);
+        lv_obj_set_style_pad_row(l_list, 14, 0); lv_obj_set_style_pad_top(l_list, 180, 0); lv_obj_set_style_pad_bottom(l_list, 180, 0);   /* (room to centre the first and last lines) */
         lv_obj_add_event_cb(l_list, l_scroll_cb, LV_EVENT_SCROLL_BEGIN, NULL); lv_obj_add_event_cb(l_list, l_scroll_cb, LV_EVENT_PRESSED, NULL);
         lv_obj_add_event_cb(l_list, l_line_cb, LV_EVENT_SHORT_CLICKED, NULL);
         lv_obj_add_event_cb(l_list, l_line_cb, LV_EVENT_LONG_PRESSED, NULL);
@@ -924,8 +933,133 @@ void nt_lyrics_open(void){
     lv_timer_resume(l_tm); l_tick(NULL);
 }
 void nt_lyrics_test_jump(int i){ l_jump(i); }   /* host renders */
-void nt_lyrics_close(void){ if(l_root) lv_obj_add_flag(l_root, LV_OBJ_FLAG_HIDDEN); if(l_tm) lv_timer_pause(l_tm); }
+void nt_lyrics_close(void){ if(l_root) lv_obj_add_flag(l_root, LV_OBJ_FLAG_HIDDEN); if(l_tm) lv_timer_pause(l_tm); spin_run(); }
 int nt_lyrics_visible(void){ return l_root && !lv_obj_has_flag(l_root, LV_OBJ_FLAG_HIDDEN); }
+
+/* ---- Immersive: the spinning album (kopi.27, Music screen > Immersive: Spinning album) --------------------------
+ * The album fills the round screen and turns while the song plays (as Music's CD: NTDisk with its hub, iDisc a
+ * clean disc with a glass spindle). Tap: the controls for 4 s (previous / play-pause / next, the time, progress round
+ * the rim, a handle at the top to close). Hold: the lyrics (hold them again, or swipe, to come back). Swipe sideways:
+ * back to Music. The same turning picture as Music's CD, made larger: one image, only redrawn while it turns, and
+ * Music under it is hidden so nothing is drawn twice. */
+static lv_obj_t *s_root, *s_hub, *s_ctl, *s_pp, *s_pp_l, *s_time, *s_ring; static lv_timer_t *s_tm; static uint32_t s_shown;
+static int s_spin_ms;
+static void s_ctl_show(int on){
+    if(!s_ctl) return;
+    if(on){ lv_obj_remove_flag(s_ctl, LV_OBJ_FLAG_HIDDEN); s_shown = lv_tick_get() | 1; } else { lv_obj_add_flag(s_ctl, LV_OBJ_FLAG_HIDDEN); s_shown = 0; }
+}
+static void s_paint(void){
+    if(!s_root) return;
+    track_state_t st; ipc_get_state(&st);
+    char e[24], d[24], b[56]; fmt_time(st.position_ms, e, sizeof e); fmt_time(st.duration_ms, d, sizeof d);
+    snprintf(b, sizeof b, "%s / %s", e, d); if(strcmp(lv_label_get_text(s_time), b)) lv_label_set_text(s_time, b);
+    lv_arc_set_value(s_ring, st.duration_ms > 0 ? (int)((long long)st.position_ms * 1000 / st.duration_ms) : 0);
+    const char *g = ui_is_playing() ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY; if(strcmp(lv_label_get_text(s_pp_l), g)) lv_label_set_text(s_pp_l, g);
+}
+static void s_tick(lv_timer_t *t){
+    (void)t;
+    if(!nt_spin_visible()){ lv_timer_pause(s_tm); return; }
+    if(s_shown && lv_tick_elaps(s_shown) > 4000 && !nt_lyrics_visible()) s_ctl_show(0);
+    if(s_shown) s_paint();
+}
+static void s_btn_cb(lv_event_t *e){
+    ui_transport_command(lv_event_get_user_data(e)); g_playing = ui_is_playing(); s_shown = lv_tick_get() | 1; s_paint(); spin_run();
+}
+static void s_root_cb(lv_event_t *e){
+    lv_event_code_t c = lv_event_get_code(e);
+    if(c == LV_EVENT_SHORT_CLICKED){ s_ctl_show(!s_shown); if(s_shown) s_paint(); }
+    else if(c == LV_EVENT_LONG_PRESSED){ s_ctl_show(0); nt_lyrics_open(); }
+    else if(c == LV_EVENT_GESTURE){
+        lv_indev_t *in = lv_indev_active(); lv_dir_t d = in ? lv_indev_get_gesture_dir(in) : LV_DIR_NONE;
+        if(d == LV_DIR_LEFT || d == LV_DIR_RIGHT){ nt_spin_close(); if(in) lv_indev_wait_release(in); }
+    }
+}
+static void s_close_cb(lv_event_t *e){ (void)e; nt_spin_close(); }
+static lv_obj_t *s_button(lv_obj_t *p, int x, int d, const char *glyph, const char *cmd, lv_obj_t **lab){
+    lv_obj_t *b = plain(p); lv_obj_set_size(b, d, d); lv_obj_align(b, LV_ALIGN_CENTER, x, 0);
+    lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(b, 6);
+    if(th_idisc()) idisc_glass_on(b, LV_RADIUS_CIRCLE, NULL);
+    else { lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(b, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(b, 170, 0);
+           lv_obj_set_style_border_width(b, 1, 0); lv_obj_set_style_border_color(b, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(b, 90, 0); }
+    lv_obj_set_style_bg_color(b, TC(FIXED_MEDIA_WHITE), LV_STATE_PRESSED); lv_obj_set_style_bg_opa(b, 80, LV_STATE_PRESSED);
+    lv_obj_add_event_cb(b, s_btn_cb, LV_EVENT_CLICKED, (void *)cmd);
+    lv_obj_t *l = text(b, theme_font_original(d > 60 ? 28 : 20), TC(FIXED_MEDIA_WHITE), 0); lv_label_set_text(l, glyph); lv_obj_center(l);
+    if(lab) *lab = l;
+    return b;
+}
+void nt_spin_open(void){
+    if(!g_have){ ui_toast("Play a track first"); return; }
+    if(!s_root){
+        s_root = plain(lv_layer_top()); lv_obj_set_size(s_root, 360, 360);
+        lv_obj_set_style_bg_color(s_root, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(s_root, LV_OPA_COVER, 0);
+        lv_obj_add_flag(s_root, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(s_root, s_root_cb, LV_EVENT_SHORT_CLICKED, NULL); lv_obj_add_event_cb(s_root, s_root_cb, LV_EVENT_LONG_PRESSED, NULL);
+        lv_obj_add_event_cb(s_root, s_root_cb, LV_EVENT_GESTURE, NULL);
+        g_imm_img = lv_image_create(s_root); lv_obj_remove_flag(g_imm_img, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_pos(g_imm_img, 0, 0);
+        lv_obj_t *rim = plain(s_root); lv_obj_set_size(rim, 360, 360);
+        lv_obj_set_style_radius(rim, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_border_width(rim, 2, 0);
+        lv_obj_set_style_border_color(rim, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(rim, LV_OPA_20, 0);
+        if(th_idisc()){                                                    /* iDisc: a glass spindle */
+            s_hub = plain(s_root); lv_obj_set_size(s_hub, 46, 46); lv_obj_center(s_hub); idisc_glass_on(s_hub, LV_RADIUS_CIRCLE, NULL);
+            lv_obj_t *dotc = plain(s_hub); lv_obj_set_size(dotc, 12, 12); lv_obj_center(dotc);
+            lv_obj_set_style_radius(dotc, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(dotc, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(dotc, 200, 0);
+        } else {                                                           /* NTDisk: the CD's clear hub and its hole */
+            s_hub = plain(s_root); lv_obj_set_size(s_hub, 110, 110); lv_obj_center(s_hub);
+            lv_obj_set_style_radius(s_hub, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(s_hub, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(s_hub, LV_OPA_30, 0);
+            lv_obj_set_style_border_width(s_hub, 1, 0); lv_obj_set_style_border_color(s_hub, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(s_hub, LV_OPA_40, 0);
+            lv_obj_t *hole = plain(s_hub); lv_obj_set_size(hole, 46, 46); lv_obj_center(hole);
+            lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(hole, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(hole, 3, 0); lv_obj_set_style_border_color(hole, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(hole, 60, 0);
+        }
+        /* the controls */
+        s_ctl = plain(s_root); lv_obj_set_size(s_ctl, 360, 360);
+        lv_obj_set_style_bg_color(s_ctl, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(s_ctl, 110, 0);
+        s_ring = lv_arc_create(s_ctl); lv_obj_remove_style(s_ring, NULL, LV_PART_KNOB); lv_obj_remove_flag(s_ring, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_size(s_ring, 348, 348); lv_obj_center(s_ring);
+        lv_arc_set_bg_angles(s_ring, 0, 360); lv_arc_set_rotation(s_ring, 270); lv_arc_set_range(s_ring, 0, 1000);
+        lv_obj_set_style_arc_width(s_ring, 4, LV_PART_MAIN); lv_obj_set_style_arc_color(s_ring, TC(FIXED_MEDIA_WHITE), LV_PART_MAIN); lv_obj_set_style_arc_opa(s_ring, 50, LV_PART_MAIN);
+        lv_obj_set_style_arc_width(s_ring, 4, LV_PART_INDICATOR); lv_obj_set_style_arc_rounded(s_ring, true, LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(s_ring, th_idisc() ? TC(FIXED_MEDIA_WHITE) : TC(ACCENT_PRIMARY), LV_PART_INDICATOR);
+        s_button(s_ctl, -84, 56, LV_SYMBOL_PREV, "0201000C0002", NULL);
+        s_pp = s_button(s_ctl, 0, 78, LV_SYMBOL_PAUSE, "0201000C0000", &s_pp_l);
+        s_button(s_ctl, 84, 56, LV_SYMBOL_NEXT, "0201000C0001", NULL);
+        s_time = text(s_ctl, TF(UI_14), TC(FIXED_MEDIA_WHITE), 0); lv_obj_align(s_time, LV_ALIGN_CENTER, 0, 66);
+        lv_obj_t *t = text(s_ctl, ui_font_cjk(16), TC(FIXED_MEDIA_WHITE), 230); lv_obj_align(t, LV_ALIGN_CENTER, 0, -70);
+        lv_label_set_text(t, g_t); lv_obj_set_user_data(s_ctl, t);
+        lv_obj_t *h = plain(s_ctl); lv_obj_set_size(h, 140, 52); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 0);   /* close */
+        lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(h, s_close_cb, LV_EVENT_CLICKED, NULL);
+        lv_obj_t *bar = plain(h); lv_obj_set_size(bar, 36, 4); lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 20);
+        lv_obj_set_style_radius(bar, 2, 0); lv_obj_set_style_bg_color(bar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(bar, 170, 0);
+        lv_obj_t *hint = text(s_ctl, TF(UI_12), TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_opa(hint, 150, 0);
+        lv_label_set_text(hint, "Hold for lyrics"); lv_obj_align(hint, LV_ALIGN_CENTER, 0, 96);
+        s_tm = lv_timer_create(s_tick, 250, NULL); lv_timer_pause(s_tm);
+        keep_all(s_root);
+    }
+    { lv_obj_t *t = lv_obj_get_user_data(s_ctl); if(t) lv_label_set_text(t, g_t); }
+    if(!g_imm_img) g_imm_img = g_imm_img_keep;
+    if(!g_spin_tm){ g_spin_tm = lv_timer_create(spin_tick, SPIN_MS, NULL); lv_timer_pause(g_spin_tm); }   /* (iDisc: made here) */
+    if(g_layer) lv_obj_add_flag(g_layer, LV_OBJ_FLAG_HIDDEN);              /* (Music isn't drawn behind it) */
+    g_row0 = 0; s_spin_ms = SPIN_MS + 10;                                   /* a bigger picture: 20 a second */
+    if(g_spin_tm) lv_timer_set_period(g_spin_tm, (uint32_t)s_spin_ms);
+    art_apply(1); lv_image_set_src(g_imm_img, NULL); lv_image_set_src(g_imm_img, &g_spin_dsc); lv_obj_set_pos(g_imm_img, 0, 0);
+    lv_obj_remove_flag(s_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(s_root);
+    s_ctl_show(1); s_paint(); lv_timer_resume(s_tm); spin_run();
+}
+void nt_spin_close(void){
+    if(!s_root || lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN)) return;
+    nt_lyrics_close();
+    lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); lv_timer_pause(s_tm);
+    lv_obj_t *img = g_imm_img; g_imm_img = NULL; lv_image_set_src(img, NULL); g_imm_img_keep = img;
+    if(g_layer) lv_obj_remove_flag(g_layer, LV_OBJ_FLAG_HIDDEN);
+    g_row0 = g_mode ? 0 : (DISC_D / 2 - DISC_CY);
+    if(g_spin_tm) lv_timer_set_period(g_spin_tm, SPIN_MS);
+    if(g_art) art_apply(1);                                                 /* back to Music's CD size */
+    else { free(g_src); free(g_out); free(g_mask); free(g_span); g_src = g_out = NULL; g_mask = NULL; g_span = NULL; g_sd = 0; g_src_ok = 0; }   /* iDisc: the memory back */
+}
+int nt_spin_visible(void){ return s_root && !lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
+int nt_imm_visible(void){ return nt_lyrics_visible() || nt_spin_visible(); }
+void nt_imm_back(void){ if(nt_lyrics_visible()) nt_lyrics_close(); else nt_spin_close(); }   /* main.c: a sideways swipe */
+void nt_imm_open(void){ if(cfg_get_int("nt_imm", 0) == 1) nt_spin_open(); else nt_lyrics_open(); }
 
 /* ---- standby ------------------------------------------------------------------------------------------------------- */
 static face_t g_sface;

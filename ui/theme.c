@@ -357,7 +357,7 @@ static const theme_preset_t PRESETS[THEME_PRESET_COUNT] = {
 _Static_assert(sizeof PRESETS / sizeof PRESETS[0] == THEME_PRESET_COUNT, "THEME_PRESET_COUNT (theme.h) is stale");
 const char *const theme_preset_names[THEME_PRESET_COUNT] = { THEME_PRESET_NAMES_GENERATED,
  [THEME_PRESET_RING]="Ring",[THEME_PRESET_BRAUN]="Braun",[THEME_PRESET_DISCO]="Disco",[THEME_PRESET_NULL]="Null",[THEME_PRESET_SIMPLE]="Squash",[THEME_PRESET_ZUNE]="Zune",[THEME_PRESET_NTDISK]="NTDisk",[THEME_PRESET_IDISC]="iDisc" };
-int theme_preset_available(int preset){return preset>=0&&preset<THEME_PRESET_COUNT&&PRESETS[preset].name!=NULL;}
+int theme_preset_available(int preset){return preset==THEME_PRESET_NTDISK||preset==THEME_PRESET_IDISC||preset==THEME_PRESET_NULL;}   /* kopi.27: the others are retired */
 static int g_preset;
 static uint32_t g_custom[2][THEME_CLR_COUNT];      /* the saved custom theme, fixed roles filled from Default */
 static int g_custom_on, g_custom_fixed_accent;
@@ -790,7 +790,6 @@ static void zune_palettes_init(void){
   p[THEME_CLR_SWITCH_ON]=p[THEME_CLR_CONTROL_FILL]=p[THEME_CLR_WIDGET_PRIMARY]=p[THEME_CLR_PAGE_DOT_ACTIVE]=acc;
  }
 }
-int th_zune(void){return g_preset==THEME_PRESET_ZUNE;}
 
 static void simple_palettes_init(void){
  for(int v=0;v<2;v++){
@@ -814,13 +813,13 @@ static void fork_config_migrate(void){
         int old=cfg_get_int("ui_theme",-1);
         if(old<0){
             /* First flash: never replace saved theme or Music preferences. */
-            cfg_set_int("theme_preset",THEME_PRESET_DISCO);
+            cfg_set_int("theme_preset",THEME_PRESET_NTDISK);
             if(cfg_get_int("theme_variant",-1)<0) cfg_set_int("theme_variant",0);
             if(cfg_get_int("disco_hints",-1)<0) cfg_set_int("disco_hints",1);
             if(cfg_get_int("disco_prog_shape",-1)<0) cfg_set_int("disco_prog_shape",0);
             if(cfg_get_int("disco_trackno",-1)<0) cfg_set_int("disco_trackno",0);
         } else {
-            cfg_set_int("theme_preset",old==0 ? THEME_PRESET_RING : THEME_PRESET_BRAUN);
+            cfg_set_int("theme_preset",THEME_PRESET_NTDISK);
             cfg_set_int("theme_variant",(old==0 || old==2) ? 0 : 1);
         }
     } else if(cfg_get_int("theme_variant",-1)<0){
@@ -839,9 +838,9 @@ void theme_init(void){
     int outdoor = cfg_get_int("outdoor", 0) == 1;
     g_outdoor = outdoor;
     g_variant = (outdoor || cfg_get_int("theme_variant", 0) == 1) ? 1 : 0;
-    g_preset = cfg_get_int("theme_preset", THEME_PRESET_DISCO);
-    if(g_preset!=THEME_PRESET_CUSTOM&&!theme_preset_available(g_preset)){
-        g_preset=THEME_PRESET_DISCO;cfg_set_int("theme_preset",g_preset);
+    g_preset = cfg_get_int("theme_preset", THEME_PRESET_NTDISK);
+    if(!theme_preset_available(g_preset)){                                /* a retired theme (or Custom): NTDisk, kept */
+        g_preset=THEME_PRESET_NTDISK;cfg_set_int("theme_preset",g_preset);
     }
     if(g_preset==THEME_PRESET_NULL||g_preset==THEME_PRESET_ZUNE)g_variant=0;   /* dark-only themes */
     if(g_preset==THEME_PRESET_NTDISK){ int st = cfg_get_int("nt_style", 0); g_variant = outdoor || st == 1 || st == 3 || st == 4; }   /* NTDisk: its Style (4 Cream is a light one) */
@@ -859,8 +858,8 @@ void theme_init(void){
         g_custom_on = 1;
         g_pal = g_custom[g_variant];
     } else if(g_preset == THEME_PRESET_CUSTOM){
-        g_preset = THEME_PRESET_DISCO;  /* temporary fallback; KEEP the custom choice in configuration */
-        g_pal = g_variant ? FORK_DISCO[1] : FORK_DISCO[0];g_def=theme_def_find("Disco");
+        g_preset = THEME_PRESET_NTDISK;
+        g_pal = g_variant ? FORK_NT[1] : FORK_NT[0];g_def=theme_def_find("NTDisk");
     } else {
         g_pal = g_variant ? PRESETS[g_preset].light : PRESETS[g_preset].dark;
         g_def = theme_def_find(PRESETS[g_preset].name);   /* NULL for Default */
@@ -873,7 +872,7 @@ void theme_init(void){
      * refused as a whole rather than half-applied */
     for(int r = THEME_CLR_FIXED_LASTFM; r <= THEME_CLR_FIXED_MEDIA_ARTIST; r++)
         if(g_pal[r] != DEFAULT_DARK[r]){ fprintf(stderr, "theme: palette changes fixed role %d, using dark\n", r);
-                                         g_pal = FORK_DISCO[0]; g_variant = 0; g_preset = THEME_PRESET_DISCO; g_custom_on = 0; g_def = theme_def_find("Disco"); break; }
+                                         g_pal = FORK_NT[0]; g_variant = 0; g_preset = THEME_PRESET_NTDISK; g_custom_on = 0; g_def = theme_def_find("NTDisk"); break; }
     g_traits = g_def ? g_def->traits : 0;
     if(g_def && g_def->texture != THEME_TEX_NONE) g_traits |= 1u << THEME_TRAIT_DOT_GRID;   /* textured screens */
     theme_fonts_install();
@@ -1316,10 +1315,8 @@ static void theme_install_lvgl(void){
 /* the active preset's component kit (theme_kit.h); presets without their own kit use Default's builders */
 const theme_kit_t *theme_kit_for_active(void){ return (g_def && g_def->kit) ? g_def->kit : &theme_kit_default; }
 
-int theme_ring_light(void){return (g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_DISCO) && g_variant==1;}
-int theme_auto_supported(void){return g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_BRAUN || g_preset==THEME_PRESET_DISCO;}
 int th_null(void){return g_preset==THEME_PRESET_NULL;}
-int th_disco(void){return g_preset==THEME_PRESET_DISCO || g_preset==THEME_PRESET_NTDISK || g_preset==THEME_PRESET_IDISC;}
+int th_disco(void){return g_preset==THEME_PRESET_NTDISK || g_preset==THEME_PRESET_IDISC;}
 int th_nt(void){return g_preset==THEME_PRESET_NTDISK || g_preset==THEME_PRESET_IDISC;}
 int th_idisc(void){return g_preset==THEME_PRESET_IDISC;}
 int th_nt_caps(void){return g_preset==THEME_PRESET_NTDISK;}
@@ -1335,6 +1332,3 @@ lv_color_t th_nt_music_color(theme_color_role_t role){
     if(!th_nt_mix() || role < 0 || role >= THEME_CLR_COUNT) return theme_color(role);
     return theme_color_from_rgb(FORK_NT[!g_variant][role]);
 }
-int th_simple(void){return g_preset==THEME_PRESET_SIMPLE;}
-int th_disco_family(void){return th_disco() || th_simple();}
-int th_ringlike(void){return g_preset==THEME_PRESET_RING || g_preset==THEME_PRESET_DISCO || g_preset==THEME_PRESET_ZUNE || th_simple();}
