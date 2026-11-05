@@ -907,7 +907,8 @@ static const char *const D_MODE[] = {
     "Repeat the current track over and over.",
     "Loop the whole list when it ends.",
     "Play the current track once, then stop.",
-};
+    "After each song, a similar one: genre, artist and SongSphere mood drift slowly.",   /* (kopi.28: this was missing, so */
+};                                                                                       /*  choosing Vibe read past the end) */
 static const char *const D_NPSTYLE[] = {
     "Album cover shown as a rounded square.",
     "Spinning vinyl record while a track plays.",

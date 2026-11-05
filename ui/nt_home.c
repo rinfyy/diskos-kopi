@@ -274,12 +274,13 @@ static lyr_line_t *g_lyr; static int g_lyr_n; static unsigned g_lyr_rev = ~0u;
 static int g_drag;
 
 static void fmt_time(long ms, char *o, size_t n){ long s = ms > 0 ? ms / 1000 : 0; snprintf(o, n, "%ld:%02ld", s / 60, s % 60); }
-/* The CD turns while music plays (about one turn every 8 s). The cover is resampled once per album into a square
+/* The CD turns while music plays (one turn every 30 s). The cover is resampled once per album into a square
  * buffer; each frame rotates it into a round ARGB image (bilinear, antialiased edge) - only the rows that are on screen,
  * and only while Music is showing and playing. No clip mask, so LVGL just blends one image. */
 int ui_main_is_idle(void);
-#define SPIN_MS   40                  /* 25 frames a second */
-#define SPIN_TURN 14000               /* one turn in 14 s */
+#define SPIN_MS   50                  /* 20 frames a second */
+#define SPIN_TURN 30000               /* one turn in 30 s (kopi.28: was 14 s; slower, so each frame moves 0.6 degrees,
+                                         a pixel and a half at the rim, instead of 2.3 px - smooth, and less work) */
 static lv_obj_t *g_imm_img, *g_imm_img_keep;                                 /* Immersive: the spinning album (else NULL) */
 static uint32_t *g_src, *g_out; static uint8_t *g_mask; static int g_sd;   /* d x d */
 static int16_t *g_span;                                                     /* per row: the disc's first and last+1 column */
@@ -585,7 +586,6 @@ static lv_timer_t *g_dtap_tm; static int g_dtap_kind = -1; static uint32_t g_dta
 static void dtap_fire(lv_timer_t *t){
     (void)t; int k = g_dtap_kind; g_dtap_kind = -1; lv_timer_pause(g_dtap_tm);
     if(k == 0) ui_transport_command("0201000C0000");
-    else if(k == 1){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }
 }
 static void dtap(int kind){                                               /* kind: 0 CD, 1 text, 2 elsewhere */
     lv_indev_t *in = lv_indev_active(); lv_point_t p = { 180, 180 };
@@ -655,15 +655,12 @@ static void disc_cb(lv_event_t *e){
             lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY); hub_flash(); spin_run();
         } else dtap(2);
     }
-    else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode == 1) disco_track_overlay_open();
+    else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode == 1) disco_open_np_immersive();   /* (kopi.28: hold = Immersive) */
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
-    if(c == LV_EVENT_SHORT_CLICKED) dtap(1);
-    else if(c == LV_EVENT_LONG_PRESSED){
-        int h = cfg_get_int("disco_title_hold", 0);
-        if(h == 0) disco_open_np_immersive(); else if(h == 1) ui_np_fav_toggle();
-    }
+    if(c == LV_EVENT_SHORT_CLICKED) dtap(1);                              /* (a single tap: nothing; two skip) */
+    else if(c == LV_EVENT_LONG_PRESSED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }   /* (kopi.28: hold = the song) */
 }
 static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
 
@@ -1039,7 +1036,7 @@ void nt_spin_open(void){
     if(!g_imm_img) g_imm_img = g_imm_img_keep;
     if(!g_spin_tm){ g_spin_tm = lv_timer_create(spin_tick, SPIN_MS, NULL); lv_timer_pause(g_spin_tm); }   /* (iDisc: made here) */
     if(g_layer) lv_obj_add_flag(g_layer, LV_OBJ_FLAG_HIDDEN);              /* (Music isn't drawn behind it) */
-    g_row0 = 0; s_spin_ms = SPIN_MS + 10;                                   /* a bigger picture: 20 a second */
+    g_row0 = 0; s_spin_ms = SPIN_MS + 10;                                   /* a bigger picture: 16 a second */
     if(g_spin_tm) lv_timer_set_period(g_spin_tm, (uint32_t)s_spin_ms);
     art_apply(1); lv_image_set_src(g_imm_img, NULL); lv_image_set_src(g_imm_img, &g_spin_dsc); lv_obj_set_pos(g_imm_img, 0, 0);
     lv_obj_remove_flag(s_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(s_root);

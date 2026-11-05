@@ -9,4 +9,6 @@ lv_display_t *fbpan_create(const char *dev);
  * with fbpan_bind_touch (the evdev pointer; call it right after lv_evdev_create). */
 void fbpan_set_rotation(int v);
 void fbpan_bind_touch(lv_indev_t *indev);
+/* Unblank, pan back and redraw the whole screen: call just before the backlight comes back on (kopi.28). */
+void fbpan_wake(void);
 #endif

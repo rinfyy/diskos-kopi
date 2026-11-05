@@ -29,6 +29,7 @@ typedef struct {
     struct fb_fix_screeninfo finfo;
 } fbpan_t;
 
+static fbpan_t *g_fb;                                 /* the one display, for fbpan_wake */
 static uint32_t tick_cb(void){
     struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
     return (uint32_t)(t.tv_sec*1000u + t.tv_nsec/1000000u);
@@ -124,5 +125,24 @@ lv_display_t *fbpan_create(const char *dev){
     lv_display_set_driver_data(disp, f);
     lv_display_set_flush_cb(disp, fbpan_flush_cb);
     lv_display_set_buffers(disp, b1, b2, bufsz, LV_DISPLAY_RENDER_MODE_PARTIAL);
+    g_fb = f;
     return disp;
+}
+/* Before the backlight comes back on (kopi.28). The stock player reacts to the power key on its own: it can blank the
+ * LCD controller, pan the framebuffer or leave it black. We only redraw what changed (PARTIAL), so after such a wake
+ * the panel stayed black - lit, but empty - until something redrew the whole screen, often seconds later. So: unblank,
+ * pan back to our page, and draw the whole screen now, all while the light is still off. */
+void fbpan_wake(void){
+    if(!g_fb) return;
+    (void)ioctl(g_fb->fd, FBIOBLANK, FB_BLANK_UNBLANK);
+    struct fb_var_screeninfo v;
+    if(ioctl(g_fb->fd, FBIOGET_VSCREENINFO, &v) == 0 && g_fb->finfo.line_length &&
+       (size_t)v.yoffset * g_fb->finfo.line_length != g_fb->visible_off){
+        v.xoffset = 0; v.yoffset = (uint32_t)(g_fb->visible_off / g_fb->finfo.line_length); v.activate = FB_ACTIVATE_NOW;
+        (void)ioctl(g_fb->fd, FBIOPAN_DISPLAY, &v);
+    }
+    if(lv_display_get_default()){
+        lv_obj_invalidate(lv_screen_active()); lv_obj_invalidate(lv_layer_top()); lv_obj_invalidate(lv_layer_sys());
+        lv_refr_now(NULL);
+    }
 }

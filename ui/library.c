@@ -1094,7 +1094,7 @@ static void play_list_mode(int mode){
     else if(!ui_play_list(lt, nm, pos)) return;
     screen_show(SCR_NOWPLAYING);
 }
-static void play_all_cb(lv_event_t *e){    if(lv_event_get_code(e)==LV_EVENT_CLICKED) play_list_mode(0); } /* sequential */
+static void play_all_cb(lv_event_t *e){    if(lv_event_get_code(e)==LV_EVENT_CLICKED) play_list_mode(ui_mode_in_order()); } /* sequential (or Vibe) */
 static void shuffle_all_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED) play_list_mode(1); } /* shuffle */
 
 static void hdr_btn(lv_obj_t *row, int x, const char *txt, lv_event_cb_t cb){

@@ -224,6 +224,7 @@ const char *cfg_get_str(const char *key, const char *def){
     return e ? e->v : def;
 }
 
+const char *cfg_dir(void){ return CFG_DIR; }   /* where diskOS keeps its own files (kopi.28: the EQ clipboard) */
 int cfg_set_str(const char *key, const char *v){
     if(g_load_failed){ g_save_err = 1; return -1; }   /* load failed -> read-only */
     if(put(key, v) < 0){ g_save_err = 1; return -1; }

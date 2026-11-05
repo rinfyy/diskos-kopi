@@ -1697,6 +1697,8 @@ static int on_search_play(int id){
     if(pos < 1){ ui_toast("Couldn't find that song"); return 0; }
     return ui_play_list(1, "", pos);
 }
+/* "Play" (in order) on a list: Sequential - but Vibe stays Vibe (kopi.28: it used to be switched off by every Play) */
+int ui_mode_in_order(void){ return simple_cfg_get_int("work_mode", 0) == 5 ? 5 : 0; }
 void ui_set_workmode(int mode){
     /* LOCAL play-mode setter = command 0102 (class 1): 0102 000C <mode 4hex>.
      * GROUND TRUTH captured 2026-06-25 by strace'ing the stock UI's mq_timedsend
@@ -3711,7 +3713,7 @@ int main(int argc, char **argv){
                 last_activity = lv_tick_get();
                 if(screen_current()==SCR_SAVER){
                     /* any touch wakes the saver; restore backlight, swallow gesture */
-                    if(bl_state){ ui_backlight(ui_effective_brightness()); bl_state = 0; }
+                    if(bl_state){ if(bl_state == 2) fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; }
                     screen_back();
                     woke = 1;
                 } else {
@@ -3931,7 +3933,7 @@ int main(int argc, char **argv){
             last_blpoll = lv_tick_get();
             int cbr = read_int_file("/sys/class/backlight/backlight/brightness");
             int cbp = read_int_file("/sys/class/backlight/backlight/bl_power");
-            int settling = g_pwr_settle && lv_tick_elaps(g_pwr_settle) < 900;
+            int settling = g_pwr_settle && lv_tick_elaps(g_pwr_settle) < 1500;   /* (the player can answer late) */
             if(!settling) g_pwr_settle = 0;
             int press = g_pwr_press; g_pwr_press = 0;
             static unsigned seen_w;                                             /* our own writes since the last look don't count */
@@ -3940,11 +3942,12 @@ int main(int argc, char **argv){
             if(!press && !settling && cbr == 0 && cbp == 0) press = 1;        /* (the player blanked a lit panel) */
             if(press && !settling){
                 g_pwr_intent = bl_state ? 1 : 0; g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;
-                if(g_pwr_intent){ ui_backlight(ui_effective_brightness()); bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
-                                  power_note_input(); if(screen_current() == SCR_SAVER) screen_back(); }
+                if(g_pwr_intent){ if(screen_current() == SCR_SAVER) screen_back();   /* (kopi.28: picture first, then light) */
+                                  fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
+                                  power_note_input(); }
                 else { ui_backlight(0); bl_state = 2; player_blanked = 1; if(screen_current() == SCR_SAVER) screen_back(); }
             } else if(settling){                                                /* the player answering that same press */
-                if(g_pwr_intent && (cbr == 0 || cbp != 0)) ui_backlight(ui_effective_brightness());
+                if(g_pwr_intent && (cbr == 0 || cbp != 0)){ fbpan_wake(); ui_backlight(ui_effective_brightness()); }   /* it blanked: redraw, relight */
                 else if(!g_pwr_intent && cbp == 0) ui_backlight(0);
             }
             g_pwr_last_cbr = read_int_file("/sys/class/backlight/backlight/brightness"); seen_w = ui_backlight_writes();
@@ -3970,7 +3973,7 @@ int main(int argc, char **argv){
                 }
                 if(a > 0){
                     power_note_input();
-                    if(bl_state){ ui_backlight(ui_effective_brightness()); bl_state = 0; }
+                    if(bl_state){ if(bl_state == 2) fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; }
                     last_activity = lv_tick_get();
                     if(screen_current() == SCR_SAVER) screen_back();
                     playkey_action(a);
@@ -4000,7 +4003,7 @@ int main(int argc, char **argv){
                 int hold = simple_cfg_get_int("pwr_hold_ms", 5000); if(hold < 300) hold = 300;
                 if(pk_down && !pk_shown && lv_tick_elaps(pk_since) >= (uint32_t)hold){
                     pk_shown = 1;
-                    if(bl_state){ ui_backlight(ui_effective_brightness()); bl_state = 0; player_blanked = 0; }   /* lit, so it can be seen */
+                    if(bl_state){ if(bl_state == 2) fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; player_blanked = 0; }   /* lit, so it can be seen */
                     last_activity = lv_tick_get();
                     ui_shutdown_screen();
                 } else if(pk_shown && !pk_down && lv_tick_elaps(pk_rel) > 3500 && power_shutdown_phase() == PW_OFF){
@@ -4041,6 +4044,7 @@ int main(int argc, char **argv){
             }
             if(any && bl_state){
                 last_activity = lv_tick_get();
+                if(bl_state == 2) fbpan_wake();                                /* (kopi.28) the picture before the light */
                 ui_backlight(ui_effective_brightness()); bl_state = 0;
                 player_blanked = 0;   /* touch woke it; don't let the PW-10 poll re-restore */
                 if(screen_current() == SCR_SAVER) screen_back();

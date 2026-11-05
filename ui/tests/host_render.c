@@ -1428,6 +1428,14 @@ int main(int argc, char **argv){
                 if(getenv("NT_JUMP")){void nt_lyrics_test_jump(int);nt_lyrics_test_jump(atoi(getenv("NT_JUMP")));nav_wait(100);}}}
         if(!th_nt()){if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}
             if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}}
+        if(getenv("EQ_CLIP_TEST")){                                      /* kopi.28: Copy really keeps the curve */
+            char cp[256];snprintf(cp,sizeof cp,"%s/diskos-eqclip.txt",cfg_dir());unlink(cp);
+            cfg_set_int_deferred("eq_preset",11);screen_show(SCR_EQ);eqpreset_refresh();nav_wait(300);
+            lv_obj_t *c=ui_action_find("eq.copy");assert(c&&!lv_obj_has_state(c,LV_STATE_DISABLED));
+            lv_obj_send_event(c,LV_EVENT_CLICKED,NULL);assert(access(cp,0)==0);
+            assert(!lv_obj_has_state(ui_action_find("eq.paste"),LV_STATE_DISABLED));
+            assert(ui_action_find("eq.delete")&&!lv_obj_has_state(ui_action_find("eq.delete"),LV_STATE_DISABLED));
+            printf("EQ_CLIP_OK\n");unlink(cp);scr=SCR_EQ;}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
         if(getenv("DOOM_LANDING")){doom_landing();nav_wait(60);}
         if(getenv("VIDEOS_OPEN")){folderbrowser_open_videos();nav_wait(80);}

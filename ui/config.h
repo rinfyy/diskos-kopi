@@ -7,6 +7,7 @@
  * Load once at startup; setters rewrite the whole file (it's small). */
 void        cfg_load(void);
 int         cfg_get_int(const char *key, int def);
+const char *cfg_dir(void);                     /* the folder diskos.conf lives in */
 int         cfg_set_int(const char *key, int v);   /* 0 ok, -1 save failed */
 int         cfg_set_int_deferred(const char *key, int v);  /* in-memory only; follow with cfg_flush() */
 int         cfg_flush(void);                        /* one atomic rewrite/fsync of pending sets */

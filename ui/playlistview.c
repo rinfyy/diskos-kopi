@@ -186,7 +186,7 @@ void plview_open(long pid, const char *name){
 static void play_cb(lv_event_t *e){
     if(lv_event_get_code(e)!=LV_EVENT_CLICKED) return;
     if(mdb_playlist_count(g_pid) < 1){ ui_toast("Playlist is empty"); return; }
-    ui_set_workmode(0);
+    ui_set_workmode(ui_mode_in_order());
     if(ui_play_playlist(g_pid, 1)) screen_show(SCR_NOWPLAYING);
 }
 static void shuffle_cb(lv_event_t *e){

@@ -37,7 +37,7 @@ LV_FONT_DECLARE(font_icons_28)          /* FontAwesome 28px */
 #define QS_ARC_W     TH_ARC_CTL         /* brightness: a control arc, rounded ends */
 
 enum { T_WIFI, T_BT, T_LIB, T_RESCAN, T_MODE, T_SET, T_N };
-enum { Q_EQ=T_N, Q_SEARCH, Q_QUEUE, Q_UPNEXT, Q_SHORTCUTS, Q_WEATHER, Q_LYRICS, Q_INFO, Q_IMMERSIVE, Q_FOLDERS, Q_FAVS, Q_PLAYBACK, Q_GAIN, Q_SHUFFLE, Q_SLEEP, Q_FILES, Q_COUNT };
+enum { Q_EQ=T_N, Q_SEARCH, Q_QUEUE, Q_UPNEXT, Q_SHORTCUTS, Q_WEATHER, Q_LYRICS, Q_INFO, Q_IMMERSIVE, Q_FOLDERS, Q_FAVS, Q_PLAYBACK, Q_GAIN, Q_SHUFFLE, Q_SLEEP, Q_FILES, Q_VIBE, Q_COUNT };
 static const qs_item_t CATALOG[Q_COUNT]={
     {"w","Wi-Fi",LV_SYMBOL_WIFI},{"b","Bluetooth",LV_SYMBOL_BLUETOOTH},
     {"l","Library",LV_SYMBOL_DIRECTORY},{"r","Rescan",LV_SYMBOL_REFRESH},
@@ -50,7 +50,8 @@ static const qs_item_t CATALOG[Q_COUNT]={
     {"a","Favourites","\xEF\x80\x84"},
     {"p","Play mode",LV_SYMBOL_LOOP},
     {"g","Gain",LV_SYMBOL_CHARGE},{"j","Shuffle",LV_SYMBOL_SHUFFLE},{"t","Sleep","\xEF\x86\x86"},
-    {"x","File transfer",LV_SYMBOL_UPLOAD}                                  /* (kopi.27) */
+    {"x","File transfer",LV_SYMBOL_UPLOAD},                                 /* (kopi.27) */
+    {"z","Vibe",LV_SYMBOL_AUDIO}                                            /* (kopi.28) Vibe on / off */
 };
 static const char *qs_config_key(void){return th_zune()?"zune_qs_items":th_null()?"null_qs_items":th_nt()?"nt_qs_items":th_disco_family()?"disco_qs_items":"qs_items";}
 int quicksettings_item_count(void){return Q_COUNT;}
@@ -60,7 +61,7 @@ int quicksettings_equalizer_item(void){return Q_EQ;}
 int ui_sleep_state(int *secs_left);
 void ui_set_gain(int high);
 void npmenu_open_sleep(void);
-int quicksettings_item_active(int id){int p=simple_cfg_get_int("eq_preset",0);return id==T_WIFI?wifi_radio_live()>0:id==T_BT?bt_state()==BT_ON:id==T_RESCAN?scanner_active():id==T_MODE?ui_get_source_mode()!=0:id==Q_EQ?p>0&&p<=20:id==Q_PLAYBACK?simple_cfg_get_int("work_mode",0)!=0:id==Q_GAIN?simple_cfg_get_int("audio_gain",0)!=0:id==Q_SHUFFLE?simple_cfg_get_int("work_mode",0)==1:id==Q_SLEEP?ui_sleep_state(NULL)!=0:id==Q_FILES?webfiles_running():0;}
+int quicksettings_item_active(int id){int p=simple_cfg_get_int("eq_preset",0);return id==T_WIFI?wifi_radio_live()>0:id==T_BT?bt_state()==BT_ON:id==T_RESCAN?scanner_active():id==T_MODE?ui_get_source_mode()!=0:id==Q_EQ?p>0&&p<=20:id==Q_PLAYBACK?simple_cfg_get_int("work_mode",0)!=0:id==Q_GAIN?simple_cfg_get_int("audio_gain",0)!=0:id==Q_SHUFFLE?simple_cfg_get_int("work_mode",0)==1:id==Q_SLEEP?ui_sleep_state(NULL)!=0:id==Q_FILES?webfiles_running():id==Q_VIBE?simple_cfg_get_int("work_mode",0)==5:0;}
 static const char*playback_glyph(void){static const char*const g[]={LV_SYMBOL_RIGHT,LV_SYMBOL_SHUFFLE,LV_SYMBOL_LOOP "1",LV_SYMBOL_LOOP,LV_SYMBOL_RIGHT "1",LV_SYMBOL_AUDIO};int v=simple_cfg_get_int("work_mode",0);return g[v>=0&&v<6?v:0];}
 const qs_item_t *quicksettings_item(int id){return id>=0 && id<Q_COUNT?&CATALOG[id]:NULL;}
 int quicksettings_items_load(int *out){
@@ -172,7 +173,8 @@ static void pick_cb(int i){                                       /* short taps 
         case Q_GAIN:{int high=!simple_cfg_get_int("audio_gain",0);ui_set_gain(high);simple_cfg_set_int("audio_gain",high);ui_toast(high?"High gain":"Low gain");}break;
         case Q_SHUFFLE:ui_np_set_playmode(simple_cfg_get_int("work_mode",0)==1?0:1);break;
         case Q_SLEEP:if(th_zune())npmenu_open_sleep();else sleep_sheet_open();break;
-        case Q_FILES:webfiles_toggle();break;   /* (kopi.27: the Zune-only timer page opened nothing elsewhere) */
+        case Q_FILES:webfiles_toggle();break;
+        case Q_VIBE:{int on=simple_cfg_get_int("work_mode",0)!=5;ui_np_set_playmode(on?5:0);ui_toast(on?"Vibe: similar songs follow":"Vibe off - in order");}break;   /* (kopi.27: the Zune-only timer page opened nothing elsewhere) */
     }
 }
 static void base_pick(int slot){if(slot>=0&&slot<g_nitems){pick_cb(g_items[slot]);quicksettings_refresh(ui_is_playing());}}
@@ -696,7 +698,7 @@ static void zqs_paint(void){
     for(int i=0;i<g_nitems;i++){
         if(!g_zq_btn[i])continue;int id=g_items[i],on=quicksettings_item_active(id);const char *sub="";
         if(id==Q_GAIN)sub=on?"high":"low";
-        if(id==Q_SHUFFLE||id==Q_SLEEP||id==Q_FILES)sub=on?"on":"off";
+        if(id==Q_SHUFFLE||id==Q_SLEEP||id==Q_FILES||id==Q_VIBE)sub=on?"on":"off";
         if(id==T_WIFI||id==T_BT||id==Q_EQ||id==T_RESCAN)sub=id==T_BT&&bt_state()==BT_TURNING_ON?"starting":on?"on":"off";
         if(id==Q_EQ&&on)sub=ui_eq_name(simple_cfg_get_int("eq_preset",0));
         if(id==T_MODE&&ui_get_source_mode()==0)sub="player";

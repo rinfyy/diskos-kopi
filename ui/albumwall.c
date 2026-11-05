@@ -351,7 +351,7 @@ void albumwall_drag_end(void){                           /* release: throw a few
     uint32_t dur = (uint32_t)(dist*120.0f) + 130; if(dur > 700) dur = 700;
     aw_anim_to(target, dur);
 }
-void albumwall_play(void){ if(g_nalb<=0) return; cfg_set_int("work_mode",0); ui_set_workmode(0); if(ui_play_list(3,g_names[g_cur],1)) screen_show(SCR_NOWPLAYING); }
+void albumwall_play(void){ if(g_nalb<=0) return; ui_set_workmode(ui_mode_in_order()); if(ui_play_list(3,g_names[g_cur],1)) screen_show(SCR_NOWPLAYING); }
 void albumwall_open(void){ if(g_nalb<=0) return; library_open_album(g_names[g_cur]); screen_show(SCR_LIBRARY); }
 
 /* ---- prefetch ----------------------------------------------------------------------------------- */

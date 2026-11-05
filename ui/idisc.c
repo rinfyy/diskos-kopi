@@ -481,12 +481,11 @@ static void card_cb(lv_event_t *e){
         return;
     }
     if(c == LV_EVENT_SHORT_CLICKED && !g_moved){ onboarding_discovered(HINT_MUSIC); nt_lyrics_open(); }
-    else if(c == LV_EVENT_LONG_PRESSED && !g_moved && g_cmode == 1) disco_track_overlay_open();
+    else if(c == LV_EVENT_LONG_PRESSED && !g_moved && g_cmode == 1) disco_open_np_immersive();   /* (kopi.28: hold = Immersive) */
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
-    if(c == LV_EVENT_SHORT_CLICKED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }
-    else if(c == LV_EVENT_LONG_PRESSED){ int h = cfg_get_int("disco_title_hold", 0); if(h == 0) disco_open_np_immersive(); else if(h == 1) ui_np_fav_toggle(); }
+    if(c == LV_EVENT_LONG_PRESSED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }   /* (kopi.28: hold the title = the song; a tap does nothing) */
 }
 static void btn_cb(lv_event_t *e){
     const char *cmd = lv_event_get_user_data(e);

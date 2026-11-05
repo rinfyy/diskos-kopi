@@ -510,8 +510,8 @@ static void commit(void){
 }
 static void step(int dir){
     if(!g_editable || g_sel < 0) return;
-    if(g_sel == PRE){                                                /* 0.5 dB a step, -12 .. +6 */
-        double m = g_master + dir * 0.5; if(m < -12) m = -12; if(m > 6) m = 6;
+    if(g_sel == PRE){                                                /* 0.5 dB a step, -12 .. +10 (kopi.28: was +6) */
+        double m = g_master + dir * 0.5; if(m < -12) m = -12; if(m > 10) m = 10;
         m = floor(m * 2 + 0.5) / 2; if(m != g_master){ g_master = m; g_changed = 1; } redraw(); return;
     }
     if(g_mode_freq){

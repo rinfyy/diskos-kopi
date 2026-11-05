@@ -385,6 +385,7 @@ void ui_cancel_book_resume(void);                      /* end the book session (
 void ui_book_user_seeked(long target_ms);              /* manual seek in a book: drop pending resume, persist target_ms to the bookmark now, keep session */
 int  ui_set_volume(int vol);   /* set absolute volume 0..VOL_MAX; returns 0=queued, -1=failed */
 void ui_set_workmode(int mode);
+int  ui_mode_in_order(void);   /* 0 Sequential, or 5 while Vibe is the play mode (Play keeps it) */
 void ui_np_set_playmode(int wm);   /* fork (Zune): set the play mode and repaint (its play-mode list) */
 int ui_apply_eq(int preset);
 int ui_eq_select(int preset);    /* central EQ apply+persist (eq_preset + eq_last); 0 ok, -1 send failed */
