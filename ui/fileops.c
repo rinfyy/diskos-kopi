@@ -198,9 +198,9 @@ static void run(int op, const char *src, const char *dst, int replace){
 }
 
 /* ---------------------------------------------------------------- confirm dialog */
-static void (*g_yes)(void);
-static void yes_cb(lv_event_t *e){ (void)e; void (*f)(void) = g_yes; close_ov(); if(f) f(); }
-static void no_cb(lv_event_t *e){ (void)e; close_ov(); }
+static void (*g_yes)(void), (*g_no)(void);
+static void yes_cb(lv_event_t *e){ (void)e; void (*f)(void) = g_yes; g_no = NULL; close_ov(); if(f) f(); }
+static void no_cb(lv_event_t *e){ (void)e; void (*f)(void) = g_no; g_no = NULL; close_ov(); if(f) f(); }
 static lv_obj_t *pill_btn(lv_obj_t *p, const char *txt, uint32_t bg, int x, lv_event_cb_t cb){
     lv_obj_t *b = lv_button_create(p);
     lv_obj_remove_style_all(b);
@@ -214,6 +214,7 @@ static lv_obj_t *pill_btn(lv_obj_t *p, const char *txt, uint32_t bg, int x, lv_e
     lv_obj_set_style_text_font(l, TF(UI_18), 0); lv_obj_set_style_text_color(l, bg == TH_ACCENT ? TC(ON_ACCENT) : TC(TEXT_PRIMARY), 0); lv_obj_center(l);   /* white on the accent in both themes (Braun's TXT1 is dark) */
     return b;
 }
+static const char *g_no_label;
 static void confirm(const char *title, const char *detail, const char *yes, void (*on_yes)(void)){
     if(th_zune()){ zune_confirm(title, detail, "cancel", yes, on_yes); return; }   /* Zune: Figma 07 */
     lv_obj_t *o = overlay();
@@ -235,11 +236,16 @@ static void confirm(const char *title, const char *detail, const char *yes, void
         lv_obj_set_style_text_color(d, TC(TEXT_SECONDARY), 0);
         lv_obj_align(d, LV_ALIGN_CENTER, 0, 10);
     }
-    pill_btn(o, "Cancel", TH_SURF1, -60, no_cb);
+    pill_btn(o, g_no_label ? g_no_label : "Cancel", TH_SURF1, -60, no_cb);
     pill_btn(o, yes, TH_ACCENT, 60, yes_cb);
 }
 
-void fileops_confirm(const char *title, const char *detail, const char *yes, void (*on_yes)(void)){ confirm(title, detail, yes, on_yes); }   /* generic themed yes/no, used outside file ops */
+void fileops_confirm(const char *title, const char *detail, const char *yes, void (*on_yes)(void)){ g_no = NULL; g_no_label = NULL; confirm(title, detail, yes, on_yes); }   /* generic themed yes/no, used outside file ops */
+/* (kopi.28) The same, with the left button named and doing something too (e.g. Undo / Keep) */
+void fileops_confirm2(const char *title, const char *detail, const char *no, void (*on_no)(void), const char *yes, void (*on_yes)(void)){
+    g_no_label = no; confirm(title, detail, yes, on_yes); g_no = on_no; g_no_label = NULL;
+}
+int fileops_confirm_visible(void){ return g_ov != NULL; }
 
 /* ---------------------------------------------------------------- delete */
 static void do_delete(void){ char p[FO_PATH]; if(path_join(p, sizeof p, g_dir, g_name)) run(OP_DELETE, p, NULL, 0); }

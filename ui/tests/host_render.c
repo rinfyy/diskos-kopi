@@ -1420,14 +1420,26 @@ int main(int argc, char **argv){
             if(getenv("NT_PK")){void settings_test_playkey(void);settings_test_playkey();nav_wait(100);}
             if(getenv("NT_OV")){disco_track_overlay_open();nav_wait(200);}
             if(getenv("NT_MENU")){disco_nav_set_open(1);nav_wait(300);}
-            if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}
+            if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}if(getenv("POWERMENU")){power_menu_open();nav_wait(60);}
             if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}
             if(getenv("NT_SPIN")){nt_spin_open();for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();}
                 if(!strcmp(getenv("NT_SPIN"),"0")){for(int i=0;i<460;i++){lv_tick_inc(10);lv_timer_handler();}}}   /* 0: after the controls hide */
             if(getenv("NT_IMM")){nt_lyrics_open();for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}
                 if(getenv("NT_JUMP")){void nt_lyrics_test_jump(int);nt_lyrics_test_jump(atoi(getenv("NT_JUMP")));nav_wait(100);}}}
-        if(!th_nt()){if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}
+        if(!th_nt()){if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}if(getenv("POWERMENU")){power_menu_open();nav_wait(60);}
             if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}}
+        if(getenv("STYLE_BACK_TEST")){                                   /* kopi.29: Style asks once, on the way out */
+            int orig=cfg_get_int(getenv("SETKEY"),0); lv_obj_t *root=screen_get_root(SCR_SETTING_DETAIL);
+            for(int k=0;k<2;k++){ lv_obj_t *r=find_text(root,LV_SYMBOL_RIGHT); assert(r);   /* (the page rebuilds after each step) */
+                lv_obj_t *b=lv_obj_has_flag(r,LV_OBJ_FLAG_CLICKABLE)?r:lv_obj_get_parent(r);
+                lv_obj_send_event(b,LV_EVENT_CLICKED,NULL);nav_wait(50); }
+            assert(cfg_get_int(getenv("SETKEY"),0)!=orig); assert(!find_text(lv_layer_top(),"Undo"));   /* no question yet */
+            screen_back();nav_wait(60);
+            assert(screen_current()==SCR_SETTING_DETAIL); lv_obj_t *u=find_text(lv_layer_top(),"Undo"); assert(u);
+            if(getenv("STYLE_BACK_SHOT")){ scr=SCR_SETTING_DETAIL; }
+            else { lv_obj_send_event(lv_obj_get_parent(u),LV_EVENT_CLICKED,NULL);nav_wait(80);
+                   assert(cfg_get_int(getenv("SETKEY"),0)==orig); assert(screen_current()!=SCR_SETTING_DETAIL); }
+            printf("STYLE_BACK_OK\n");}
         if(getenv("EQ_CLIP_TEST")){                                      /* kopi.28: Copy really keeps the curve */
             char cp[256];snprintf(cp,sizeof cp,"%s/diskos-eqclip.txt",cfg_dir());unlink(cp);
             cfg_set_int_deferred("eq_preset",11);screen_show(SCR_EQ);eqpreset_refresh();nav_wait(300);

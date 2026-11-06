@@ -181,15 +181,29 @@ static void reload_go(lv_timer_t *t){
  * next restart; Settings shows "Restart to apply" until then). */
 static int g_nt_pending; static lv_obj_t *g_rs_dlg; static char g_rs_key[32]; static int g_rs_prev;
 static void reload_start(const char *key, int prev);
+/* (kopi.28) Inside a setting's own page (Style: Dark / Light / Cream / Midnight, and the like) the question waits until
+ * you leave the page, so you can step through the choices first: g_rs_ask holds the setting and the value it had when
+ * the page opened, and leaving asks Restart / Later / Undo once. */
+static int g_rs_ask, g_rs_orig, g_rs_leave, g_rs_pend0;
 static void rs_close(void){ if(g_rs_dlg){ lv_obj_delete_async(g_rs_dlg); g_rs_dlg = NULL; } }
-static void rs_now_cb(lv_event_t *e){ (void)e; rs_close(); reload_start(g_rs_key, g_rs_prev); }
+static void rs_leave_async(void *u){ (void)u; if(g_rs_leave){ g_rs_leave = 0; screen_back(); } }
+static void rs_now_cb(lv_event_t *e){ (void)e; rs_close(); g_rs_ask = 0; g_rs_leave = 0; reload_start(g_rs_key, g_rs_prev); }
 static void rs_later_cb(lv_event_t *e){
-    (void)e; rs_close(); g_nt_pending = 1;
+    (void)e; rs_close(); g_nt_pending = 1; g_rs_ask = 0;
     ui_toast("Saved - it applies the next time the screen restarts");
     setlist_refresh();
+    lv_async_call(rs_leave_async, NULL);
 }
-static lv_obj_t *rs_btn(lv_obj_t *p, const char *t, int x, int primary, lv_event_cb_t cb){
-    lv_obj_t *b = lv_obj_create(p); lv_obj_remove_style_all(b); lv_obj_set_size(b, 118, 44); lv_obj_align(b, LV_ALIGN_BOTTOM_MID, x, -22);
+static void rs_undo_cb(lv_event_t *e){                                   /* back to how it was: nothing to restart */
+    (void)e; rs_close(); g_rs_ask = 0;
+    simple_cfg_set_int(g_rs_key, g_rs_orig); cfg_flush(); g_nt_pending = g_rs_pend0;
+    ui_toast("Not changed");
+    lv_async_call(rs_leave_async, NULL);
+}
+static lv_obj_t *rs_btn_w(lv_obj_t *p, const char *t, int x, int w, int primary, lv_event_cb_t cb);
+static lv_obj_t *rs_btn(lv_obj_t *p, const char *t, int x, int primary, lv_event_cb_t cb){ return rs_btn_w(p, t, x, 118, primary, cb); }
+static lv_obj_t *rs_btn_w(lv_obj_t *p, const char *t, int x, int w, int primary, lv_event_cb_t cb){
+    lv_obj_t *b = lv_obj_create(p); lv_obj_remove_style_all(b); lv_obj_set_size(b, w, 44); lv_obj_align(b, LV_ALIGN_BOTTOM_MID, x, -22);
     lv_obj_set_style_radius(b, 22, 0); lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0);
     lv_obj_set_style_bg_color(b, primary ? TC(ACCENT_PRIMARY) : TC(SURFACE_RAISED), 0);
     lv_obj_set_style_bg_color(b, primary ? TC(PRIMARY_PRESSED) : TC(SURFACE_PRESSED), LV_STATE_PRESSED);
@@ -218,7 +232,8 @@ static void restart_prompt(const char *key){
     lv_obj_t *s2 = lv_label_create(c); lv_label_set_text(s2, "Only the screen restarts.\nYour music keeps playing.");
     lv_obj_set_style_text_align(s2, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_font(s2, TF(UI_12), 0); lv_obj_set_style_text_color(s2, TC(TEXT_MUTED), 0); lv_obj_align(s2, LV_ALIGN_TOP_MID, 0, 62);
-    rs_btn(c, "Later", -64, 0, rs_later_cb); rs_btn(c, "Restart", 64, 1, rs_now_cb);
+    if(g_rs_leave){ rs_btn_w(c, "Undo", -90, 84, 0, rs_undo_cb); rs_btn_w(c, "Later", 0, 84, 0, rs_later_cb); rs_btn_w(c, "Restart", 90, 84, 1, rs_now_cb); }
+    else { rs_btn(c, "Later", -64, 0, rs_later_cb); rs_btn(c, "Restart", 64, 1, rs_now_cb); }
     kit_keep(g_rs_dlg); kit_keep(c); kit_keep(d); kit_keep(t); kit_keep(s2);
     if(th_idisc()){ idisc_glass(c, 32); lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN); lv_obj_set_style_text_font(t, TF(HEADER), 0);   /* iDisc: a glass alert */
                     lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 26); lv_obj_align(s2, LV_ALIGN_TOP_MID, 0, 58);
@@ -292,7 +307,15 @@ static const char *OPT_PKACT[] = { "Nothing", "Library", "Music", "Search", "Qui
 static void apply_nt_restart(int v){ (void)v; reload_start("", 0); }
 void settings_test_nt_prompt(int later){ restart_prompt("nt_style"); if(later) rs_later_cb(NULL); }   /* host renders */
 static void theme_reload_or_revert(const char *key){
-    if(th_nt() && strcmp(key, "theme_preset") && !(g_reload_tm && !strcmp(g_reload_key, key))){ restart_prompt(key); return; }
+    if(th_nt() && strcmp(key, "theme_preset") && !(g_reload_tm && !strcmp(g_reload_key, key))){
+        if(screen_current() == SCR_SETTING_DETAIL){                     /* (kopi.28) ask when leaving this page */
+            if(!g_rs_ask || strcmp(g_rs_key, key)){ snprintf(g_rs_key, sizeof g_rs_key, "%s", key); g_rs_orig = g_set_prev; g_rs_prev = g_set_prev; g_rs_pend0 = g_nt_pending; }
+            g_rs_ask = 1; g_nt_pending = 1;                                 /* (left by Home: "Restart to apply" shows) */
+            if(simple_cfg_get_int(key, g_rs_orig) == g_rs_orig){ g_rs_ask = 0; g_nt_pending = g_rs_pend0; }   /* stepped back to where it was */
+            return;
+        }
+        restart_prompt(key); return;
+    }
     reload_start(key, g_set_prev);
 }
 static void reload_start(const char *key, int prev){
@@ -714,6 +737,7 @@ static void restart_tick(lv_timer_t *t){
     if(lv_tick_elaps(g_rst_t0) >= RESTART_SYNC_MS) restart_fail("Couldn't restart - card busy, try again", "sync still running after 15 s");
 }
 static void boot_confirm_go(void);
+void settings_restart_now(void){ boot_confirm_go(); }
 static void boot_confirm_cb(lv_event_t *e){ if(lv_event_get_code(e)==LV_EVENT_CLICKED) boot_confirm_go(); }
 static void boot_confirm_go(void){
     if(g_rst_timer) return;                         /* already restarting */
@@ -1453,6 +1477,15 @@ static const struct { const char *child, *parent; } SUBGROUP[] = {
     { "How to", "Help" },
     { "MA Sendspin", "Connectivity" },
     { "Volume Keys", "Controls" } };
+int settings_detail_back_consumed(void){                               /* screenmgr: leaving a setting's page */
+    if(g_rs_dlg) return 1;                                                /* the question is up: answer it */
+    if(!g_rs_ask) return 0;
+    if(!g_active || !g_active->cfg_key || strcmp(g_active->cfg_key, g_rs_key)){ g_rs_ask = 0; return 0; }   /* left by Home earlier */
+    g_rs_leave = 1;
+    char k[32]; snprintf(k, sizeof k, "%s", g_rs_key); int p = g_rs_prev;
+    restart_prompt(k); g_rs_prev = p;
+    return 1;
+}
 int settings_back_consumed(void){
     if(!g_active_group) return 0;
     for(size_t i = 0; i < sizeof SUBGROUP / sizeof SUBGROUP[0]; i++)

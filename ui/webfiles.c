@@ -18,6 +18,10 @@
  *     song where the library would find it; the free space is checked before the first byte.
  *   - Each connection is its own thread (at most 6 at once), so a long download doesn't block the page.
  *   - When it stops, if anything was added, removed or renamed, the library is scanned again.
+ *   - Fast (kopi.29): 1 MB socket buffers (a wide TCP window), Wi-Fi power saving off while it's on (the radio
+ *     otherwise naps between packets, which caps a transfer at a fraction of the link), the CPU at full speed while
+ *     bytes are actually moving (back to normal 5 s after), 1 MB reads and writes to the card with read-ahead, and
+ *     the page sends three files at once (small files no longer wait on each other's round trips).
  * The UI (the sheet, the timer) is on the UI thread; the server threads only share a few counters under a mutex. */
 #ifndef WF_SERVER_ONLY                                                  /* (tests/webfiles_test.c builds just the server) */
 #include "screens.h"
@@ -72,6 +76,42 @@ static char g_ip[24], g_pin[8], g_sess[40];
 static volatile uint32_t g_last_req_s;                    /* monotonic seconds of the last request */
 static char g_cur[96]; static long long g_cur_done, g_cur_total; static int g_received, g_sent;   /* under g_mu */
 
+/* ---- speed: Wi-Fi power saving off and the CPU governor while transferring (kopi.29) ---- */
+struct wf_iw_param { int32_t value; uint8_t fixed, disabled; uint16_t flags; };
+struct wf_iwreq { char name[16]; union { struct wf_iw_param power; char pad[16]; } u; };
+#define WF_SIOCSIWPOWER 0x8B2C
+#define WF_SIOCGIWPOWER 0x8B2D
+static int g_ps_saved = -1;                                /* the radio's power saving before (1 on, 0 off), -1 unknown */
+static void wifi_powersave(int off){
+    int s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0); if(s < 0) return;
+    struct wf_iwreq r; memset(&r, 0, sizeof r); snprintf(r.name, sizeof r.name, "%s", WF_IFACE);
+    if(off){
+        if(ioctl(s, WF_SIOCGIWPOWER, &r) == 0) g_ps_saved = r.u.power.disabled ? 0 : 1;
+        memset(&r.u, 0, sizeof r.u); r.u.power.disabled = 1;
+        (void)ioctl(s, WF_SIOCSIWPOWER, &r);
+    } else if(g_ps_saved == 1){
+        memset(&r.u, 0, sizeof r.u); r.u.power.disabled = 0;
+        (void)ioctl(s, WF_SIOCSIWPOWER, &r);
+        g_ps_saved = -1;
+    }
+    close(s);
+}
+#define WF_GOV "/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+static char g_gov_saved[32]; static int g_gov_fast;
+static void cpu_fast(int on){
+    if(on == g_gov_fast) return;
+    if(on){
+        FILE *f = fopen(WF_GOV, "r"); if(!f) return;
+        if(!fgets(g_gov_saved, sizeof g_gov_saved, f)){ g_gov_saved[0] = 0; }
+        fclose(f);
+        g_gov_saved[strcspn(g_gov_saved, "\n")] = 0;
+        if(!g_gov_saved[0] || !strcmp(g_gov_saved, "performance")) return;
+        f = fopen(WF_GOV, "w"); if(!f) return; fputs("performance", f); if(fclose(f) == 0) g_gov_fast = 1;
+    } else {
+        FILE *f = fopen(WF_GOV, "w"); if(f){ fputs(g_gov_saved, f); fclose(f); }
+        g_gov_fast = 0;
+    }
+}
 static uint32_t now_s(void){ struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint32_t)t.tv_sec; }
 static int rnd_bytes(unsigned char *b, int n){
     int f = open("/dev/urandom", O_RDONLY | O_CLOEXEC); if(f < 0) return -1;
@@ -143,13 +183,25 @@ static const char PAGE[] =
 "async function ren(p){const o=p.split('/').pop(),n=prompt('Rename to',o);if(!n||n==o)return;"
 "const r=await api('POST','/api/mv?p='+encodeURIComponent(p)+'&to='+encodeURIComponent(join(p.slice(0,p.length-o.length)||'/',n)));if(!r.ok)alert(await r.text());load()}"
 "async function del(p,d){if(!confirm('Delete '+p.split('/').pop()+(d?' and everything in it':'')+'?'))return;const r=await api('DELETE','/f'+enc(p));if(!r.ok)alert(await r.text());load()}"
-"function put(path,file,i,n){return new Promise((ok,no)=>{const x=new XMLHttpRequest();x.open('PUT','/f'+enc(path));"
-"x.upload.onprogress=e=>{$('pb').firstChild.style.width=(e.loaded/e.total*100)+'%';$('pt').textContent='Uploading '+(i+1)+' of '+n+': '+file.name+'  '+sz(e.loaded)+' / '+sz(e.total)};"
-"x.onload=()=>x.status<300?ok():no(x.responseText||x.status);x.onerror=()=>no('connection lost');x.send(file)})}"
-"async function upload(list){list=list.filter(f=>!(f.rel||f.webkitRelativePath||f.name).split('/').some(s=>s.startsWith('.')));if(!list.length)return;$('prog').style.display='block';let bad=0;"
-"for(let i=0;i<list.length;i++){const f=list[i];try{await put(join(cwd,f.rel||f.webkitRelativePath||f.name),f,i,list.length)}catch(e){bad++;if(e==0)break;"
-"if(!confirm('Could not upload '+f.name+': '+e+'\\nContinue with the rest?'))break}}"
-"$('prog').style.display='none';if(bad)alert(bad+' file(s) were not uploaded');load()}"
+"let up={tot:0,done:0,cur:{},t0:0,n:0,k:0};"
+"function prog(){let d=up.done;for(const v of Object.values(up.cur))d+=v;const s=(Date.now()-up.t0)/1000,r=s>0.5?d/s:0;"
+"$('pb').firstChild.style.width=(up.tot?d/up.tot*100:0)+'%';"
+"$('pt').textContent='Uploading '+Math.min(up.k,up.n)+' of '+up.n+'  '+sz(d)+' / '+sz(up.tot)+(r?'  '+sz(r)+'/s':'')}"
+"function put(path,file,id){return new Promise((ok,no)=>{const x=new XMLHttpRequest();x.open('PUT','/f'+enc(path));"
+"x.upload.onprogress=e=>{up.cur[id]=e.loaded;prog()};"
+"x.onload=()=>{delete up.cur[id];if(x.status<300){up.done+=file.size;prog();ok()}else no(x.responseText||x.status)};"
+"x.onerror=()=>{delete up.cur[id];no('connection lost')};x.send(file)})}"
+"async function upload(list){list=list.filter(f=>!(f.rel||f.webkitRelativePath||f.name).split('/').some(s=>s.startsWith('.')));if(!list.length)return;"
+"$('prog').style.display='block';up={tot:list.reduce((a,f)=>a+f.size,0),done:0,cur:{},t0:Date.now(),n:list.length,k:0};"
+"const BIG=16<<20,bad=[];let next=0,active=0,big=0,stop=0;"
+/* three small files at once (their round trips overlap); a big one goes alone, so the card writes one stream */
+"await new Promise(fin=>{const pump=()=>{if(stop&&!active)return fin();"
+"while(!stop&&next<list.length){const f=list[next],isBig=f.size>=BIG;if(big||active>=3||(isBig&&active))break;"
+"next++;active++;up.k++;if(isBig)big=1;const id=next;"
+"put(join(cwd,f.rel||f.webkitRelativePath||f.name),f,id).catch(e=>{bad.push(f.name+': '+e);if(e==0)stop=1})"
+".finally(()=>{active--;if(isBig)big=0;pump()})}"
+"if(!active&&(next>=list.length||stop))fin()};pump()});"
+"$('prog').style.display='none';if(bad.length)alert(bad.length+' file(s) were not uploaded:\\n'+bad.slice(0,8).join('\\n'));load()}"
 "$('pick').onchange=e=>{upload([...e.target.files]);e.target.value=''};$('pickd').onchange=e=>{upload([...e.target.files]);e.target.value=''};"
 "async function walk(en,pre,out){if(en.isFile){await new Promise(r=>en.file(f=>{f.rel=pre+f.name;out.push(f);r()},r))}else if(en.isDirectory){"
 "const rd=en.createReader();for(;;){const b=await new Promise(r=>rd.readEntries(r,()=>r([])));if(!b.length)break;for(const e of b)await walk(e,pre+en.name+'/',out)}}}"
@@ -318,6 +370,7 @@ static void do_get(int c, const char *rel, const char *q, const char *hdr, int h
                      partial ? "206 Partial Content" : "200 OK", mime(path), len, cr, disp);
     if(send_all(c, h, (size_t)n) || head){ close(f); return; }
     off_t off = (off_t)from; long long rest = len;
+    (void)posix_fadvise(f, 0, 0, POSIX_FADV_SEQUENTIAL);                 /* read ahead harder */
     if(!partial){ pthread_mutex_lock(&g_mu); snprintf(g_cur, sizeof g_cur, "%.95s", base); g_cur_done = 0; g_cur_total = size; pthread_mutex_unlock(&g_mu); }
     while(rest > 0 && atomic_load(&g_run)){
         size_t chunk = rest > (1 << 20) ? (1 << 20) : (size_t)rest;
@@ -344,11 +397,11 @@ static void do_put(int c, const char *rel, long long len, const char *have, size
     const char *base = strrchr(path, '/') + 1;
     pthread_mutex_lock(&g_mu); snprintf(g_cur, sizeof g_cur, "%.95s", base); g_cur_done = 0; g_cur_total = len; pthread_mutex_unlock(&g_mu);
     long long got = 0; int ok = 1;
-    size_t bsz = 256 * 1024; char *buf = malloc(bsz); if(!buf) ok = 0;
+    size_t bsz = 1 << 20; char *buf = malloc(bsz); if(!buf){ bsz = 256 * 1024; buf = malloc(bsz); } if(!buf) ok = 0;
     if(ok && nhave){ size_t k = (size_t)((long long)nhave > len ? len : (long long)nhave); if(write(f, have, k) != (ssize_t)k) ok = 0; got += (long long)k; }
     while(ok && got < len && g_run){
         size_t want = (size_t)(len - got > (long long)bsz ? (long long)bsz : len - got);
-        ssize_t r = recv(c, buf, want, 0);
+        ssize_t r = recv(c, buf, want, MSG_WAITALL);                     /* (whole chunks: fewer, bigger writes) */
         if(r < 0 && errno == EINTR) continue;
         if(r <= 0){ ok = 0; break; }
         for(ssize_t w = 0; w < r; ){ ssize_t k = write(f, buf + w, (size_t)(r - w)); if(k <= 0){ if(k < 0 && errno == EINTR) continue; ok = 0; break; } w += k; }
@@ -467,6 +520,9 @@ static int core_start(const int *ports, int nports){
     for(int k = 0; k < nports && fd < 0; k++){
         fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0); if(fd < 0) break;
         int one = 1; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+        int big = 1 << 20;                                                /* a wide window (accepted sockets inherit it) */
+        if(setsockopt(fd, SOL_SOCKET, SO_RCVBUFFORCE, &big, sizeof big)) setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &big, sizeof big);
+        if(setsockopt(fd, SOL_SOCKET, SO_SNDBUFFORCE, &big, sizeof big)) setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &big, sizeof big);
         struct sockaddr_in a; memset(&a, 0, sizeof a); a.sin_family = AF_INET; a.sin_port = htons((uint16_t)ports[k]); a.sin_addr.s_addr = inet_addr(g_ip);
         if(a.sin_addr.s_addr == INADDR_NONE || bind(fd, (struct sockaddr *)&a, sizeof a) || listen(fd, 8)){ close(fd); fd = -1; continue; }
         g_port = ports[k];
@@ -476,6 +532,7 @@ static int core_start(const int *ports, int nports){
     g_last_req_s = now_s(); g_received = g_sent = 0; g_cur[0] = 0;
     if(pthread_create(&g_th, NULL, srv_main, NULL)){ close(fd); g_fd = -1; atomic_store(&g_run, 0); return -1; }
     g_live = 1;
+    wifi_powersave(1);
     return 0;
 }
 static void core_stop(void){
@@ -485,6 +542,7 @@ static void core_stop(void){
     for(int i = 0; i < 40 && atomic_load(&g_conns) > 0; i++) usleep(50 * 1000);   /* the transfers notice g_run */
     if(g_fd >= 0){ close(g_fd); g_fd = -1; }
     g_live = 0;
+    wifi_powersave(0); cpu_fast(0);
 }
 
 #ifndef WF_SERVER_ONLY
@@ -510,8 +568,11 @@ static void tick_cb(lv_timer_t *t){
     if(atomic_load(&g_fails) >= WF_MAXFAIL){ stop_server(3); return; }
     int busy; pthread_mutex_lock(&g_mu); busy = g_cur[0] != 0; pthread_mutex_unlock(&g_mu);
     if(!busy && atomic_load(&g_conns) == 0 && (now_s() - g_last_req_s) * 1000u > WF_IDLE_MS){ stop_server(1); return; }
+    static uint32_t busy_at;                                              /* full CPU speed while bytes move, 5 s more */
+    if(busy){ busy_at = now_s(); cpu_fast(1); } else if(g_gov_fast && now_s() - busy_at >= 5) cpu_fast(0);
     sheet_paint();
 }
+int webfiles_busy(void){ if(!g_live) return 0; int b; pthread_mutex_lock(&g_mu); b = g_cur[0] != 0; pthread_mutex_unlock(&g_mu); return b; }
 static int start_server(void){
     if(g_live) return 0;
     if(wlan_ip(g_ip, sizeof g_ip)){ ui_toast("Connect to Wi-Fi first"); wifi_open(); return -1; }

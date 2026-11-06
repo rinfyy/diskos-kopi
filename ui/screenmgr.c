@@ -307,6 +307,8 @@ void screen_back(void)
     if (s_current != SCR_SAVER && screen_press_was_long()) { screen_home(); return; }
     if (s_current == SCR_SEARCH && (search_back_consumed() || search_back_to_landing())) return;   /* fork: results page -> back to the keyboard */
     if (s_current == SCR_SETLIST && settings_back_consumed()) return;
+    if (s_current == SCR_SETTING_DETAIL && settings_detail_back_consumed()) return;   /* (kopi.28) Restart / Later / Undo */
+    if (s_current == SCR_EQ_EDITOR && eqcustom_back_consumed()) return;               /* (kopi.28) Keep / Undo the edits */
     if (s_current == SCR_STATS && stats_back_consumed()) return;
     if (s_current == SCR_SHELF && discshelf_back_consumed()) return;
     if (s_current == SCR_SPHERE && sphere_ui_back_consumed()) return;   /* SongSphere: up one page */          /* Stats: Wrapped / top 15 -> the list */   /* Disco Options -> Display */

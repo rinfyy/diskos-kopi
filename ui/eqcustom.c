@@ -60,6 +60,8 @@ static void *save_worker(void *unused){
     atomic_store_explicit(&g_save_done,1,memory_order_release);return NULL;
 }
 static int g_sel = -1, g_mode_freq = 0, g_dirty_draw, g_changed;
+/* (kopi.28) the curve as it was when the editor opened it: leaving after edits asks Keep / Undo */
+static int g_orig_ok, g_orig_preset, g_edited, g_orig_f[NB], g_orig_t[NB]; static double g_orig_q[NB], g_orig_master;
 static lv_obj_t *g_pre, *g_pre_lbl;
 static lv_obj_t *g_root, *g_canvas, *g_hit, *g_rim[NB], *g_pill_lbl, *g_flbl, *g_glbl, *g_minus, *g_plus, *g_modecap, *g_note, *g_lock;
 static uint8_t *g_buf;
@@ -133,6 +135,10 @@ static void load_poll(void){
     if(g_preset >= USER_MIN){
         if(!ed) g_parametric = 1;                           /* filters we can't represent: show, don't overwrite */
         else g_editable = fw_custom_peq_curve_writable(g_f,NB);
+        if(g_editable && !(g_orig_ok && g_orig_preset == g_preset && g_edited)){   /* (not a reload after our own save) */
+            g_orig_ok = 1; g_orig_preset = g_preset; g_edited = 0; g_orig_master = g_master;
+            memcpy(g_orig_f, g_f, sizeof g_f); memcpy(g_orig_t, g_t, sizeof g_t); memcpy(g_orig_q, g_q, sizeof g_q);
+        }
     }
     if(g_save_busy)g_editable=0;
     g_dirty_draw=1;
@@ -156,7 +162,7 @@ int eqcustom_store(int slot, const int hz[NB], const int tenths[NB], const doubl
     if(!fw_custom_peq_curve_writable(hz, NB)){ ui_toast("This firmware can't store this EQ"); return -1; }
     g_preset = slot; g_parametric = g_readfail = g_loading = 0; profile_ticket = 0; g_master = master;
     for(int i = 0; i < NB; i++){ g_f[i] = hz[i]; g_t[i] = clampi(tenths[i], -120, 120); g_q[i] = q && q[i] > 0 ? q[i] : 0.7; }
-    g_editable = 1; g_changed = 0;
+    g_editable = 1; g_changed = 0; g_orig_ok = 0;
     simple_cfg_set_int("eq_preset", slot);
     if(!apply_now()){ g_editable = 0; ui_toast("EQ not saved"); return -1; }
     return slot;
@@ -173,7 +179,7 @@ int eqcustom_install(const char *name, const int hz[NB], const int tenths[NB], d
     if(slot < 0){ ui_toast("All 10 USER presets have names - rename one first"); return -1; }
     g_preset = slot; g_parametric = g_readfail = g_loading = 0; profile_ticket = 0; g_master = master;
     for(int i = 0; i < NB; i++){ g_f[i] = hz[i]; g_t[i] = clampi(tenths[i], -GMAX, GMAX); g_q[i] = 0.7; }
-    g_editable = 1; g_changed = 0;
+    g_editable = 1; g_changed = 0; g_orig_ok = 0;
     simple_cfg_set_int("eq_preset", slot);                               /* selected once the save lands */
     if(!apply_now()){ g_editable = 0; ui_toast("EQ not saved"); return -1; }
     snprintf(key, sizeof key, "eq_name%d", slot); simple_cfg_set_str(key, name);
@@ -505,6 +511,7 @@ static void draw_tmr_cb(lv_timer_t *t){
 static void commit(void){
     if(!g_changed) return;
     g_changed = 0;
+    if(g_orig_ok && g_orig_preset == g_preset) g_edited = 1;
     if(apply_now()) refresh_labels();
     else { load(g_preset); if(!g_editable)g_sel=-1; redraw(); ui_toast("EQ not saved"); }
 }
@@ -879,7 +886,37 @@ void eqcustom_create(lv_obj_t *root){
     /* No profile reads/verification for a hidden editor at startup. */
 }
 /* shown: follow whatever preset is active now (Settings or the stock player may have changed it) */
-void eqcustom_refresh(void){ if(fw_os_ver()==257)eq_rate_request(); pad_close(); load(simple_cfg_get_int("eq_preset", 0)); if(!g_editable) g_sel = -1; g_mode_freq = 0; redraw(); }
+/* ---- leaving with edits: Keep / Undo (kopi.28). Edits save as you make them (you hear them at once); Undo writes the
+ * curve the editor opened back. If a save is still on its way, Undo waits for it (up to 5 s). */
+static lv_timer_t *g_undo_tm; static int g_undo_tries;
+static void leave_async(void *u){ (void)u; screen_back(); }
+static void undo_try(lv_timer_t *t){
+    (void)t;
+    if(g_save_busy && ++g_undo_tries < 25) return;
+    if(g_undo_tm){ lv_timer_delete(g_undo_tm); g_undo_tm = NULL; }
+    if(g_save_busy){ ui_toast("Still saving - Undo didn't happen"); return; }
+    g_preset = g_orig_preset; g_master = g_orig_master;
+    memcpy(g_f, g_orig_f, sizeof g_f); memcpy(g_t, g_orig_t, sizeof g_t); memcpy(g_q, g_orig_q, sizeof g_q);
+    g_editable = 1; g_edited = 0;
+    if(apply_now()) ui_toast("Changes undone"); else ui_toast("Couldn't undo - try again");
+    lv_async_call(leave_async, NULL);
+}
+static void undo_edits(void){
+    g_undo_tries = 0;
+    if(!g_save_busy){ undo_try(NULL); return; }
+    if(!g_undo_tm) g_undo_tm = lv_timer_create(undo_try, 200, NULL);
+}
+static void keep_edits(void){ g_edited = 0; g_orig_ok = 0; lv_async_call(leave_async, NULL); }
+int eqcustom_back_consumed(void){
+    if(fileops_confirm_visible()) return 1;
+    if(g_undo_tm) return 1;
+    if(!g_orig_ok || !g_edited || g_orig_preset != g_preset) return 0;
+    commit();                                                              /* a step still waiting */
+    char n[48], t[80]; preset_name(g_preset, n, sizeof n); snprintf(t, sizeof t, "Keep changes to %s?", n);
+    fileops_confirm2(t, "They're saved and playing now", "Undo", undo_edits, "Keep", keep_edits);
+    return 1;
+}
+void eqcustom_refresh(void){ g_orig_ok = 0; g_edited = 0; if(fw_os_ver()==257)eq_rate_request(); pad_close(); load(simple_cfg_get_int("eq_preset", 0)); if(!g_editable) g_sel = -1; g_mode_freq = 0; redraw(); }
 void eqcustom_style_apply(void){ if((th_disco_family() || th_null() || th_zune()) && g_dfill[0]) redraw(); }   /* Settings > Display > Equalizer */
 /* host renders only: select a band */
 void eqcustom_test_select(int b){ if(b >= 0 && b <= NB){ g_sel = b; redraw(); } }

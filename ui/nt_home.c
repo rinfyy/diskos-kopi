@@ -465,7 +465,7 @@ static void spin_render(void){
 }
 static void spin_tick(lv_timer_t *t){
     (void)t;
-    if(!g_playing || !g_have || screen_current() != SCR_HOME || ui_batt_saver() || ui_main_is_idle() || (g_imm_img && nt_lyrics_visible())){ lv_timer_pause(g_spin_tm); return; }   /* (dimmed: still) */
+    if(!g_playing || !g_have || screen_current() != SCR_HOME || ui_batt_saver() || ui_main_is_idle() || webfiles_busy() || (g_imm_img && nt_lyrics_visible())){ lv_timer_pause(g_spin_tm); return; }   /* (dimmed: still) */
     static uint32_t last; static int frac;                              /* by the clock, not by frames: no stutter */
     uint32_t now = lv_tick_get(), dt = last ? now - last : SPIN_MS; last = now;
     if(dt > 200) dt = SPIN_MS;                                           /* (after a pause: carry on from here) */

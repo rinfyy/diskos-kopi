@@ -3725,7 +3725,7 @@ int main(int argc, char **argv){
                     sleep_touch = ui_volume_overlay_visible() || ui_np_overlay_active() || azjump_owns_point(p.x,p.y)   /* latch: the sleep popover owns this whole gesture, */
                                || (screen_current()==SCR_EQ_EDITOR && eqcustom_owns_point(p.x, p.y))    /* and so does the EQ dial (fork) */
                                || (screen_current()==SCR_SPHERE && sphere_ui_owns_point(p.x, p.y))      /* and SongSphere's marker */
-                               || (th_nt() && nt_imm_visible()) || sleep_sheet_visible() || webfiles_sheet_visible();                                       /* and NTDisk's full-screen lyrics (closed below) */
+                               || (th_nt() && nt_imm_visible()) || sleep_sheet_visible() || webfiles_sheet_visible() || power_menu_visible();                                       /* and NTDisk's full-screen lyrics (closed below) */
                     seek_touch = dhome_owns_point(p.x, p.y) || simple_owns_point(p.x,p.y);
                     if(th_null() && null_owns_point(p.x,p.y))sleep_touch=1;   /* fork: Disco Music's seek line / ring (no swipe to Apps) */
                     if(fsart_touch || sleep_touch){
@@ -3941,7 +3941,8 @@ int main(int argc, char **argv){
             if(!press && !settling && !ours && g_pwr_last_cbr >= 0 && cbr >= 0 && cbr != g_pwr_last_cbr) press = 1;
             if(!press && !settling && cbr == 0 && cbp == 0) press = 1;        /* (the player blanked a lit panel) */
             if(press && !settling){
-                g_pwr_intent = bl_state ? 1 : 0; g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;
+                g_pwr_intent = (bl_state || power_menu_visible()) ? 1 : 0;      /* (the power menu up: stay lit) */
+                g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;
                 if(g_pwr_intent){ if(screen_current() == SCR_SAVER) screen_back();   /* (kopi.28: picture first, then light) */
                                   fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
                                   power_note_input(); }
@@ -3980,10 +3981,11 @@ int main(int argc, char **argv){
                 }
             }
         }
-        {   /* fork: the power key held - the player owns the key and starts its own shutdown, so show the themed
-             * screen while that runs. The level is read from the GPIO pin (X2000 GPE bit 31, active low) because the
-             * input layer never delivers this key to us. Released early and still running 3.5 s later: a false
-             * alarm, the screen goes away. Hold time: cfg "pwr_hold_ms" (default 5000, the player's own 5 s hold). */
+        {   /* fork: the power key held. kopi.28: we no longer wait for the player's own 5 s shutdown (on some Discs it
+             * never came, so holding did nothing): held for 1.5 s (cfg "pwr_menu_ms"), the screen lights and asks
+             * Shut down / Restart / Cancel, and we do it ourselves (the same clean shutdown as Settings). The level is
+             * read from the GPIO pin (X2000 GPE bit 31, active low) because the input layer never delivers this key
+             * to us. */
             static volatile uint32_t *gpe; static int gpe_tried; static uint32_t last_pkpoll;
             static int pk_down, pk_shown, pk_seen_up; static uint32_t pk_since, pk_rel;   /* pk_seen_up: ignore a key still held from power-on */
             if(lv_tick_elaps(last_pkpoll) >= 50){
@@ -4000,15 +4002,16 @@ int main(int argc, char **argv){
                 else if(!d && pk_down){ pk_down = 0; pk_rel = lv_tick_get();
                     if(!pk_shown && lv_tick_elaps(pk_since) < 1200 && !(g_pwr_settle && lv_tick_elaps(g_pwr_settle) < 900)) g_pwr_press = 1;   /* a short press */
                 }
-                int hold = simple_cfg_get_int("pwr_hold_ms", 5000); if(hold < 300) hold = 300;
-                if(pk_down && !pk_shown && lv_tick_elaps(pk_since) >= (uint32_t)hold){
+                int hold = simple_cfg_get_int("pwr_menu_ms", 1500); if(hold < 600) hold = 600;
+                if(pk_down && !pk_shown && lv_tick_elaps(pk_since) >= (uint32_t)hold && power_shutdown_phase() == PW_OFF){
                     pk_shown = 1;
-                    if(bl_state){ if(bl_state == 2) fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; player_blanked = 0; }   /* lit, so it can be seen */
-                    last_activity = lv_tick_get();
-                    ui_shutdown_screen();
-                } else if(pk_shown && !pk_down && lv_tick_elaps(pk_rel) > 3500 && power_shutdown_phase() == PW_OFF){
-                    ui_shutdown_hide(); pk_shown = 0;
-                }
+                    if(screen_current() == SCR_SAVER) screen_back();
+                    power_menu_open();
+                    if(bl_state == 2) fbpan_wake();
+                    ui_backlight(ui_effective_brightness()); bl_state = 0; player_blanked = 0;   /* lit, so it can be seen */
+                    g_pwr_intent = 1; g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;   /* ...against the player's reaction */
+                    last_activity = lv_tick_get(); power_note_input();
+                } else if(pk_shown && !pk_down){ pk_shown = 0; (void)pk_rel; }
             }
         }
 

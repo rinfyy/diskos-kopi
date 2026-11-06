@@ -681,6 +681,9 @@ static void nt_palettes_init(void){
             {THEME_CLR_IMAGE_TINT,0xF3EBDC,0x0A0F1E},{THEME_CLR_ART_WALL_FRONT,0xFBF6EC,0x1B2340},{THEME_CLR_ART_WALL_SIDE,0xF6EEDF,0x141B2E},
             {THEME_CLR_WEATHER_SUN,0x3A3128,0xE4E9F6},{THEME_CLR_WEATHER_MOON,0x6B5F51,0xAAB3CC},{THEME_CLR_WEATHER_RAIN,0x6B5F51,0xAAB3CC},
             {THEME_CLR_WEATHER_BORDER,0xD3C5AE,0x313B5E},
+            /* (kopi.29) Midnight's "black": the startup / shutdown NTDISK logo screens, Immersive and the spinning
+             * album's hole were pure black and stood out as black screens and boxes on the navy; now the navy */
+            {THEME_CLR_FIXED_MEDIA_BLACK,0x000000,0x0A0F1E},
         };
         uint32_t *p = FORK_NT[st == 4 ? 1 : 0];
         for(unsigned i = 0; i < sizeof T / sizeof T[0]; i++) p[T[i].r] = st == 4 ? T[i].cream : T[i].midnight;

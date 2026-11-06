@@ -74,7 +74,9 @@ void ui_invalidate_play_scope(void);
 void ui_restart(void);
 int  th_want_dark(void);   /* Braun: the variant the settings and the clock ask for */
 int  th_night_now(void);                       /* re-exec the UI (theme change) */
-void fileops_confirm(const char *title, const char *detail, const char *yes, void (*on_yes)(void));   /* themed Cancel / <yes> dialog on the top layer */
+void fileops_confirm(const char *title, const char *detail, const char *yes, void (*on_yes)(void));
+void fileops_confirm2(const char *title, const char *detail, const char *no, void (*on_no)(void), const char *yes, void (*on_yes)(void));   /* both buttons act */
+int  fileops_confirm_visible(void);   /* themed Cancel / <yes> dialog on the top layer */
 void fileops_open(const char *dir, const char *name, int is_dir, void (*done)(void));  /* folder browser long-press */
 void tagfix_current_track(void);      /* NP menu: add synced lyrics + artwork the current track is missing */
 void tagfix_album(const char *album);  /* Library album hold menu: tag every track of that album */
@@ -354,7 +356,8 @@ int  settings_pick_keys(const char *keys[], const char *labels[], int cap);
 void webfiles_toggle(void);                  /* webfiles.c: Wi-Fi file transfer on / off */
 int  webfiles_running(void);
 void webfiles_open(void);                    /* the File transfer sheet (address, code, Stop) */
-int  webfiles_sheet_visible(void);           /* sleepsheet.c: the Sleep timer picker, over any screen */
+int  webfiles_sheet_visible(void);
+int  webfiles_busy(void);                    /* a file is moving right now */           /* sleepsheet.c: the Sleep timer picker, over any screen */
 int  sleep_sheet_visible(void);    /* 0 off, 1 duration (fills secs_left), 2 end-of-chapter */
 void ui_np_close_overlays(void);        /* dismiss the Now Playing sleep-timer popover (on screen change) */
 int  ui_np_overlay_active(void);        /* 1 while the sleep popover is up (suppress ring seek/nav) */
@@ -385,7 +388,12 @@ void ui_cancel_book_resume(void);                      /* end the book session (
 void ui_book_user_seeked(long target_ms);              /* manual seek in a book: drop pending resume, persist target_ms to the bookmark now, keep session */
 int  ui_set_volume(int vol);   /* set absolute volume 0..VOL_MAX; returns 0=queued, -1=failed */
 void ui_set_workmode(int mode);
-int  ui_mode_in_order(void);   /* 0 Sequential, or 5 while Vibe is the play mode (Play keeps it) */
+int  ui_mode_in_order(void);
+int  settings_detail_back_consumed(void);
+void power_menu_open(void);                 /* powermenu.c: Shut down / Restart / Cancel (holding the power key) */
+int  power_menu_visible(void);
+void settings_restart_now(void);            /* settings.c: the Maintenance > Restart action, without its question */   /* settings.c: a change waiting for its restart question */
+int  eqcustom_back_consumed(void);          /* eqcustom.c: edits waiting for Keep / Undo */   /* 0 Sequential, or 5 while Vibe is the play mode (Play keeps it) */
 void ui_np_set_playmode(int wm);   /* fork (Zune): set the play mode and repaint (its play-mode list) */
 int ui_apply_eq(int preset);
 int ui_eq_select(int preset);    /* central EQ apply+persist (eq_preset + eq_last); 0 ok, -1 send failed */
