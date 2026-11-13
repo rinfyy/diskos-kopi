@@ -12,11 +12,11 @@
 #include "idisc.h"
 #include <stdio.h>
 
-static lv_obj_t *g_root;
+static lv_obj_t *g_root, *g_card;
 static lv_timer_t *g_tm;
 static void close_menu(void){
     if(g_tm){ lv_timer_delete(g_tm); g_tm = NULL; }
-    if(g_root){ lv_obj_delete_async(g_root); g_root = NULL; }
+    if(g_root){ lv_obj_t *r = g_root; g_root = NULL; idisc_sheet_out(r, g_card); g_card = NULL; }
 }
 static void timeout_cb(lv_timer_t *t){ (void)t; g_tm = NULL; close_menu(); }
 static void pick_cb(lv_event_t *e){
@@ -62,6 +62,7 @@ void power_menu_open(void){
         lv_color_t fg = main_one ? TC(ON_ACCENT) : TC(TEXT_PRIMARY);
         lv_obj_t *l = label(b, TF(UI_18), fg, NAMES[k]); lv_obj_center(l);
     }
+    g_card = card; idisc_sheet_in(g_root, card);
     g_tm = lv_timer_create(timeout_cb, 10000, NULL); lv_timer_set_repeat_count(g_tm, 1);
 }
 int power_menu_visible(void){ return g_root != NULL; }

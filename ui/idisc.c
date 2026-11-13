@@ -131,17 +131,28 @@ void idisc_wallpaper(lv_obj_t *o){
     if(g_wall_ok){ lv_obj_set_style_bg_image_src(o, &g_wall_dsc, 0); lv_obj_set_style_bg_image_opa(o, LV_OPA_COVER, 0); }
 }
 /* the frost behind a glass surface, and its rim */
-typedef struct { lv_image_dsc_t d; const lv_image_dsc_t *src; } glass_t;
-static int glass_r(lv_obj_t *o){ lv_area_t a; lv_obj_get_coords(o, &a); int r = lv_obj_get_style_radius(o, 0), m = LV_MIN(lv_area_get_width(&a), lv_area_get_height(&a)) / 2; return r > m ? m : r; }
+/* m (kopi.30): how much glass there is, 0..255. Glass doesn't fade in: it materializes - the frost and the rim come up
+ * from clear (the wallpaper showing through untouched) to full, and only then the content on it; see idisc_materialize.
+ * base_*: the tint at rest, captured when a materialize starts, so a part-way m scales it. */
+typedef struct { lv_image_dsc_t d; const lv_image_dsc_t *src; uint8_t m, have_base, base_main, base_grad, base_border; } glass_t;
+/* The glass's drawn area: its box, grown by any transform_width / height (the press "squish", the volume's swell) */
+static void glass_area(lv_obj_t *o, lv_area_t *a){
+    lv_obj_get_coords(o, a);
+    int tw = lv_obj_get_style_transform_width(o, 0), th = lv_obj_get_style_transform_height(o, 0);
+    a->x1 -= tw; a->x2 += tw; a->y1 -= th; a->y2 += th;
+}
+static int glass_r(lv_obj_t *o){ lv_area_t a; glass_area(o, &a); int r = lv_obj_get_style_radius(o, 0), m = LV_MIN(lv_area_get_width(&a), lv_area_get_height(&a)) / 2; return r > m ? m : r; }
 static void glass_under(lv_event_t *e){
     glass_t *g = lv_event_get_user_data(e); lv_obj_t *o = lv_event_get_target(e); lv_layer_t *l = lv_event_get_layer(e);
-    if(!g || !g->src || !l || lv_obj_get_style_opa_recursive(o, 0) < LV_OPA_MIN) return;
-    lv_area_t a, s = { 0, 0, WN - 1, WN - 1 }, b; lv_obj_get_coords(o, &a);
+    if(!g || !g->src || !l) return;
+    int opa = lv_obj_get_style_opa_recursive(o, 0) * g->m / 255;            /* (inside a materializing sheet: with it) */
+    if(opa < LV_OPA_MIN) return;
+    lv_area_t a, s = { 0, 0, WN - 1, WN - 1 }, b; glass_area(o, &a);
     if(!_lv_area_intersect(&b, &a, &s)) return;
     const lv_image_dsc_t *src = g->src; uint32_t st = src->header.stride;
     g->d = *src; g->d.header.w = (uint32_t)lv_area_get_width(&b); g->d.header.h = (uint32_t)lv_area_get_height(&b);
     g->d.data = src->data + (size_t)b.y1 * st + (size_t)b.x1 * 4; g->d.data_size = st * g->d.header.h;
-    lv_draw_image_dsc_t id; lv_draw_image_dsc_init(&id); id.src = &g->d;
+    lv_draw_image_dsc_t id; lv_draw_image_dsc_init(&id); id.src = &g->d; id.opa = (lv_opa_t)opa;
     /* The software renderer doesn't round an image's corners, so the frost goes down in bands of rows, each clipped to
      * the rounded shape (rows of equal width share a band; the tint and rim drawn over it smooth the steps). */
     int r = glass_r(o); lv_area_t keep = l->_clip_area;
@@ -162,11 +173,14 @@ static void glass_under(lv_event_t *e){
 static void glass_rim(lv_event_t *e){
     glass_t *g = lv_event_get_user_data(e); lv_obj_t *o = lv_event_get_target(e); lv_layer_t *l = lv_event_get_layer(e);
     if(!g || !g->src || !l) return;
-    lv_area_t a; lv_obj_get_coords(o, &a);
-    lv_draw_rect_dsc_t r; lv_draw_rect_dsc_init(&r); r.bg_opa = LV_OPA_TRANSP; r.radius = glass_r(o); r.border_width = 1;
-    r.border_color = TC(FIXED_MEDIA_WHITE); r.border_opa = dark() ? 150 : 255; r.border_side = LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT;
+    int opa = lv_obj_get_style_opa_recursive(o, 0) * g->m / 255; if(opa < LV_OPA_MIN) return;
+    int thick = lv_obj_has_state(o, LV_STATE_PRESSED) || lv_obj_has_state(o, LV_STATE_USER_1);   /* pressed / swollen: thicker */
+    lv_area_t a; glass_area(o, &a);
+    lv_draw_rect_dsc_t r; lv_draw_rect_dsc_init(&r); r.bg_opa = LV_OPA_TRANSP; r.radius = glass_r(o); r.border_width = thick ? 2 : 1;
+    r.border_color = TC(FIXED_MEDIA_WHITE); r.border_opa = (lv_opa_t)((dark() ? 150 : 255) * opa / 255); r.border_side = LV_BORDER_SIDE_TOP | LV_BORDER_SIDE_LEFT;
     lv_draw_rect(l, &r, &a);                                                  /* light from the top left */
-    r.border_color = TC(FIXED_MEDIA_BLACK); r.border_opa = dark() ? 60 : 24; r.border_side = LV_BORDER_SIDE_BOTTOM;
+    r.border_width = 1;
+    r.border_color = TC(FIXED_MEDIA_BLACK); r.border_opa = (lv_opa_t)((dark() ? 60 : 24) * (thick ? 2 : 1) * opa / 255); r.border_side = LV_BORDER_SIDE_BOTTOM;
     lv_draw_rect(l, &r, &a);
 }
 static void glass_free(lv_event_t *e){ free(lv_event_get_user_data(e)); }
@@ -174,6 +188,7 @@ static glass_t *glass_of(lv_obj_t *o){
     for(uint32_t i = 0; i < lv_obj_get_event_count(o); i++){ lv_event_dsc_t *d = lv_obj_get_event_dsc(o, i);
         if(d && lv_event_dsc_get_cb(d) == glass_under) return lv_event_dsc_get_user_data(d); }
     glass_t *g = calloc(1, sizeof *g); if(!g) return NULL;
+    g->m = 255;
     lv_obj_add_event_cb(o, glass_under, LV_EVENT_DRAW_MAIN_BEGIN, g);
     lv_obj_add_event_cb(o, glass_rim, LV_EVENT_DRAW_MAIN_END, g);
     lv_obj_add_event_cb(o, glass_free, LV_EVENT_DELETE, g);
@@ -197,9 +212,75 @@ void idisc_glass_on(lv_obj_t *o, int radius, const lv_image_dsc_t *src){
         lv_obj_set_style_bg_main_opa(o, LV_OPA_COVER, 0); lv_obj_set_style_bg_grad_opa(o, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(o, 0, 0);
     }
+    if(!idisc_reduce_motion() && lv_obj_get_width(o) <= 200){            /* (kopi.30) pressed glass swells a little, like a */
+        static const lv_style_prop_t P[] = { LV_STYLE_TRANSFORM_WIDTH, LV_STYLE_TRANSFORM_HEIGHT, 0 };   /* lens under */
+        static lv_style_transition_dsc_t in, out;                                                   /* the finger */
+        static int init; if(!init){ init = 1; lv_style_transition_dsc_init(&in, P, lv_anim_path_ease_out, 90, 0, NULL);
+                                    lv_style_transition_dsc_init(&out, P, lv_anim_path_overshoot, 220, 0, NULL); }
+        lv_obj_set_style_transform_width(o, 3, LV_STATE_PRESSED); lv_obj_set_style_transform_height(o, 2, LV_STATE_PRESSED);
+        lv_obj_set_style_transition(o, &in, LV_STATE_PRESSED); lv_obj_set_style_transition(o, &out, 0);
+    }
     lv_obj_set_style_bg_color(o, TC(FIXED_MEDIA_WHITE), LV_STATE_PRESSED); lv_obj_set_style_bg_grad_dir(o, LV_GRAD_DIR_NONE, LV_STATE_PRESSED);
     lv_obj_set_style_bg_opa(o, th_id_glass() ? (dark() ? 90 : 200) : LV_OPA_COVER, LV_STATE_PRESSED);
     if(!th_id_glass()){ lv_obj_set_style_bg_color(o, TC(SURFACE_PRESSED), LV_STATE_PRESSED); }
+}
+/* ---- materialize (kopi.30) ---------------------------------------------------------------------------------------
+ * Liquid Glass doesn't fade: the material comes up from clear - frost, tint and rim from nothing to full - and the
+ * content on it arrives in the last part. Out is the same backwards: the content leaves first, then the glass thins
+ * away. Glass on the glass (a sheet's pills) follows its parent. With Reduce motion it's quicker and nothing moves. */
+int idisc_reduce_motion(void){ return simple_cfg_get_int("reduce_motion", 0) != 0; }
+static void material_set(lv_obj_t *o, int m){
+    if(m < 0) m = 0;
+    if(m > 255) m = 255;
+    glass_t *g = NULL;
+    for(uint32_t i = 0; i < lv_obj_get_event_count(o); i++){ lv_event_dsc_t *d = lv_obj_get_event_dsc(o, i);
+        if(d && lv_event_dsc_get_cb(d) == glass_under){ g = lv_event_dsc_get_user_data(d); break; } }
+    if(g){
+        if(!g->have_base){ g->have_base = 1; g->base_main = lv_obj_get_style_bg_main_opa(o, 0); g->base_grad = lv_obj_get_style_bg_grad_opa(o, 0);
+                           g->base_border = lv_obj_get_style_border_opa(o, 0); }
+        g->m = (uint8_t)m;
+        lv_obj_set_style_bg_main_opa(o, (lv_opa_t)(g->base_main * m / 255), 0); lv_obj_set_style_bg_grad_opa(o, (lv_opa_t)(g->base_grad * m / 255), 0);
+        lv_obj_set_style_border_opa(o, (lv_opa_t)(g->base_border * m / 255), 0);
+        if(m == 255) g->have_base = 0;                                       /* at rest: the next one reads it afresh */
+    } else lv_obj_set_style_bg_opa(o, (lv_opa_t)m, 0);                       /* tinted (solid) glass: no material to grow */
+    int c = (m - 110) * 255 / 145; if(c < 0) c = 0;                          /* the content: the last part */
+    for(uint32_t i = 0; i < lv_obj_get_child_count(o); i++) lv_obj_set_style_opa(lv_obj_get_child(o, i), (lv_opa_t)c, 0);
+    lv_obj_invalidate(o);
+}
+void idisc_material(lv_obj_t *o, int m){ material_set(o, m); }
+static void mat_exec(void *o, int32_t v){ material_set(o, v); }
+static void mat_done(lv_anim_t *a){ lv_obj_t *o = a->var; if(a->user_data) ((void (*)(lv_obj_t *))a->user_data)(o); }
+void idisc_materialize(lv_obj_t *o, int in, void (*done)(lv_obj_t *)){
+    if(!o) return;
+    lv_anim_delete(o, mat_exec);
+    int rm = idisc_reduce_motion();
+    if(!screen_get_anim()){ material_set(o, in ? 255 : 0); if(done) done(o); return; }
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, o); lv_anim_set_exec_cb(&a, mat_exec);
+    lv_anim_set_values(&a, in ? 0 : 255, in ? 255 : 0);
+    lv_anim_set_duration(&a, rm ? 140 : in ? 300 : 200);
+    lv_anim_set_path_cb(&a, in ? lv_anim_path_ease_out : lv_anim_path_ease_in);
+    a.user_data = (void *)done; lv_anim_set_completed_cb(&a, mat_done);
+    material_set(o, in ? 0 : 255); lv_anim_start(&a);
+}
+static void scrim_exec(void *o, int32_t v){ lv_obj_set_style_bg_opa(o, (lv_opa_t)v, 0); }
+static void sheet_gone(lv_obj_t *card){ lv_obj_t *r = lv_obj_get_parent(card); if(r) lv_obj_delete_async(r); }
+void idisc_sheet_in(lv_obj_t *root, lv_obj_t *card){
+    if(!th_idisc() || !screen_get_anim()) return;
+    int to = lv_obj_get_style_bg_opa(root, 0);
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, root); lv_anim_set_exec_cb(&a, scrim_exec);
+    lv_anim_set_values(&a, 0, to); lv_anim_set_duration(&a, 200); lv_anim_start(&a);
+    idisc_materialize(card, 1, NULL);
+}
+void idisc_sheet_out(lv_obj_t *root, lv_obj_t *card){
+    if(!root) return;
+    if(!th_idisc() || !screen_get_anim() || !card){ lv_obj_delete_async(root); return; }
+    struct { lv_obj_t *o[64]; int n; } st = { { card }, 1 };            /* nothing on it can be tapped while it goes */
+    while(st.n){ lv_obj_t *o = st.o[--st.n]; lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE);
+                 for(uint32_t i = 0; i < lv_obj_get_child_count(o) && st.n < 64; i++) st.o[st.n++] = lv_obj_get_child(o, i); }
+    lv_anim_delete(root, scrim_exec);
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, root); lv_anim_set_exec_cb(&a, scrim_exec);
+    lv_anim_set_values(&a, lv_obj_get_style_bg_opa(root, 0), 0); lv_anim_set_duration(&a, 200); lv_anim_start(&a);
+    idisc_materialize(card, 0, sheet_gone);
 }
 void idisc_glass(lv_obj_t *o, int radius){ if(th_id_glass()) wall_make(); idisc_glass_on(o, radius, g_wall_ok ? &g_frost_dsc : NULL); }
 /* a solid surface (a lit tile): no frost under it */
@@ -783,7 +864,15 @@ void idisc_qs_art(const void *cover){
     else show(q_art, 0);
 }
 void idisc_qs_battery(int pct, int charging){ if(pct < 0) return; q_batt = pct > 100 ? 100 : pct; q_chg = charging; idisc_qs_refresh(); }
-static void q_pos(void *o, int32_t v){ lv_obj_set_y(o, v); }
+/* As the panel comes down, its glass materializes row by row (the media card first, then each row of tiles a beat
+ * later) instead of arriving finished; going up, it thins away in the same order backwards. */
+static void q_pos(void *o, int32_t v){
+    lv_obj_set_y(o, v);
+    int p = (v + 360) * 255 / 360;                                       /* 0 up .. 255 down */
+    if(idisc_reduce_motion() || !th_id_glass()) p = 255;
+    if(q_media) material_set(q_media, p * 3 / 2);
+    for(int k = 0; k < 8; k++) if(q_tile[k]) material_set(q_tile[k], (p - 40 - (k / 4) * 35) * 2);
+}
 static void q_hidden(lv_anim_t *a){ (void)a; if(!q_open && q_root) lv_obj_add_flag(q_root, LV_OBJ_FLAG_HIDDEN); }
 void idisc_qs_slide(int open){
     if(!q_panel) return;
@@ -792,7 +881,8 @@ void idisc_qs_slide(int open){
     lv_anim_delete(q_panel, q_pos);
     lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, q_panel); lv_anim_set_exec_cb(&a, q_pos);
     lv_anim_set_values(&a, lv_obj_get_y(q_panel), open ? 0 : -360);
-    lv_anim_set_duration(&a, screen_get_anim() ? 260 : 1); lv_anim_set_path_cb(&a, open ? lv_anim_path_overshoot : lv_anim_path_ease_in);
+    lv_anim_set_duration(&a, screen_get_anim() ? 260 : 1);
+    lv_anim_set_path_cb(&a, open && !idisc_reduce_motion() ? lv_anim_path_overshoot : open ? lv_anim_path_ease_out : lv_anim_path_ease_in);
     lv_anim_set_completed_cb(&a, q_hidden); lv_anim_start(&a);
 }
 
@@ -814,19 +904,22 @@ static void v_bar_cb(lv_event_t *e){
     int w = lv_area_get_width(&a), v = (int)((long)(p.x - a.x1) * vmax() / (w > 1 ? w : 1));
     if(v < 0) v = 0;
     if(v > vmax()) v = vmax();
+    if(c == LV_EVENT_PRESSED) lv_obj_add_state(v_card, LV_STATE_USER_1);    /* held: the capsule swells, its glass thicker */
+    else if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) lv_obj_remove_state(v_card, LV_STATE_USER_1);
     if(c == LV_EVENT_PRESSED || c == LV_EVENT_PRESSING){
         if(v != v_val){ v_val = v; v_paint(); if(lv_tick_elaps(v_sent) >= 120){ ui_set_volume(v); v_sent = lv_tick_get(); v_pending = 0; } else v_pending = 1; }
     } else if((c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) && v_pending){ ui_set_volume(v_val); v_sent = lv_tick_get(); v_pending = 0; }
     lv_timer_reset(v_tm);
 }
 static void v_outside_cb(lv_event_t *e){ if(lv_event_get_target(e) == v_root) v_close(); }
-static void v_anim(void *o, int32_t v){ (void)o; lv_obj_set_style_opa(v_card, (lv_opa_t)v, 0); lv_obj_set_y(v_card, 34 - (255 - v) * 30 / 255); }
+/* in: the capsule drops 12 px while its glass materializes (no fade); out: the reverse. Reduce motion: no drop. */
+static void v_anim(void *o, int32_t v){ (void)o; material_set(v_card, v); lv_obj_set_y(v_card, idisc_reduce_motion() ? 34 : 34 - (255 - v) * 12 / 255); }
 static void v_hidden(lv_anim_t *a){ (void)a; v_closing = 0; lv_obj_add_flag(v_root, LV_OBJ_FLAG_HIDDEN); }
 static void v_close(void){
     if(!v_root || v_closing || lv_obj_has_flag(v_root, LV_OBJ_FLAG_HIDDEN)) return;
     lv_timer_pause(v_tm); v_closing = 1;
     lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, v_root); lv_anim_set_exec_cb(&a, v_anim);
-    lv_anim_set_values(&a, 255, 0); lv_anim_set_duration(&a, screen_get_anim() ? 160 : 1);
+    lv_anim_set_values(&a, 255, 0); lv_anim_set_duration(&a, screen_get_anim() ? 180 : 1); lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
     lv_anim_set_completed_cb(&a, v_hidden); lv_anim_start(&a);
 }
 static void v_timeout(lv_timer_t *t){ if(v_bar && lv_obj_has_state(v_bar, LV_STATE_PRESSED)){ lv_timer_reset(t); return; } v_close(); }
@@ -839,6 +932,16 @@ void idisc_volume_show(int vol){
         if(th_id_glass()){ lv_obj_set_style_bg_color(v_card, TC(SURFACE_RAISED), 0); lv_obj_set_style_bg_grad_color(v_card, TC(SURFACE), 0);
                            lv_obj_set_style_bg_main_opa(v_card, 245, 0); lv_obj_set_style_bg_grad_opa(v_card, 235, 0); }
         lv_obj_add_flag(v_card, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_style_shadow_color(v_card, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_shadow_offset_y(v_card, 4, 0);
+        lv_obj_set_style_shadow_width(v_card, 14, 0); lv_obj_set_style_shadow_opa(v_card, 50, 0);
+        lv_obj_set_style_shadow_width(v_card, 26, LV_STATE_USER_1); lv_obj_set_style_shadow_opa(v_card, 95, LV_STATE_USER_1);   /* deeper */
+        if(!idisc_reduce_motion()){
+            lv_obj_set_style_transform_width(v_card, 6, LV_STATE_USER_1); lv_obj_set_style_transform_height(v_card, 4, LV_STATE_USER_1);
+            static const lv_style_prop_t P[] = { LV_STYLE_TRANSFORM_WIDTH, LV_STYLE_TRANSFORM_HEIGHT, LV_STYLE_SHADOW_WIDTH, LV_STYLE_SHADOW_OPA, 0 };
+            static lv_style_transition_dsc_t sw, back;
+            lv_style_transition_dsc_init(&sw, P, lv_anim_path_ease_out, 140, 0, NULL); lv_style_transition_dsc_init(&back, P, lv_anim_path_overshoot, 260, 0, NULL);
+            lv_obj_set_style_transition(v_card, &sw, LV_STATE_USER_1); lv_obj_set_style_transition(v_card, &back, 0);
+        }
         v_icon = text(v_card, theme_font_original(16), TC(TEXT_PRIMARY), 0); lv_obj_align(v_icon, LV_ALIGN_LEFT_MID, 18, 0);
         v_bar = plain(v_card); lv_obj_set_size(v_bar, 132, 10); lv_obj_align(v_bar, LV_ALIGN_LEFT_MID, 50, 0);
         lv_obj_set_style_radius(v_bar, 5, 0); lv_obj_set_style_clip_corner(v_bar, true, 0);
@@ -861,7 +964,8 @@ void idisc_volume_show(int vol){
     if(hidden || v_closing){
         lv_anim_delete(v_root, NULL); v_closing = 0;
         lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, v_root); lv_anim_set_exec_cb(&a, v_anim);
-        lv_anim_set_values(&a, hidden ? 0 : lv_obj_get_style_opa(v_card, 0), 255); lv_anim_set_duration(&a, screen_get_anim() ? 220 : 1);
+        glass_t *g = glass_of(v_card); int from = hidden ? 0 : (g ? g->m : 255);
+        lv_anim_set_values(&a, from, 255); lv_anim_set_duration(&a, screen_get_anim() ? (idisc_reduce_motion() ? 140 : 280) : 1);
         lv_anim_set_path_cb(&a, lv_anim_path_ease_out); lv_anim_start(&a);
     }
     lv_timer_reset(v_tm); lv_timer_resume(v_tm);
@@ -891,6 +995,10 @@ static lv_obj_t *id_header(lv_obj_t *root, const char *title, lv_event_cb_t back
     lv_obj_set_pos(t, 108, 34); lv_obj_set_size(t, 144, 26);
     lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_CENTER, 0);
     idisc_title_style(t);
+    if(title && lv_text_get_width(title, (uint32_t)strlen(title), TF(HEADER), 0) > 144){   /* (kopi.30) a long title: smaller, */
+        lv_obj_set_pos(t, 112, 34); lv_obj_set_width(t, 166); lv_obj_set_style_text_align(t, LV_TEXT_ALIGN_LEFT, 0);   /* never under Back: */
+        lv_label_set_long_mode(t, LV_LABEL_LONG_DOT);                                                             /* to the right */
+    }
     return t;
 }
 static void id_title(lv_obj_t *l, const char *s){ lv_label_set_text(l, s); idisc_title_style(l); }

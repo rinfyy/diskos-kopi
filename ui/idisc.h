@@ -6,7 +6,12 @@
 #include "lvgl/lvgl.h"
 void idisc_wallpaper(lv_obj_t *o);            /* the soft wallpaper (Clear glass) or the plain canvas (Tinted) */
 void idisc_glass(lv_obj_t *o, int radius);    /* a glass surface over the wallpaper */
-void idisc_glass_on(lv_obj_t *o, int radius, const lv_image_dsc_t *src);   /* ... over another screen-aligned 360 px frost (NULL: none) */
+void idisc_glass_on(lv_obj_t *o, int radius, const lv_image_dsc_t *src);
+int  idisc_reduce_motion(void);                         /* Settings > Display > Reduce motion (kopi.30) */
+void idisc_materialize(lv_obj_t *o, int in, void (*done)(lv_obj_t *));   /* glass comes up from clear (or goes), then its content */
+void idisc_material(lv_obj_t *o, int m);                /* set it directly, 0..255 (a gesture drives it) */
+void idisc_sheet_in(lv_obj_t *root, lv_obj_t *card);    /* a sheet over a scrim: the scrim darkens, the card materializes */
+void idisc_sheet_out(lv_obj_t *root, lv_obj_t *card);   /* ...and back; root is deleted at the end (all themes) */   /* ... over another screen-aligned 360 px frost (NULL: none) */
 void idisc_solid(lv_obj_t *o);                /* a glass surface made solid (a lit tile): no frost under it */
 void idisc_title_style(lv_obj_t *l);
 void idisc_home_create(lv_obj_t *root); void idisc_home_now_playing(const char *title, const char *artist, int playing);

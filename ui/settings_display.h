@@ -124,6 +124,7 @@ static int display_retired_reason(const setting_t *s){            /* (kopi.27) a
 static int display_variant_hidden(const setting_t *s){
     if(display_retired_reason(s))return 1;
     if(th_nt()&&s->apply==apply_grp_discoqs)return 1;
+    if(!th_idisc()&&s->cfg_key&&!strcmp(s->cfg_key,"reduce_motion"))return 1;   /* (only iDisc's glass moves this way) */
     if(th_nt()&&s->cfg_key&&!strcmp(s->cfg_key,"disco_title_hold"))return 1;   /* NTDisk / iDisc: holding the title opens the song */              /* NTDisk / iDisc have one Quick settings layout: an empty page */
     if(s->cfg_key&&th_zune()&&!strcmp(s->cfg_key,"saver_style"))return 1;
     if(s->apply==apply_grp_zune&&!th_zune())return 1;

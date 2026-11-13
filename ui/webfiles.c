@@ -584,8 +584,8 @@ static int start_server(void){
 int webfiles_running(void){ return g_live; }
 
 /* ---- the sheet: address, code, what's happening, Stop ---- */
-static lv_obj_t *g_root, *g_addr, *g_code, *g_stat, *g_btn_l;
-static void sheet_close(void){ if(g_root){ lv_obj_delete_async(g_root); g_root = NULL; g_addr = g_code = g_stat = g_btn_l = NULL; } }
+static lv_obj_t *g_root, *g_card, *g_addr, *g_code, *g_stat, *g_btn_l;
+static void sheet_close(void){ if(g_root){ lv_obj_t *r = g_root; g_root = NULL; g_addr = g_code = g_stat = g_btn_l = NULL; idisc_sheet_out(r, g_card); g_card = NULL; } }
 static void fmt_size(char *o, size_t n, long long b){
     if(b < 1024 * 1024) snprintf(o, n, "%lld KB", b / 1024);
     else if(b < 1024LL * 1024 * 1024) snprintf(o, n, "%.1f MB", (double)b / 1048576.0);
@@ -643,6 +643,7 @@ void webfiles_open(void){
     lv_obj_add_event_cb(b, btn_cb, LV_EVENT_CLICKED, NULL);
     g_btn_l = lbl(b, TF(UI_18), th_nt_caps() ? TC(CANVAS) : TC(ON_ACCENT)); lv_obj_center(g_btn_l);
     sheet_paint();
+    g_card = card; idisc_sheet_in(g_root, card);
 }
 int webfiles_sheet_visible(void){ return g_root != NULL; }
 void webfiles_demo(void){                                              /* host renders only: the sheet as if on */

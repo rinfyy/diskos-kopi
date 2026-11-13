@@ -1003,6 +1003,7 @@ static const setting_t TABLE[] = {
     {"Music screen","Information",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_grp_musicinfo,0,"Clock, album and track details",NULL},
     {"Music screen","Progress",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_grp_musicprogress,0,"Progress colour and shape",NULL},
     {"Music screen","Immersive",ST_ACTION,NULL,0,0,0,NULL,0,LV_SYMBOL_RIGHT,apply_grp_immersive,0,"Disc style and lyrics",NULL},
+    {"Display","Reduce motion",ST_TOGGLE,"reduce_motion",0,1,0,NULL,0,NULL,NULL,0,"Less movement: iDisc's glass appears without dropping or swelling, panels don't bounce. Quicker, calmer.",NULL},   /* (kopi.30) */
     { "Display",  "Brightness",  ST_SLIDER, "brightness", 4,40,2, NULL,0, NULL, apply_brightness_row, 16,
       "Screen backlight level. While Outdoor Mode is on the screen stays at full brightness.", NULL },
     { "Display", "Theme", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_grp_themecolours, 0,

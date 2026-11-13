@@ -17,12 +17,12 @@
 #include <stdio.h>
 #include <string.h>
 
-static lv_obj_t *g_root, *g_status;
+static lv_obj_t *g_root, *g_card, *g_status;
 static lv_timer_t *g_tm;
 static const int MINS[7] = { 0, 15, 30, 45, 60, 90, 120 };
 static void close_sheet(void){
     if(g_tm){ lv_timer_delete(g_tm); g_tm = NULL; }
-    if(g_root){ lv_obj_delete_async(g_root); g_root = NULL; g_status = NULL; }
+    if(g_root){ lv_obj_t *r = g_root; g_root = NULL; g_status = NULL; idisc_sheet_out(r, g_card); g_card = NULL; }   /* (iDisc: thins away) */
 }
 static void status_paint(void){
     if(!g_status) return;
@@ -89,6 +89,7 @@ void sleep_sheet_open(void){
         lv_obj_t *l = label(b, TF(UI_14), fg, NAMES[k]); lv_obj_center(l);
     }
     status_paint();
+    g_card = card; idisc_sheet_in(g_root, card);
     g_tm = lv_timer_create(tick_cb, 1000, NULL);
 }
 int sleep_sheet_visible(void){ return g_root != NULL; }

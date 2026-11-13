@@ -1420,7 +1420,7 @@ int main(int argc, char **argv){
             if(getenv("NT_PK")){void settings_test_playkey(void);settings_test_playkey();nav_wait(100);}
             if(getenv("NT_OV")){disco_track_overlay_open();nav_wait(200);}
             if(getenv("NT_MENU")){disco_nav_set_open(1);nav_wait(300);}
-            if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}if(getenv("POWERMENU")){power_menu_open();nav_wait(60);}
+            if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}if(getenv("POWERMENU")){power_menu_open();nav_wait(60);}if(getenv("MATDEMO")){lv_obj_t *c=lv_obj_create(lv_layer_top());lv_obj_remove_style_all(c);lv_obj_set_size(c,250,150);lv_obj_center(c);idisc_glass(c,40);lv_obj_t *t=lv_label_create(c);lv_label_set_text(t,"Glass");lv_obj_set_style_text_font(t,TF(HEADER),0);lv_obj_set_style_text_color(t,TC(TEXT_PRIMARY),0);lv_obj_center(t);if(getenv("MATPRESS"))lv_obj_add_state(c,LV_STATE_USER_1);idisc_material(c,atoi(getenv("MATDEMO")));nav_wait(400);}
             if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}
             if(getenv("NT_SPIN")){nt_spin_open();for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();}
                 if(!strcmp(getenv("NT_SPIN"),"0")){for(int i=0;i<460;i++){lv_tick_inc(10);lv_timer_handler();}}}   /* 0: after the controls hide */
