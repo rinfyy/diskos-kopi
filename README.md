@@ -1,330 +1,185 @@
-<h1 align="center">diskOS Disco!</h1>
-
-> **Development builds on `dev` are experimental / in testing.** Use tagged releases for the published downloads. [Development notes](docs/DEV.md).
-
-**Disco! 3.0.1:** Focus A–Z wheel, unified settings and idle-shutdown fixes. [Release notes](docs/releases/v3.0.1.md) · [Validation notes](docs/RELEASE_3.0.1.md).
+<h1 align="center">diskOS kopi</h1>
 
 <p align="center">
-  <b>Your music. Your kind of Disco.</b><br>
-  A touch UI for the round screen of the FiiO Snowsky Disc, built on
+  <b>Custom firmware for the FiiO Snowsky Disc.</b><br>
+  Three themes made for the round screen: <b>NTDisk</b>, <b>iDisc</b> and <b>Null</b>.<br>
+  Built on <a href="https://github.com/zmd22/diskos-disco">zmd22's diskOS Disco! 3.0.1</a>, which is built on
   <a href="https://github.com/b0hemia/diskos">b0hemia's diskOS</a>.
 </p>
 
 <p align="center">
-  <img src="docs/site/zune-300.jpg" width="1000" alt="Zune theme by namastecoconut-imagined: Menu, Now Playing and Immersive 3.0">
+  <img src="docs/kopi/hero.png" width="1000" alt="diskOS kopi: NTDisk, iDisc and Null">
 </p>
 
 <p align="center">
-  <a href="https://github.com/zmd22/diskos-disco/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/zmd22/diskos-disco?label=Disco!&color=B36BFF&style=flat-square"></a>
+  <img alt="kopi 3.0.1-kopi.31" src="https://img.shields.io/badge/kopi-3.0.1--kopi.31-C9A27E?style=flat-square">
   <img alt="Firmware V2.57" src="https://img.shields.io/badge/firmware-V2.57-4AD8FF?style=flat-square">
   <img alt="Status: experimental / in testing" src="https://img.shields.io/badge/status-experimental%20%2F%20in%20testing-FFB45A?style=flat-square">
   <a href="ui/COPYING"><img alt="UI GPL-3.0-or-later" src="https://img.shields.io/badge/UI-GPL--3.0--or--later-62F28C?style=flat-square"></a>
 </p>
 
 <p align="center">
-  <a href="docs/DISCO_TOUR.md"><b>Tour</b></a> ·
-  <a href="docs/HOWTO.md"><b>How-to</b></a> ·
-  <a href="https://github.com/zmd22/diskos-disco/releases/latest"><b>Download</b></a> ·
-  <a href="#install">Install</a> ·
-  <a href="docs/WINDOWS.md"><b>Windows</b></a> ·
+  <a href="#whats-in-kopi"><b>What's in kopi</b></a> ·
+  <a href="#ntdisk">NTDisk</a> ·
+  <a href="#idisc">iDisc</a> ·
+  <a href="#null">Null</a> ·
+  <a href="#install"><b>Install</b></a> ·
   <a href="#updates-from-the-sd-card">SD updates</a> ·
-  <a href="CHANGELOG.md">Changelog</a> ·
-  <a href="https://zmd22.github.io/diskos-disco/">Website</a> ·
+  <a href="https://github.com/rinfyy/diskos-kopi/releases">Releases</a> ·
   <a href="#thanks">Thanks</a>
 </p>
-
 
 ---
 
 > [!CAUTION]
 > **Best-effort hobby project, experimental, as-is, no liability.** Flashing rewrites the Disc's root filesystem;
 > a power cut, a bad cable or an interrupted flash can leave it unbootable. Back up your music and keep the
-> saved stock image somewhere safe before you start. Not affiliated with FiiO, Snowsky or Ingenic.
+> saved stock image somewhere safe before you start. kopi builds are test builds: they are cross-compiled with a
+> different toolchain from the official Disco! releases and checked on renders and in an emulator, not on every
+> Disc. Not affiliated with FiiO, Snowsky, Ingenic or zmd22's project.
 
-## New in 3.0.1
+## What's in kopi
 
-A clearer Focus A–Z wheel, with theme-native typography, a fixed top selection and subtle fades. Settings now share one hierarchy across every theme, with dedicated theme settings and Battery & power controls. Idle shutdown retries failed requests and cancels stale requests before handoff.
+**Latest: 3.0.1-kopi.31**: power-button fixes, Idle Power-off that works with a paused player (and says what
+it's doing), tap the title for the lyric line, Immersive that follows the song.
 
-[3.0.1 release notes](docs/releases/v3.0.1.md)
+- **Three themes, and only three.** NTDisk, iDisc and Null; Disco, Squash, Zune, Ring, Braun and Stone are
+  gone, which made the interface 1.3 MB smaller. A Disc on a removed theme starts in NTDisk.
+- **Battery first.** Battery saver (Off / On / Auto at 20 %), a calmer main loop when nothing moves, and a
+  battery page with how long a full charge lasts, screen off and on.
+- **Wi-Fi file transfer.** Open the Disc's address in any browser on the same Wi-Fi, type the 4-digit code, and
+  upload (files or whole folders), download, rename and delete on the SD card. It switches itself off when unused.
+- **Vibe play mode.** Each song is followed by a similar one (SongSphere, genre, artist, length), and the queue
+  carries on with similar songs when it runs out. The next queued song starts the moment the current one ends.
+- **Hold the power button** for Shut down / Restart / Cancel. A short press turns the screen on and off.
+- **Sleep timer, one tap away**: 15 min to 2 hours or end of song, from Quick Settings, Shortcuts or Settings.
+- **Shortcuts for anything**: eight slots, any action, app, settings page or single setting.
+- **Music screen made for thumbs**: the top half of the CD / cover does nothing (so the top menu is safe), slide
+  the lower half to seek, hold for Immersive, tap the title for the lyric line, hold it for the song.
+- **Immersive**: full-screen lyrics that stay centred, or the whole cover as a spinning CD with controls.
+- **Equalizer**: an **IM4 Harman** preset (Fosi Audio IM4 toward the Harman in-ear target), Copy / Paste /
+  Delete for USER presets, and a preamp up to +10 dB.
+- **Settings that ask once.** Style changes ask "Restart / Later / Undo" when you leave the page; EQ edits ask
+  "Keep / Undo".
 
-## Introduced in 3.0.0 — hello, Zune.
+Every release's full notes are in its zip's `README.md`.
 
-**Zune by [namastecoconut-imagined](https://github.com/namastecoconut-imagined/diskos-disco-zune/commits?author=namastecoconut-imagined).** Bold type, deep black and an accent you choose. The original theme’s design and implementation are the foundation; zmd22 gave it a little Disco integration and polish. Thank you for sharing this lovely new way to enjoy the Disc.
+## NTDisk
 
-**Immersive 3.0** brings Zune the shared spinning-disc transition and transport overlay. Larger small text, balanced settings, configurable tap/double-tap/hold shortcuts, a modal accent volume dial and shared Wall/Coverflow album views round out the update. The website adds an interactive seven-screen Zune walkthrough in four accents, including Immersive with its transport controls open.
-
-[Zune guide](docs/themes/zune.md) · [3.0.0 notes](docs/releases/v3.0.0.md) · [Release checklist](docs/RELEASE_3.0.0.md)
-
-## Also included from 2.7.0
-
-**Your music, to go.** Disc Shelf is now built in. Browse a Navidrome library or an SMB3 share, select what you want and download original files to the card. It follows Disco, Null and Squash, with familiar swipe selection and both letter pickers. Nothing syncs while the app is closed. New Navidrome files use `Artist/YYYY - Album/NN. Track name.ext`.
-
-**Hold. Shuffle. Listen.** Set your menu hold action to **Shuffle!** to start the whole song library, return to Music and see “Happy listening!”. SongSphere also gets a themed preview with an explicit Open button, so browsing past it keeps you in control.
-
-Downloads now show clearer progress and speed. Copy jobs temporarily disable Wi-Fi power saving when needed and restore the previous mode afterward. Batched SD writes reduce small-write overhead; an actual transfer-speed gain depends on your card and network. Navidrome has been tried on the Disc; SMB3 remains experimental pending real NAS testing.
-
-[What’s new](docs/releases/v2.7.0.md) · [Set up Disc Shelf](docs/DISC_SHELF_INSTALL.md) · [Quick how-to](docs/HOWTO.md)
-
-## Big. Bold. Squash.
-
-**[Squash](docs/themes/squash.md)** is our warm, readable take on the round screen: large Nunito Bold text, charcoal or off-white with orange accents, and controls made for touch. Double-tap track text to play/pause, swipe to skip, and tap D! for a rising circular launcher. Eight editable Quick Settings and a clean bottom volume arc keep everyday actions close.
-
-**Help is part of the interface.** Open **Settings → Help → How to** for one-topic pages. Contextual first-use hints and **Show hints again** live in **Display → Navigation**. Learning is saved separately in Squash, Disco and Null.
-
-**Null stays pixel-perfect.** Its full section and customization options remain, alongside Disco, Ring and Braun. Each theme keeps its own look and preferences.
-
-[Squash guide](docs/themes/squash.md) · [How-to](docs/HOWTO.md) · [Try the customizer](https://zmd22.github.io/diskos-disco/#yourway)
-
-## The idea
-
-The Snowsky Disc looks like a CD. Disco! leans into that. The playing album's cover fills the 360 px round
-screen, sharp on **Music** and softly blurred and tinted behind every other screen. A faint CD-rainbow sheen
-runs around the rim. Everything you touch sits on glass around a **navigation circle** that slides out of the
-right edge (or the left: there's a left-handed mode).
-
-Underneath it is all diskOS: b0hemia's installer, boot chain, signed updates, player and library. Disco!
-replaces only what you see and touch.
+Monochrome with a red dot: a dot-matrix clock, a turning CD and full-screen lyrics. Five styles: Mix,
+Dark, Light, **Cream** and **Midnight**.
 
 <table>
 <tr>
-<td align="center" width="25%"><img src="docs/disco/music.png" width="190" alt="Music"><br><sub><b>Music</b>: cover, clock, weather, rainbow seek line</sub></td>
-<td align="center" width="25%"><img src="docs/disco/nav-open.png" width="190" alt="Navigation circle"><br><sub><b>Navigation circle</b>: your sections, your order</sub></td>
-<td align="center" width="25%"><img src="docs/disco/music-overlay.png" width="190" alt="Title menu"><br><sub><b>Tap the title</b>: favourite, album, artist, queue, lyrics</sub></td>
-<td align="center" width="25%"><img src="docs/disco/music-arc.png" width="190" alt="Progress arc"><br><sub><b>Progress arc</b>: seek around the rim</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nhome.png" width="190" alt="NTDisk Music"><br><sub><b>Music</b>: the turning CD</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nlyr.png" width="190" alt="Lyrics"><br><sub><b>Lyrics</b>, always centred</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nspin.png" width="190" alt="Spinning album"><br><sub><b>Spinning album</b> Immersive</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nmenu.png" width="190" alt="Menu"><br><sub><b>Menu</b></sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/disco/quick.png" width="190" alt="Quick Settings"><br><sub><b>Quick Settings</b>: pull down from the top</sub></td>
-<td align="center"><img src="docs/disco/eq.png" width="190" alt="Equalizer"><br><sub><b>Equalizer</b>: ten rainbow faders</sub></td>
-<td align="center"><img src="docs/disco/volume.png" width="190" alt="Volume"><br><sub><b>Volume</b>: a rim arc you can drag</sub></td>
-<td align="center"><img src="docs/disco/weather.png" width="190" alt="Weather"><br><sub><b>Weather</b>: now and the next 12 hours</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nquick.png" width="190" alt="Quick Settings"><br><sub><b>Quick Settings</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nov.png" width="190" alt="Track actions"><br><sub><b>Hold the title</b>: the song</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nbat.png" width="190" alt="Battery"><br><sub><b>Battery</b>: level and estimates</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/neq.png" width="190" alt="Equalizer"><br><sub><b>Equalizer</b>: Copy, Paste, Delete</sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/disco/search-results.png" width="190" alt="Search"><br><sub><b>Search</b>: artists first, then songs</sub></td>
-<td align="center"><img src="docs/disco/library.png" width="190" alt="Library"><br><sub><b>Library</b>: lists that follow the curve</sub></td>
-<td align="center"><img src="docs/disco/standby.png" width="190" alt="Standby"><br><sub><b>Standby</b>: redraws once a minute</sub></td>
-<td align="center"><img src="docs/disco/music-light.png" width="190" alt="Light appearance"><br><sub><b>Light</b> appearance, or automatic by time of day</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nsleep.png" width="190" alt="Sleep timer"><br><sub><b>Sleep timer</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nfiles.png" width="190" alt="File transfer"><br><sub><b>File transfer</b>: address and code</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/npower.png" width="190" alt="Power"><br><sub><b>Hold power</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/nlib.png" width="190" alt="Library"><br><sub><b>Library</b></sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/kopi/chome.png" width="190" alt="Cream"><br><sub><b>Cream</b> style</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/cmenu.png" width="190" alt="Cream menu"><br><sub>Cream menu</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/mhome.png" width="190" alt="Midnight"><br><sub><b>Midnight</b> style</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/mmenu.png" width="190" alt="Midnight menu"><br><sub>Midnight menu</sub></td>
 </tr>
 </table>
 
-<details>
-<summary>Earlier releases: SongSphere, Stats, Windows and more</summary>
+## iDisc
 
-## New in 2.2: SongSphere built in, Apps, a new Listening Stats
-
-**SongSphere** is now part of diskOS: place albums, artists and songs by mood from the Library's hold menu or Music's
-track popup, then play a mood. **Apps** puts up to five apps, with their icons, in the navigation circle.
-**Listening Stats** gets swipeable periods, top 5s with a top 15 a tap away, and a Wrapped for each #1.
-[2.2 release notes](docs/releases/v2.2.0.md)
-
-**2.2.1** makes **USB DAC** play again on the latest firmware (it was silent) and fixes a few smaller things in
-Listening Stats, SongSphere and Album Roulette. [2.2.1 notes](docs/releases/v2.2.1.md)
-
-**2.2.2** brings a surprise and fixes the album covers in Listening Stats. [2.2.2 notes](docs/releases/v2.2.2.md)
-
-**2.4.0** includes **Null**, a complete pixel theme, and **[Squash](docs/themes/squash.md)**, a readable orange-accented theme with a floating launcher and gesture controls. It focuses on polish and usability:
-centred selectors, larger help, calmer library scrolling, contextual tooltips and full-page
-How to guidance. [2.4.0 notes and final fixes](docs/RELEASE_2.4.0.md)
-
-**2.3.0** drops the record into Immersive, adds gesture controls and hold-to-scrub, puts Quick Settings round the edge and makes Listening Stats bigger and bolder, with Highlights. [2.3.0 notes](docs/releases/v2.3.0.md)
-
-<table><tr>
-<td align="center" width="25%"><img src="docs/disco/songsphere.png" width="190" alt="SongSphere"><br><sub><b>SongSphere</b>: play by mood</sub></td>
-<td align="center" width="25%"><img src="docs/disco/apps-shelf.png" width="190" alt="Apps"><br><sub><b>Apps</b> in the circle</sub></td>
-<td align="center" width="25%"><img src="docs/disco/stats-overview.png" width="190" alt="Listening Stats"><br><sub><b>Stats</b>: swipe through time</sub></td>
-<td align="center" width="25%"><img src="docs/disco/stats-wrapped.png" width="190" alt="Wrapped"><br><sub><b>Wrapped</b> for each #1</sub></td>
-</tr></table>
-
-## New in 2.1: Listening Stats and SongSphere
-
-**Listening Stats** shows your week, month or year in music: time, top artists, albums and songs, and when you
-listen. **SongSphere**, a separate app, plays by mood: place your albums on a sphere, then drag to a mood and play.
-Immersive gets Vinyl, CD or None and an option to hide the lyrics, in every theme. A touch on a dark screen now only
-wakes it. [2.1 release notes](docs/releases/v2.1.0.md)
-
-<table><tr>
-<td align="center" width="25%"><img src="docs/disco/stats-overview.png" width="190" alt="Listening Stats"><br><sub><b>Stats</b>: your month at a glance</sub></td>
-<td align="center" width="25%"><img src="docs/disco/stats-artists.png" width="190" alt="Top artists"><br><sub><b>Top artists</b>, albums and songs</sub></td>
-<td align="center" width="25%"><img src="docs/disco/stats-clock.png" width="190" alt="When you listen"><br><sub><b>When you listen</b></sub></td>
-<td align="center" width="25%"><img src="docs/disco/songsphere.png" width="190" alt="SongSphere"><br><sub><b>SongSphere</b>: play by mood</sub></td>
-</tr></table>
-
-## New in 2.0: install from Windows
-
-**diskOS Disco! for Windows** installs Disco! on your Disc by clicking through four pages: it checks your PC, sets up
-everything it needs, flashes the Disc and later makes your SD updates. No terminal, no Linux.
-[What it does and how to use it](docs/WINDOWS.md) ·
-**[Download it](https://github.com/zmd22/diskos-disco/releases/latest/download/diskOS-Disco-for-Windows.zip)**
-
-<table><tr>
-<td align="center" width="25%"><img src="docs/windows/check.png" width="190" alt="Check this PC"><br><sub><b>1. Check</b> this PC</sub></td>
-<td align="center" width="25%"><img src="docs/windows/prepare.png" width="190" alt="Prepare"><br><sub><b>2. Prepare</b> diskOS's environment</sub></td>
-<td align="center" width="25%"><img src="docs/windows/install.png" width="190" alt="Install"><br><sub><b>3. Install</b> on the Disc</sub></td>
-<td align="center" width="25%"><img src="docs/windows/update.png" width="190" alt="Update"><br><sub><b>4. Update</b> from the SD card</sub></td>
-</tr></table>
-
-Also in 2.0: no more false "Couldn't start playback" when a big playlist takes a moment to load. Everything from
-1.5.0 is here too: [Boomshine](docs/DISCO_TOUR.md#boomshine), any app in the navigation circle, and landing pages.
-
-All the details: [2.2.1 fixes](docs/releases/v2.2.1.md) · [2.2 release notes](docs/releases/v2.2.0.md) · [2.1](docs/releases/v2.1.0.md) · [2.0](docs/releases/v2.0.0.md) · [1.5.0](docs/releases/v1.5.0.md) · [changelog](CHANGELOG.md).
-
-</details>
-
-## Highlights
-
-- **Listening Stats.** Your week, month or year in music, built in. [What it shows](docs/DISCO_TOUR.md#listening-stats).
-- **SongSphere.** Play by mood: place albums, artists and songs on a sphere, then pick a mood. Built in.
-  [How it works](docs/DISCO_TOUR.md#songsphere).
-- **Apps.** Up to five apps, with their icons, in the navigation circle. [More](docs/DISCO_TOUR.md#apps).
-- **Boomshine.** A built-in chain-reaction game: one tap, one blast, as many dots as you can catch.
-  [How to play](docs/DISCO_TOUR.md#boomshine).
-- **Album Roulette.** Too much music, nothing to play? Spin your collection: covers fly past, slow down and
-  land on an album. Tap **Play!** to listen, hold the cover to spin again. Built in:
-  [how it works](docs/DISCO_TOUR.md#album-roulette).
-- **Disc Shelf.** Built-in Navidrome and SMB3 browsing with original-file downloads. Swipe to select; download missing files
-  or explicitly replace Disc Shelf downloads. [Set it up](docs/DISC_SHELF_INSTALL.md), [take the tour](docs/DISCO_TOUR.md#disc-shelf).
-- **Your apps in the menu.** Any installed app can sit in the navigation circle, with its own landing page.
-- **Music is home.** Big title and artist (centred or from the left), the play mode one tap away, transport on an
-  arc. Progress as a rainbow **line** under the title or an **arc** around the rim. Drag either to seek.
-- **Tap the title** for Favourite, Album, Artist, Queue, Lyrics and Info. **Hold it** to go straight to the
-  full-screen cover, or to favourite the song.
-- **A queue that behaves.** *Add to queue* from any hold menu. Queued songs play next, in order, then your music
-  carries on where it was.
-- **Hold anything** in the library (song, album, artist, genre, file, folder) for its actions. A tap still plays.
-- **Gestures with feedback.** Swipe from the edge to go back (left edge, or right in left-handed mode), swipe up
-  from the bottom for Music, pull down for Quick Settings. A bubble fills with the accent colour once the swipe
-  will count.
-- **Readable on any cover.** Text and fades adapt to each album, and the accent colour follows the cover (or your
-  own pick).
-- **Display settings** let you choose the menu sections, clock, track times, track number, title position, font and hold,
-  rim sheen, EQ / volume / progress colours, progress shape, Quick Settings, the side and the scroll style; the same
-  menu in every theme ([map](docs/DISPLAY_SETTINGS.md)).
-- **MA Sendspin** *(experimental)*: the Disc as a [Music Assistant](https://www.music-assistant.io/) speaker, with
-  the track, cover and controls on Music. See the [tour](docs/DISCO_TOUR.md#ma-sendspin-experimental).
-- **Safe updates.** Signed builds from the SD card install as a trial and roll back by themselves if they don't
-  work out. FiiO's own interface is always one setting (or one held key) away.
-
-Every screen, gesture and setting is in the **[tour](docs/DISCO_TOUR.md)**. Quick answers are in the
-**[how-to](docs/HOWTO.md)**.
-
-## Theme 02: Null
-
-Null is second after Disco in the theme picker. Bold pixel type, blue/yellow or red/lime,
-black or dark album backgrounds, and a sliding menu give it its own character. Quick
-Settings offers text or familiar Disco icons with artwork, transport and side bars.
-
-<table><tr>
-<td align="center"><img src="docs/null/music.png" width="220" alt="Null Music"><br>Music</td>
-<td align="center"><img src="docs/null/quick.png" width="220" alt="Null QS"><br>Quick Settings</td>
-<td align="center"><img src="docs/null/howto.png" width="220" alt="Null How to"><br>How to</td>
-</tr></table>
-
-Four font combinations include Matrix: large dot-matrix headings with terminal details.
-Reorder the menu, choose text or icon QS, and set handle double-tap/hold shortcuts.
-Null is right-handed. Both Disco and Null include one-topic How to pages and contextual
-hints; selectors and explanations are larger, with room to read and tap.
-See the [Null guide](docs/NULL_THEME.md) for the complete design and settings.
-
-Building another theme? Start with the [theme authoring framework](themes.md): shared features, component hooks, scoped options and a focused acceptance checklist.
-
-## Also included: Ring and Braun
-
-Two more complete themes, with the same features and settings, are in **Settings › Display › Theme › Theme**.
-**Their development is frozen:** they keep working and get fixes that apply to every theme, but no new changes;
-new features land in Disco, Squash and Null.
+Frosted glass over a soft wallpaper, inspired by modern phone design: glass that materializes instead of
+fading, swells under your finger and thickens as it grows. Dark, Light or Automatic; Reduce motion for less of it.
 
 <table>
 <tr>
-<td align="center" width="25%"><img src="docs/disco/ring-music.png" width="170" alt="Ring"><br><sub><b>Ring</b>: the progress ring is the interface</sub></td>
-<td align="center" width="25%"><img src="docs/disco/ring-light-music.png" width="170" alt="Ring Light"><br><sub><b>Ring Light</b></sub></td>
-<td align="center" width="25%"><img src="docs/disco/braun-music.png" width="170" alt="Braun"><br><sub><b>Braun</b>: Dieter Rams' SK4 radio</sub></td>
-<td align="center" width="25%"><img src="docs/disco/braun-dark-music.png" width="170" alt="Braun Dark"><br><sub><b>Braun Dark</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/ihome.png" width="190" alt="iDisc Music"><br><sub><b>Music</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/ispin.png" width="190" alt="Spinning album"><br><sub><b>Spinning album</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/ilyr.png" width="190" alt="Lyrics"><br><sub><b>Lyrics</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/iquick.png" width="190" alt="Control Center"><br><sub><b>Control Center</b></sub></td>
+</tr>
+<tr>
+<td align="center" width="25%"><img src="docs/kopi/ivol.png" width="190" alt="Volume"><br><sub><b>Volume</b> capsule</sub></td>
+<td align="center" width="25%"><img src="docs/kopi/isleep.png" width="190" alt="Sleep timer"><br><sub><b>Sleep timer</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/ipower.png" width="190" alt="Power"><br><sub><b>Hold power</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/ibat.png" width="190" alt="Battery"><br><sub><b>Battery</b></sub></td>
 </tr>
 </table>
 
-Upstream's **Stone** theme is kept as well.
+## Null
+
+The original high-contrast look: big monospace type, your own colours.
+
+<table>
+<tr>
+<td align="center" width="25%"><img src="docs/kopi/lhome.png" width="190" alt="Null Music"><br><sub><b>Music</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/lquick.png" width="190" alt="Quick Settings"><br><sub><b>Quick Settings</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/lbat.png" width="190" alt="Battery"><br><sub><b>Battery</b></sub></td>
+<td align="center" width="25%"><img src="docs/kopi/leq.png" width="190" alt="Equalizer"><br><sub><b>Equalizer</b></sub></td>
+</tr>
+</table>
 
 ## Install
 
 You need a Snowsky Disc on **FiiO firmware V2.57**, FiiO's official V2.57 firmware ZIP, a good USB data cable and
-about 30 quiet minutes.
+about 30 quiet minutes. kopi installs with zmd22's Disco! tools; you pick the kopi `mq_ui` instead of theirs.
 
 > [!IMPORTANT]
-> **Recommended: start from FiiO's stock V2.57 firmware.** Installing over upstream diskOS or another diskOS build is not supported and can be buggy; restore stock first ([how](#going-back)).
-> Coming from upstream diskOS? Going back to stock does not clear its settings; see [Known limits](#known-limits).
-> Already running diskOS Disco!? Then you don't need to reinstall: [update from the SD card](#updates-from-the-sd-card).
+> **Start from FiiO's stock V2.57 firmware** (or from Disco!). Installing over upstream diskOS or another diskOS
+> build is not supported; restore stock first ([how](#going-back)).
 
-### From Windows
+**Already on Disco! (1.4.1 or newer): SD-card update.** Download the latest kopi zip from
+[Releases](https://github.com/rinfyy/diskos-kopi/releases) and follow [Updates from the SD card](#updates-from-the-sd-card)
+with its `mq_ui`. In the Windows app: **Update** → Version: **An mq_ui file on this PC**.
 
-Download **[diskOS-Disco-for-Windows.zip](https://github.com/zmd22/diskos-disco/releases/latest/download/diskOS-Disco-for-Windows.zip)**,
-extract it and run `diskOS-Disco.exe`. It walks you through everything, including your update keys and later SD
-updates. Full guide: **[diskOS Disco! for Windows](docs/WINDOWS.md)**.
+**First install from stock, on Windows:** download
+**[diskOS-Disco-for-Windows.zip](https://github.com/zmd22/diskos-disco/releases/latest/download/diskOS-Disco-for-Windows.zip)**,
+run `diskOS-Disco.exe`, and on its **Install** page choose Version: **An mq_ui file on this PC** and pick the kopi
+`mq_ui`. Full guide: [diskOS Disco! for Windows](docs/WINDOWS.md).
 
-> **Windows: unsupported, but working as intended: confirmed several times by users, installs and SD updates included.** The app always installs the latest release (or an `mq_ui` you pick).
-> Start from FiiO's stock V2.57 firmware, not another diskOS build.
->
-> **Used the Windows app before? Set it up again once.** Download the latest Windows app, open it and click
-> **Set up again** on its setup page. Until then, an older app keeps installing the version it was first set up with.
-> From 2.5.9 on, the app also updates itself to the latest release on every start.
+**macOS:** [macOS installation guide](docs/MACOS.md), with `--ui path/to/kopi/mq_ui`.
 
-### From macOS
-
-Follow the **[macOS installation guide](docs/MACOS.md)**. Apple Silicon Macs can use the ready-built native flash tools from b0hemia/diskOS 1.2.0 with the Disco installer. Intel Macs build the tools once.
-
-### From Linux
-
-The installer is upstream diskOS's (`./diskos-installer --help`).
-
-**0. Get it.** Download the **[latest release](https://github.com/zmd22/diskos-disco/releases/latest)** (Source
-code, tar.gz) and unpack it, or `git clone https://github.com/zmd22/diskos-disco`. The ready-built interface is
-already in it as `payload/mq_ui`; the release also has `mq_ui` on its own, with checksums, for SD-card
-updates.
-
-**1. Make your update keys (once, optional but recommended).** They let you install new builds from the SD card
-later. Skip this and leave out `--ota-key` below if you only want to flash.
+**Linux:** the installer is upstream diskOS's (`./diskos-installer --help`).
 
 ```sh
-sh ui/tools/owner-keys/diskos-keys.sh          # creates ./diskos-keys/  (keep the private keys safe)
+git clone -b diskos-kopi https://github.com/rinfyy/diskos-kopi
+cd diskos-kopi
+sh ui/tools/owner-keys/diskos-keys.sh          # once: your update keys (keep the private keys safe)
 cp diskos-keys/diskos-root.pub.pem payload/
-```
-
-**2. Flash the public variant with Disco! and your key**
-
-```sh
 ./install.sh                                   # first time only: host setup
 ./diskos-installer install \
   --firmware SNOWSKY_DISC_update_20260909_v257.zip \
   --variant public \
-  --ui payload/mq_ui \
+  --ui path/to/kopi/mq_ui \
   --ota-key payload/diskos-root.pub.pem
 ```
 
-Power the Disc off, hold **Volume Down** and plug in USB (the screen stays black). If you made keys, check the
-summary line `ota: ON … key sha256 xxxx` before you answer `y`. It must match `sha256sum payload/diskos-root.pub.pem`.
-
-> [!TIP]
-> Use **public**, not dev. The dev variant's USB serial console takes the Disc's only USB device port, which
-> blocks USB storage mode. Settings › System › Maintenance › Debug Mode still gives you SSH when you need it.
+Power the Disc off, hold **Volume Down** and plug in USB (the screen stays black). Check the summary line
+`ota: ON … key sha256 xxxx` matches `sha256sum payload/diskos-root.pub.pem` before you answer `y`.
 
 ## Updates from the SD card
 
-**On Windows:** the app's **Update** page downloads the latest version, signs it with your keys and writes it to the
-SD card ([how](docs/WINDOWS.md#step-4--update-from-the-sd-card)). **On Linux:** download `mq_ui` from the [latest release](https://github.com/zmd22/diskos-disco/releases/latest) (or build it), then sign it with
-your keys:
+**On Windows:** the app's **Update** page signs an `mq_ui` with your keys and writes it to the SD card; choose
+**An mq_ui file on this PC** and pick the kopi `mq_ui`. **On Linux:**
 
 ```sh
-sh ui/tools/owner-keys/diskos-sign.sh path/to/mq_ui 2.0.0      # -> ./diskos-update/ (the label is free text)
+sh ui/tools/owner-keys/diskos-sign.sh path/to/mq_ui 3.0.1-kopi.31   # -> ./diskos-update/
 ```
 
-Reuse the signing keys whose root public key was installed on this Disc. Copy the complete
-`diskos-update` **folder** to the SD card root and safely eject the storage connection. On the Disc,
-go to **Settings › System › Maintenance › Update from SD Card › Update**, wait for staging, then restart.
-
-The new interface runs as a **trial**. Check Settings › System › About and leave it running for at
-least three minutes. Confirmed playback can accept it automatically; otherwise choose **Keep**
-when prompted, or **Go back** to revert. Restart after acceptance to confirm the kept build.
-An unproven or failing trial rolls back. SD updates change the interface only, not the optional apps.
-The **[full SD update guide](docs/UPDATING.md)** covers first-time keys, verification, folder contents,
-epoch ordering, trial acceptance and troubleshooting.
+Copy the whole `diskos-update` **folder** to the SD card root (kopi's Wi-Fi file transfer works too), then on the
+Disc: **Settings › System › Maintenance › Update from SD Card › Update**, wait, restart. The new build runs as a
+**trial**: play music for 3+ minutes so it's kept; if it fails, the Disc goes back to the previous one by itself.
+More: [full SD update guide](docs/UPDATING.md).
 
 ## Build it yourself
 
@@ -336,7 +191,7 @@ make check-theme checkpunct                                            # style c
 ```
 
 The toolchain is musl-cross-make with [`ui/toolchain/mcm-config.mak`](ui/toolchain/mcm-config.mak) (MIPS32r2,
-FP64, NaN2008, GCC 11.2). It reproduces upstream's binaries byte for byte. More is in
+FP64, NaN2008, GCC 11.2). It reproduces Disco!'s official binaries byte for byte (kopi test builds use a different, compatible toolchain). More is in
 [docs/DEV_WORKFLOW.md](docs/DEV_WORKFLOW.md) and [ui/README.md](ui/README.md).
 
 **Shortcuts for a fresh machine.** You don't have to build the compiler: a prebuilt copy is attached to the
@@ -349,8 +204,7 @@ python3 ui/tools/build_device.py --toolchain /opt/mipsel-n2008-musl-cross --cach
 
 Rebuilding a tagged release this way gives the same `mq_ui` as the one in the release. For screenshots, the
 renderer's `preview-<page>` pages (Music, Quick Settings, Settings...) expect a cover picture next to the output:
-`host-render PRESET VARIANT preview-home 0 out.ppm` reads `out.png` as the cover. Theme numbers: Stone 6, Ring 8,
-Braun 9, Disco 10, Null 11, Squash 12; variant 0 is dark, 1 light. Keep the desktop and Disc builds in separate
+`host-render PRESET VARIANT preview-home 0 out.ppm` reads `out.png` as the cover. Theme numbers: Null 11, NTDisk 14, iDisc 15; variant 0 is dark, 1 light. Keep the desktop and Disc builds in separate
 checkouts.
 
 ## Known limits
@@ -368,12 +222,13 @@ checkouts.
 - **Firmware.** Made for FiiO firmware V2.57 only.
 - **Cover cache.** Covers for Cover Flow and lists are cached on the SD card only while it has enough free space
   (500 MB). On a nearly full card, covers may stay blank.
-- **If you suddenly see FiiO's own interface,** Disco! stopped and the Disc fell back to the stock one; restart to
+- **If you suddenly see FiiO's own interface,** kopi stopped and the Disc fell back to the stock one; restart to
   return. Over SSH (Debug Mode), `/usr/data/diskos_boot.log` and `/usr/data/diskos_install.log` show why.
 - **Languages.** Titles, artists and lyrics can be in Latin-script languages (including Vietnamese), Greek,
   Cyrillic, Thai, Korean, Japanese and common Chinese characters. Chinese, Japanese and Korean show in one smaller
   size. Right-to-left scripts (Hebrew, Arabic) and Indian scripts are not supported yet.
-- **No online updates.** New versions come by signed SD-card update or a fresh install.
+- **No online updates.** New versions come by signed SD-card update (kopi's Wi-Fi file transfer can copy the
+  `diskos-update` folder for you) or a fresh install.
 
 ## Going back
 
@@ -399,15 +254,13 @@ usual surprises: [Flashing and switching interfaces](docs/SWITCHING.md).
 | [macOS](docs/MACOS.md) | Install Disco on Apple Silicon or Intel Macs |
 | [Windows](docs/WINDOWS.md) | diskOS Disco! for Windows: install and update from a Windows PC |
 | [UI choices](docs/UI_CHOICES.md) | Why things look and work the way they do |
-| [Changelog](CHANGELOG.md) | Every Disco! release, newest first |
+| [Releases](https://github.com/rinfyy/diskos-kopi/releases) | kopi builds, each with its notes |
+| [Changelog](CHANGELOG.md) | Every Disco! release, newest first (before kopi) |
 | [All docs](docs/README.md) | Optional apps, hardware notes, developer workflow, legal |
-
-## A note from zmd22
-
-I’m out. Peace, and happy listening. Thank you to everyone who built, tested, shared and listened. Enjoy the music.
 
 ## Thanks
 
+- **[zmd22](https://github.com/zmd22/diskos-disco)**, for diskOS Disco!: the touch UI, the Windows app, the installer flow and the signed SD updates this fork is built on. kopi starts from Disco! 3.0.1.
 - **[namastecoconut-imagined](https://github.com/namastecoconut-imagined/diskos-disco-zune)**, for the original Zune theme: its Metro-inspired direction, typography, home menu, music screen and library presentation. The Disco adaptation builds on that design and implementation; zmd22’s follow-up focuses on integration, readability and controls. [Original author’s commits](https://github.com/namastecoconut-imagined/diskos-disco-zune/commits?author=namastecoconut-imagined).
 
 - **[b0hemia](https://github.com/b0hemia/diskos)**, for diskOS itself: the reverse engineering, the installer,
@@ -419,15 +272,13 @@ I’m out. Peace, and happy listening. Thank you to everyone who built, tested, 
 - **[LVGL](https://lvgl.io)** for the graphics library, **SQLite**, **jsmn**, **musl**,
   **[musl-cross-make](https://github.com/richfelker/musl-cross-make)**, the **Inter**, **Montserrat** and
   **Font Awesome** fonts, and every project listed in [NOTICE.md](NOTICE.md).
-- **Dieter Rams** and the Braun SK4, for the design language the Braun theme borrows with respect.
 - FiiO / Snowsky for a lovely little round player. This project is **not affiliated with or endorsed by FiiO,
   Snowsky or Ingenic**.
 
 ### A note on the contributor list
 
-Early commits in this repository show an author called "disco" because of a misconfigured author email; they
-were made by the project's maintainer ([zmd22](https://github.com/zmd22)). The history is left as it is, since
-rewriting it would break tags, links and existing clones.
+The history before kopi is zmd22's diskOS Disco! (early commits show an author called "disco" because of a
+misconfigured email; they were made by zmd22). The kopi builds start after Disco! 3.0.1.
 
 ## License
 
