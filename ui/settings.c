@@ -1946,6 +1946,8 @@ void setting_detail_refresh(void){
                                   : (s->cfg_key && !strcmp(s->cfg_key, "bt_codec")) ? "Best effort: LDAC falls back to AAC, then SBC." : NULL;
     if(th_null() && s->cfg_key && !strcmp(s->cfg_key,"theme_variant"))desc="Null uses a fixed dark appearance.\nLight/Dark is unavailable in this theme.";
     if(th_null() && s->cfg_key && !strcmp(s->cfg_key,"null_side"))desc="Null is right-handed only. This option is disabled.";
+    static char idle_b[128];                                              /* (kopi.31) what idle power-off is doing now */
+    if(s->cfg_key && !strcmp(s->cfg_key,"idle_off_idx")) desc = power_idle_status(idle_b, sizeof idle_b);
     if(desc && desc[0]){
         lv_obj_t *d = lv_label_create(g_detail_root);
         lv_label_set_text(d, tr(desc));

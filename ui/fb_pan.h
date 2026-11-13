@@ -10,5 +10,5 @@ lv_display_t *fbpan_create(const char *dev);
 void fbpan_set_rotation(int v);
 void fbpan_bind_touch(lv_indev_t *indev);
 /* Unblank, pan back and redraw the whole screen: call just before the backlight comes back on (kopi.28). */
-void fbpan_wake(void);
+void fbpan_wake(int unblank);   /* unblank: the player blanked the panel (else only pan back + redraw) */
 #endif

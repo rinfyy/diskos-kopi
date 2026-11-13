@@ -206,13 +206,20 @@ int power_apply_charge(int on){ return power_supported() ? power_apply_charge_vi
 static uint32_t g_key_ms; static int g_have_key;   /* physical-key input the main loop's touch timestamp misses */
 static pw_take_t g_take; static int g_take_ok; static unsigned g_take_gen; static int g_take_gen_set;
 static int g_idle_active, g_idle_busy, g_idle_launch;
+/* (kopi.31) why idle power-off isn't counting, for Settings to say (it used to be silent, so "it doesn't work" had no
+ * answer): 0 counting, 1 music playing, 2 a working mode in use, 3 on external power, 4 sound still running */
+static int g_idle_why, g_idle_held;
+static uint32_t g_pos_since; static long g_pos_last = -1;   /* the song position last moved (a stuck "running" stream) */
+void power_idle_why(int why){ g_idle_why = why; }
+long ui_song_position_ms(void);                             /* main.c: -1 = no song (then never "stalled") */
+static int audio_stalled(void){ return g_pos_last >= 0 && lv_tick_get() - g_pos_since >= 60000u; }
 static uint32_t g_idle_input, g_idle_request_input;
 static int idle_allow_shutdown(void *ctx, int handoff){
     (void)ctx;
     int ui_audio_running(void);
     if(g_idle_busy || g_idle_input != g_idle_request_input || !g_take_ok ||
        ipc_generation() != g_take_gen || power_idle_secs(cfg_get_int("idle_off_idx", 0)) <= 0) return 0;
-    return !handoff || ui_audio_running() != 1;
+    return !handoff || ui_audio_running() != 1 || audio_stalled();       /* (a paused player's silent stream: not music) */
 }
 static int take_read(void){ return power_read_sysconfig(POWER_SYSCONFIG, "POWER_SAVE"); }
 /* diskOS owns idle power-off (see power.h): the player's own must be off, CONFIRMED by a POWER_SAVE re-read, before
@@ -241,11 +248,32 @@ static void idle_takeover(void){
  * position, and a guess must never switch the Disc off under running music. Refused: the idle period starts again. */
 static int idle_request(void){
     int ui_audio_running(void);
-    if(ui_audio_running() == 1){ fprintf(stderr, "idle power-off postponed: audio is running\n"); fflush(stderr); return -1; }
+    /* (kopi.31) The player can keep the sound device "running" while paused (it plays silence), which postponed the
+     * power-off for ever. Running AND the song position moved in the last minute: music, wait. Running but the position
+     * hasn't moved for a minute: silence - go ahead. */
+    if(ui_audio_running() == 1 && !audio_stalled()){
+        g_idle_held = 1; fprintf(stderr, "idle power-off postponed: audio is running\n"); fflush(stderr); return -1; }
+    g_idle_held = 0;
     g_idle_launch = 1; g_idle_request_input = g_idle_input;
     int r = power_shutdown_request();
     g_idle_launch = 0; g_idle_active = r == 0;
     return r;
+}
+/* Settings > Battery & power > Idle Power-off: what it's doing now */
+const char *power_idle_status(char *b, int n){
+    int secs = power_idle_secs(cfg_get_int("idle_off_idx", 0));
+    if(secs <= 0) snprintf(b, (size_t)n, "Off");
+    else if(!power_supported()) snprintf(b, (size_t)n, "Not available on this firmware");
+    else if(!g_take_ok) snprintf(b, (size_t)n, "Waiting for the player to hand it over");
+    else if(g_idle_why == 3) snprintf(b, (size_t)n, "Waiting: on external power (plugged in or charging) it never powers off");
+    else if(g_idle_why == 2) snprintf(b, (size_t)n, "Waiting: a working mode (USB DAC, Bluetooth, AirPlay...) is in use");
+    else if(g_idle_why == 1) snprintf(b, (size_t)n, "Waiting: music is playing");
+    else if(g_idle_held) snprintf(b, (size_t)n, "Waiting: the sound is still running");
+    else {
+        uint32_t idle = g_idle.started ? (lv_tick_get() - g_idle.since) / 1000u : 0, left = (uint32_t)secs > idle ? (uint32_t)secs - idle : 0;
+        snprintf(b, (size_t)n, "Counting: powers off in %u min if nothing is touched", (unsigned)((left + 59) / 60));
+    }
+    return b;
 }
 void power_note_input(void){ g_key_ms = lv_tick_get(); g_have_key = 1; }
 void power_startup_mirror(void){
@@ -319,6 +347,8 @@ void power_tick(uint32_t last_input_ms, int playing){
     uint32_t now = lv_tick_get();
     if(g_have_key && (int32_t)(g_key_ms - last_input_ms) > 0) last_input_ms = g_key_ms;
     g_idle_input = last_input_ms; g_idle_busy = playing;
+    { long p = ui_song_position_ms();
+      if(p != g_pos_last){ if(g_pos_last < 0 || p < 0 || labs(p - g_pos_last) > 300) g_pos_since = now; g_pos_last = p; } }
     { static unsigned pg; static int pg_set; unsigned g = ipc_generation();
       if(pg_set && g != pg) power_shutdown_new_generation();   /* the player restarted: a pending stock power-off is gone */
       pg = g; pg_set = 1; }

@@ -30,6 +30,7 @@ static void cfg_set_int(const char*k,int v){(void)k;(void)v;}
 static int ipc_send_quiet(const char*f){(void)f;return 0;}
 static int ipc_send_cmd(const char*f){if(!strcmp(f,"0806000C0001")){if(handoff_fail)return -1;sent++;}return 0;}
 static int ui_audio_running(void){return audio;}
+static long pos=-1;static long ui_song_position_ms(void){return pos;}
 static void ui_shutdown_screen(void){shown++;}
 static void ui_shutdown_hide(void){}
 static void ui_toast(const char*m){if(strstr(m,"unavailable"))warned++;if(strstr(m,"is ready"))ready++;}
@@ -67,6 +68,11 @@ int main(int argc,char**argv){
   tick(0);now+=5000;tick(0);assert(g_take_ok);
   now+=1;tick(0);now+=299999;tick(0);gen++;
   now+=2;tick(0);assert(!shown&&!g_take_ok);
+ }else if(!strcmp(c,"stalled")||!strcmp(c,"moving")){   /* kopi.31: a paused player keeping its stream "running" */
+  int mv=!strcmp(c,"moving");pos=5000;audio=1;
+  tick(0);now+=5000;tick(0);assert(g_take_ok);
+  for(int i=0;i<62;i++){now+=5000;if(mv)pos+=5000;tick(0);}
+  if(mv)assert(!shown);else{assert(shown==1);tick(0);tick(0);assert(sent==1&&hold);}
  }else if(!strcmp(c,"invalid")){
   idle_idx=-8;tick(0);now+=5000;tick(0);now+=4000000;tick(0);assert(!shown);
  }else{
@@ -104,7 +110,7 @@ int main(int argc,char**argv){
  printf("PASS %s\n",c);return 0;
 }
 '''
-cases=['retry-spawn','retry-flush','retry-drain','retry-timeout','retry-send','drain-input','touch','drain-busy','sync-input','sync-busy','late-audio','disable','reconnect','restart','blocked','invalid','manual','sleep','protected']
+cases=['stalled','moving','retry-spawn','retry-flush','retry-drain','retry-timeout','retry-send','drain-input','touch','drain-busy','sync-input','sync-busy','late-audio','disable','reconnect','restart','blocked','invalid','manual','sleep','protected']
 with tempfile.TemporaryDirectory(prefix='idle-shutdown-') as tmp:
  p=Path(tmp);(p/'test.c').write_text(prefix+src+post)
  subprocess.run(['cc','-std=gnu11','-Wall','-Wextra','-Wno-unused-parameter','-ffunction-sections','-fdata-sections','-I'+str(app),str(p/'test.c'),'-Wl,--gc-sections','-o',str(p/'test')],check=True)

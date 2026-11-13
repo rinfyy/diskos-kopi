@@ -59,7 +59,8 @@ int ds_fetch_entry(int argc,char **argv);
 #include "braun.h"
 
 static lv_indev_t *g_touch = NULL;
-static int g_pwr_press, g_pwr_intent, g_pwr_last_cbr = -1; static uint32_t g_pwr_settle;   /* the power key (main loop) */
+static int g_pwr_press, g_pwr_intent, g_pwr_last_cbr = -1; static uint32_t g_pwr_settle;
+static int g_pk_gpio_ok; static uint32_t g_pk_down_at;   /* (kopi.31) the key's GPIO is readable; when it last went down */   /* the power key (main loop) */
 static int         g_screen_off = 0;   /* mirrors (bl_state==2) each main-loop iteration; read by the
                                           slow polls (status/clock) so screen-off work can be skipped
                                           without exposing main()'s local bl_state. */
@@ -1698,6 +1699,7 @@ static int on_search_play(int id){
     return ui_play_list(1, "", pos);
 }
 /* "Play" (in order) on a list: Sequential - but Vibe stays Vibe (kopi.28: it used to be switched off by every Play) */
+long ui_song_position_ms(void){ track_state_t st; ipc_get_state(&st); return st.have_track ? (long)st.position_ms : -1; }   /* power.c */
 int ui_mode_in_order(void){ return simple_cfg_get_int("work_mode", 0) == 5 ? 5 : 0; }
 void ui_set_workmode(int mode){
     /* LOCAL play-mode setter = command 0102 (class 1): 0102 000C <mode 4hex>.
@@ -3713,7 +3715,7 @@ int main(int argc, char **argv){
                 last_activity = lv_tick_get();
                 if(screen_current()==SCR_SAVER){
                     /* any touch wakes the saver; restore backlight, swallow gesture */
-                    if(bl_state){ if(bl_state == 2) fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; }
+                    if(bl_state){ if(bl_state == 2) fbpan_wake(0); ui_backlight(ui_effective_brightness()); bl_state = 0; }
                     screen_back();
                     woke = 1;
                 } else {
@@ -3938,17 +3940,25 @@ int main(int argc, char **argv){
             int press = g_pwr_press; g_pwr_press = 0;
             static unsigned seen_w;                                             /* our own writes since the last look don't count */
             int ours = ui_backlight_writes() != seen_w;
-            if(!press && !settling && !ours && g_pwr_last_cbr >= 0 && cbr >= 0 && cbr != g_pwr_last_cbr) press = 1;
-            if(!press && !settling && cbr == 0 && cbp == 0) press = 1;        /* (the player blanked a lit panel) */
-            if(press && !settling){
+            /* (kopi.31) A brightness change counts as a press only if it's a blank or an unblank (to or from 0, not the
+             * player dimming), and - where the key can be read - only right after the key went down. Before, any change
+             * we hadn't written (the player's own dimming) could switch the screen off by itself. */
+            int keyed = !g_pk_gpio_ok || (g_pk_down_at && lv_tick_elaps(g_pk_down_at) < 900);
+            int flip = g_pwr_last_cbr >= 0 && cbr >= 0 && cbr != g_pwr_last_cbr && (cbr == 0 || g_pwr_last_cbr == 0);
+            if(!press && !settling && !ours && flip && keyed) press = 1;
+            if(!press && !settling && cbr == 0 && cbp == 0 && keyed) press = 1;   /* (the player blanked a lit panel) */
+            if(!press && !settling && !keyed && bl_state == 0 && cbr == 0 && cbp == 0){   /* the player blanked it by itself */
+                fbpan_wake(1); ui_backlight(ui_effective_brightness());       /* (its own timer): we own the screen, relight - */
+            }                                                                 /* ours turns it off when it's really idle */
+            if(press == 2 || (press && !settling)){
                 g_pwr_intent = (bl_state || power_menu_visible()) ? 1 : 0;      /* (the power menu up: stay lit) */
                 g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;
                 if(g_pwr_intent){ if(screen_current() == SCR_SAVER) screen_back();   /* (kopi.28: picture first, then light) */
-                                  fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
+                                  fbpan_wake(player_blanked); ui_backlight(ui_effective_brightness()); bl_state = 0; last_activity = lv_tick_get(); player_blanked = 0;
                                   power_note_input(); }
                 else { ui_backlight(0); bl_state = 2; player_blanked = 1; if(screen_current() == SCR_SAVER) screen_back(); }
             } else if(settling){                                                /* the player answering that same press */
-                if(g_pwr_intent && (cbr == 0 || cbp != 0)){ fbpan_wake(); ui_backlight(ui_effective_brightness()); }   /* it blanked: redraw, relight */
+                if(g_pwr_intent && (cbr == 0 || cbp != 0)){ fbpan_wake(1); ui_backlight(ui_effective_brightness()); }   /* it blanked: redraw, relight */
                 else if(!g_pwr_intent && cbp == 0) ui_backlight(0);
             }
             g_pwr_last_cbr = read_int_file("/sys/class/backlight/backlight/brightness"); seen_w = ui_backlight_writes();
@@ -3974,7 +3984,7 @@ int main(int argc, char **argv){
                 }
                 if(a > 0){
                     power_note_input();
-                    if(bl_state){ if(bl_state == 2) fbpan_wake(); ui_backlight(ui_effective_brightness()); bl_state = 0; }
+                    if(bl_state){ if(bl_state == 2) fbpan_wake(0); ui_backlight(ui_effective_brightness()); bl_state = 0; }
                     last_activity = lv_tick_get();
                     if(screen_current() == SCR_SAVER) screen_back();
                     playkey_action(a);
@@ -3998,16 +4008,21 @@ int main(int argc, char **argv){
                 }
                 int d = gpe ? (((*gpe >> 31) & 1u) == 0) : 0;
                 if(!d) pk_seen_up = 1;
-                if(d && !pk_down && pk_seen_up){ pk_down = 1; pk_since = lv_tick_get(); }
+                if(gpe) g_pk_gpio_ok = 1;
+                if(d && !pk_down && pk_seen_up){ pk_down = 1; pk_since = lv_tick_get(); g_pk_down_at = pk_since | 1; }
                 else if(!d && pk_down){ pk_down = 0; pk_rel = lv_tick_get();
-                    if(!pk_shown && lv_tick_elaps(pk_since) < 1200 && !(g_pwr_settle && lv_tick_elaps(g_pwr_settle) < 900)) g_pwr_press = 1;   /* a short press */
+                    /* a short press. (kopi.31) Read from the key itself it's always a real press - unless it's the very press
+                     * whose reaction already started the settling (the player answered on key-down). A second press within
+                     * the settling used to be dropped, so a quick off-on left the screen dark: now it counts (2). */
+                    if(!pk_shown && lv_tick_elaps(pk_since) < 1200)
+                        g_pwr_press = (g_pwr_settle && (int32_t)(g_pwr_settle - pk_since) >= 0) ? 0 : 2;
                 }
                 int hold = simple_cfg_get_int("pwr_menu_ms", 1500); if(hold < 600) hold = 600;
                 if(pk_down && !pk_shown && lv_tick_elaps(pk_since) >= (uint32_t)hold && power_shutdown_phase() == PW_OFF){
                     pk_shown = 1;
                     if(screen_current() == SCR_SAVER) screen_back();
                     power_menu_open();
-                    if(bl_state == 2) fbpan_wake();
+                    if(bl_state == 2) fbpan_wake(0);
                     ui_backlight(ui_effective_brightness()); bl_state = 0; player_blanked = 0;   /* lit, so it can be seen */
                     g_pwr_intent = 1; g_pwr_settle = lv_tick_get(); if(!g_pwr_settle) g_pwr_settle = 1;   /* ...against the player's reaction */
                     last_activity = lv_tick_get(); power_note_input();
@@ -4047,7 +4062,7 @@ int main(int argc, char **argv){
             }
             if(any && bl_state){
                 last_activity = lv_tick_get();
-                if(bl_state == 2) fbpan_wake();                                /* (kopi.28) the picture before the light */
+                if(bl_state == 2) fbpan_wake(0);                                /* (kopi.28) the picture before the light */
                 ui_backlight(ui_effective_brightness()); bl_state = 0;
                 player_blanked = 0;   /* touch woke it; don't let the PW-10 poll re-restore */
                 if(screen_current() == SCR_SAVER) screen_back();
@@ -4060,7 +4075,9 @@ int main(int argc, char **argv){
              * other than Playback (USB DAC, Bluetooth DAC, BT streaming, AirPlay, USB storage) is the Disc in use
              * without a song of its own moving, and a Disc on external power (plugged in, or charging) is on purpose:
              * neither powers off. */
-            int busy = playing || ma_playing() || discshelf_busy() || ui_get_source_mode() != 0 || usage_charging() || usage_plugged_in() == 1;
+            int mode = ui_get_source_mode() != 0, ext = usage_charging() || usage_plugged_in() == 1, mus = playing || ma_playing() || discshelf_busy();
+            int busy = mus || mode || ext;
+            power_idle_why(ext ? 3 : mode ? 2 : mus ? 1 : 0);
             power_tick(last_activity, busy);
         }   /* Sendspin: AirPlay playback the player may not report */   /* AFTER all input is consumed (a pending touch must win the race): SD-safe shutdown, diskOS idle power-off, temperature notice */
         int in_saver = (screen_current()==SCR_SAVER);

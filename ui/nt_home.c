@@ -583,9 +583,18 @@ static void scrub_show(long ms){
  * DTAP_MS to be sure it isn't the first of two, then does its own job (the CD: play / pause; the text: track actions). */
 #define DTAP_MS 280
 static lv_timer_t *g_dtap_tm; static int g_dtap_kind = -1; static uint32_t g_dtap_t;
+void nt_title_tap(void);
 static void dtap_fire(lv_timer_t *t){
     (void)t; int k = g_dtap_kind; g_dtap_kind = -1; lv_timer_pause(g_dtap_tm);
     if(k == 0) ui_transport_command("0201000C0000");
+    else if(k == 1) nt_title_tap();                                       /* (kopi.31) the title: lyrics line / title */
+}
+/* Tap the title: switch between the song's title and its lyric line in that place (Lyrics as title), and say which */
+void nt_title_tap(void){
+    { track_state_t st; ipc_get_state(&st); if(!st.have_track) return; }
+    int on = !cfg_get_int("nt_lyrics", 1); cfg_set_int("nt_lyrics", on); nt_home_lyrics_apply(on);
+    unsigned rev = 0; int n = lyrics_immersive_load(NULL, 0, &rev);
+    ui_toast(!on ? "Showing the title" : n == 0 ? "Lyrics line - this song has no synced lyrics" : "Showing the lyrics line");
 }
 static void dtap(int kind){                                               /* kind: 0 CD, 1 text, 2 elsewhere */
     lv_indev_t *in = lv_indev_active(); lv_point_t p = { 180, 180 };
@@ -659,7 +668,7 @@ static void disc_cb(lv_event_t *e){
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
-    if(c == LV_EVENT_SHORT_CLICKED) dtap(1);                              /* (a single tap: nothing; two skip) */
+    if(c == LV_EVENT_SHORT_CLICKED) dtap(1);                              /* (a tap: lyrics line / title; two skip) */
     else if(c == LV_EVENT_LONG_PRESSED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }   /* (kopi.28: hold = the song) */
 }
 static void start_cb(lv_event_t *e){ (void)e; screen_show(SCR_LIBRARY); }
@@ -769,7 +778,11 @@ void nt_home_now_playing(const char *title, const char *artist, int playing){
     if(strcmp(lv_label_get_text(g_artist), g_a)) lv_label_set_text(g_artist, g_a);
     view_apply();
 }
-void nt_home_art_changed(void){ if(th_idisc()){ idisc_home_art_changed(); if(g_imm_img) art_apply(1); return; } art_apply(1); }
+static void l_cover_set(void);
+void nt_home_art_changed(void){
+    if(nt_lyrics_visible()) l_cover_set();                                /* (kopi.31) full-screen lyrics: the new cover too */
+    if(th_idisc()){ idisc_home_art_changed(); if(g_imm_img) art_apply(1); return; } art_apply(1);
+}
 void nt_home_lyrics_apply(int on){ if(th_idisc()){ idisc_home_lyrics_apply(on); return; } g_lyr_on = on; g_lyr_rev = ~0u; if(g_layer) progress_paint(); }
 void nt_home_clock(const char *t, const char *sub){
     if(th_idisc()){ idisc_home_clock(t); return; }
@@ -830,6 +843,15 @@ static void l_line_cb(lv_event_t *e){
     for(int i = 0; i < l_n; i++){ lv_area_t a; lv_obj_get_coords(l_lab[i], &a); a.y1 -= 7; a.y2 += 7;
         if(p.y >= a.y1 && p.y <= a.y2){ l_jump(i); return; } }
 }
+static void l_cover_set(void){                                          /* the album behind the lines */
+    if(!l_cover) return;
+    track_state_t st; ipc_get_state(&st);
+    const lv_image_dsc_t *c = st.have_track ? ui_current_sharp_img() : NULL;
+    if(c && th_idisc() && idisc_wash()) c = idisc_wash();                 /* iDisc: the lines over the album wash */
+    lv_image_set_src(l_cover, NULL);
+    if(c){ lv_image_set_src(l_cover, c); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (c->header.w ? c->header.w : 360)) + 1); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
+    else lv_obj_add_flag(l_cover, LV_OBJ_FLAG_HIDDEN);
+}
 static void l_build(void){
     lv_obj_clean(l_list); l_n = 0; l_cur = -1; free(l_lab); l_lab = NULL;
     if(!l_lines) l_lines = malloc(sizeof *l_lines * LYR_CAP);
@@ -837,7 +859,8 @@ static void l_build(void){
     if(n < 0) return;                                                     /* not ready yet: the tick asks again */
     l_rev = rev; l_n = n;
     if(n == 0){
-        char b[360]; snprintf(b, sizeof b, "%s\n%s\n\nNo synced lyrics", g_t, g_a);
+        track_state_t st; ipc_get_state(&st);                             /* (kopi.31: the song now, not the one opened on) */
+        char b[360]; snprintf(b, sizeof b, "%s\n%s\n\nNo synced lyrics", st.title[0] ? st.title : g_t, st.title[0] ? st.artist : g_a);
         lv_label_set_text(l_none, b); lv_obj_remove_flag(l_none, LV_OBJ_FLAG_HIDDEN); return;
     }
     lv_obj_add_flag(l_none, LV_OBJ_FLAG_HIDDEN);
@@ -857,9 +880,11 @@ static void l_build(void){
 static void l_tick(lv_timer_t *t){
     (void)t;
     if(!nt_lyrics_visible()){ lv_timer_pause(l_tm); return; }
+    track_state_t st; ipc_get_state(&st);
+    static char l_path[256];                                              /* (kopi.31) a new song: its lines, its title, */
+    if(strcmp(l_path, st.path)){ snprintf(l_path, sizeof l_path, "%s", st.path); l_rev = ~0u; l_cover_set(); }   /* its cover */
     unsigned rev = 0; int n0 = lyrics_immersive_load(NULL, 0, &rev);
     if(n0 >= 0 && rev != l_rev) l_build();
-    track_state_t st; ipc_get_state(&st);
     char e[24], d[24], b[56]; fmt_time(st.position_ms, e, sizeof e); fmt_time(st.duration_ms, d, sizeof d);
     snprintf(b, sizeof b, "%s / %s", e, d); if(strcmp(lv_label_get_text(l_time), b)) lv_label_set_text(l_time, b);
     if(!l_lab || l_n <= 0) return;
@@ -919,11 +944,7 @@ void nt_lyrics_open(void){
         l_tm = lv_timer_create(l_tick, 250, NULL); lv_timer_pause(l_tm);
         keep_all(l_root);
     }
-    const lv_image_dsc_t *c = g_have ? ui_current_sharp_img() : NULL;
-    if(c && th_idisc() && idisc_wash()) c = idisc_wash();                 /* iDisc: the lines over the album wash */
-    lv_image_set_src(l_cover, NULL);
-    if(c){ lv_image_set_src(l_cover, c); lv_image_set_scale(l_cover, (uint32_t)(360 * 256 / (c->header.w ? c->header.w : 360)) + 1); lv_obj_center(l_cover); lv_obj_remove_flag(l_cover, LV_OBJ_FLAG_HIDDEN); }
-    else lv_obj_add_flag(l_cover, LV_OBJ_FLAG_HIDDEN);
+    l_cover_set();
     l_rev = ~0u; l_touch = 0; lv_label_set_text(l_none, ""); l_build();
     lv_obj_remove_flag(l_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(l_root);
     lv_obj_set_style_opa(l_root, LV_OPA_COVER, 0);
@@ -952,6 +973,8 @@ static void s_paint(void){
     snprintf(b, sizeof b, "%s / %s", e, d); if(strcmp(lv_label_get_text(s_time), b)) lv_label_set_text(s_time, b);
     lv_arc_set_value(s_ring, st.duration_ms > 0 ? (int)((long long)st.position_ms * 1000 / st.duration_ms) : 0);
     const char *g = ui_is_playing() ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY; if(strcmp(lv_label_get_text(s_pp_l), g)) lv_label_set_text(s_pp_l, g);
+    lv_obj_t *t = lv_obj_get_user_data(s_ctl);                            /* (kopi.31) the title follows the song */
+    if(t && st.have_track && st.title[0] && strcmp(lv_label_get_text(t), st.title)) lv_label_set_text(t, st.title);
 }
 static void s_tick(lv_timer_t *t){
     (void)t;

@@ -132,9 +132,11 @@ lv_display_t *fbpan_create(const char *dev){
  * LCD controller, pan the framebuffer or leave it black. We only redraw what changed (PARTIAL), so after such a wake
  * the panel stayed black - lit, but empty - until something redrew the whole screen, often seconds later. So: unblank,
  * pan back to our page, and draw the whole screen now, all while the light is still off. */
-void fbpan_wake(void){
+void fbpan_wake(int unblank){
     if(!g_fb) return;
-    (void)ioctl(g_fb->fd, FBIOBLANK, FB_BLANK_UNBLANK);
+    /* (kopi.31) Unblank only when the player is known to have blanked: on some panels an unblank of a panel that is
+     * already on re-runs its power-up, which could leave it blank or stall the next frames. */
+    if(unblank) (void)ioctl(g_fb->fd, FBIOBLANK, FB_BLANK_UNBLANK);
     struct fb_var_screeninfo v;
     if(ioctl(g_fb->fd, FBIOGET_VSCREENINFO, &v) == 0 && g_fb->finfo.line_length &&
        (size_t)v.yoffset * g_fb->finfo.line_length != g_fb->visible_off){

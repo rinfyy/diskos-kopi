@@ -91,7 +91,9 @@ void power_shutdown_new_generation(void);            /* the player restarted (ne
 /* product wiring (main.c / settings.c): real SD quiesce, `sync` child, ipc_send_cmd, toast */
 int  power_apply_charge(int on);
 int  power_shutdown_request(void);
-void power_tick(uint32_t last_input_ms, int playing);   /* main loop: shutdown state machine, idle timer, temperature notice */
+void power_tick(uint32_t last_input_ms, int playing);
+void power_idle_why(int why);                       /* main loop: why it isn't idle (0 idle, 1 playing, 2 mode, 3 power) */
+const char *power_idle_status(char *b, int n);      /* "Counting: powers off in 12 min", "Waiting: ..." */   /* main loop: shutdown state machine, idle timer, temperature notice */
 void power_note_input(void);    /* a physical key was pressed (volume) */
 int  power_supported(void);     /* the stock backends above are mapped for this firmware (V2.57) */
 void power_startup_mirror(void);/* copy the player's own values into cfg (idle_off_idx, charge_protect) */

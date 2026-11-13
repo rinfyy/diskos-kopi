@@ -566,7 +566,8 @@ static void card_cb(lv_event_t *e){
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
-    if(c == LV_EVENT_LONG_PRESSED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }   /* (kopi.28: hold the title = the song; a tap does nothing) */
+    if(c == LV_EVENT_LONG_PRESSED){ onboarding_discovered(HINT_MUSIC); disco_track_overlay_open(); }   /* (kopi.28: hold the title = the song) */
+    else if(c == LV_EVENT_SHORT_CLICKED){ void nt_title_tap(void); nt_title_tap(); }   /* (kopi.31) tap: lyrics line / title */
 }
 static void btn_cb(lv_event_t *e){
     const char *cmd = lv_event_get_user_data(e);
