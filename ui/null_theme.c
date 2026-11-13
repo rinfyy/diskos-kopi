@@ -246,14 +246,22 @@ static void seek_finish(void){
 static void seek_event(lv_event_t *e){
     lv_indev_t *in=lv_indev_active();if(!in)return;
     lv_point_t p;lv_indev_get_point(in,&p);lv_event_code_t c=lv_event_get_code(e);
+    /* (kopi.32) the bar moves the song only after a 2 s hold: a tap or a brush does nothing */
+    static uint32_t seek_t0;static int seek_off;
     if(c==LV_EVENT_PRESSED){
         seek_finish();ipc_get_state(&seek_track);seek_duration=seek_track.have_track?seek_track.duration_ms:0;
-        seek_drag=seek_duration>0;seek_start=p;last_touch=lv_tick_get();
+        seek_drag=0;seek_off=seek_duration<=0;seek_start=p;seek_t0=last_touch=lv_tick_get();
+        return;
     }
     if(c==LV_EVENT_PRESS_LOST){seek_finish();return;}
-    if(!seek_drag)return;
-    if(c==LV_EVENT_LONG_PRESSED){seek_zoom=1;lv_obj_set_size(playhead,11,11);}
-    if(c==LV_EVENT_PRESSED || c==LV_EVENT_PRESSING || c==LV_EVENT_LONG_PRESSED || c==LV_EVENT_RELEASED){
+    if(!seek_drag){
+        if(c==LV_EVENT_RELEASED){seek_finish();return;}
+        if(seek_off||c!=LV_EVENT_PRESSING)return;
+        if(abs(p.x-seek_start.x)>12||abs(p.y-seek_start.y)>12){seek_off=1;return;}
+        if(lv_tick_elaps(seek_t0)<2000)return;
+        seek_drag=1;seek_zoom=1;lv_obj_set_size(playhead,11,11);ui_toast("Slide to move through the song");
+    }
+    if(c==LV_EVENT_PRESSING || c==LV_EVENT_RELEASED){
         lv_area_t a;lv_obj_get_coords(seek,&a);int width=lv_obj_get_width(seek),x=p.x-a.x1;
         if(x<0)x=0;if(x>width)x=width;
         seek_target=width>0?(long)((long long)seek_duration*x/width):0;
@@ -836,7 +844,7 @@ static void qs_construct(void)
     for(int side=0;side<2;side++){
         lv_obj_t *strip=box(qroot,side?294:28,102,38,198);
         lv_obj_set_style_bg_color(strip,TC(FIXED_MEDIA_BLACK),0);
-        lv_obj_set_style_bg_opa(strip,77,0);
+        lv_obj_set_style_bg_opa(strip,235,0);   /* (kopi.32: was 77 - the Music title showed through behind the sliders) */
     }
     qbright = lv_slider_create(qroot);
     lv_obj_set_size(qbright, 6, 160);

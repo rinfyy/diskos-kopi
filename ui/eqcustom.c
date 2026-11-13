@@ -160,8 +160,10 @@ int eqcustom_store(int slot, const int hz[NB], const int tenths[NB], const doubl
     if(slot < USER_MIN || slot >= NPRESET) return -1;
     if(g_save_busy){ ui_toast("Busy saving - try again"); return -1; }
     if(!fw_custom_peq_curve_writable(hz, NB)){ ui_toast("This firmware can't store this EQ"); return -1; }
+    if(!(master >= -12)) master = -12; if(master > 10) master = 10;          /* (kopi.32) a pasted preset is checked like an edit */
     g_preset = slot; g_parametric = g_readfail = g_loading = 0; profile_ticket = 0; g_master = master;
-    for(int i = 0; i < NB; i++){ g_f[i] = hz[i]; g_t[i] = clampi(tenths[i], -120, 120); g_q[i] = q && q[i] > 0 ? q[i] : 0.7; }
+    for(int i = 0; i < NB; i++){ g_f[i] = hz[i] < 20 ? 20 : hz[i] > 20000 ? 20000 : hz[i]; g_t[i] = clampi(tenths[i], -120, 120);
+                                 g_q[i] = q && q[i] > 0 ? (q[i] < 0.1 ? 0.1 : q[i] > 20 ? 20 : q[i]) : 0.7; }
     g_editable = 1; g_changed = 0; g_orig_ok = 0;
     simple_cfg_set_int("eq_preset", slot);
     if(!apply_now()){ g_editable = 0; ui_toast("EQ not saved"); return -1; }

@@ -348,7 +348,9 @@ void power_tick(uint32_t last_input_ms, int playing){
     if(g_have_key && (int32_t)(g_key_ms - last_input_ms) > 0) last_input_ms = g_key_ms;
     g_idle_input = last_input_ms; g_idle_busy = playing;
     { long p = ui_song_position_ms();
-      if(p != g_pos_last){ if(g_pos_last < 0 || p < 0 || labs(p - g_pos_last) > 300) g_pos_since = now; g_pos_last = p; } }
+      /* (kopi.32) measured from where it last really moved, not from the previous look: small steps (a playing song
+       * read every loop) add up, so they must not keep the old "still" time */
+      if(p < 0 || g_pos_last < 0 || labs(p - g_pos_last) > 300){ g_pos_since = now; g_pos_last = p; } }
     { static unsigned pg; static int pg_set; unsigned g = ipc_generation();
       if(pg_set && g != pg) power_shutdown_new_generation();   /* the player restarted: a pending stock power-off is gone */
       pg = g; pg_set = 1; }

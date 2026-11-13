@@ -82,6 +82,9 @@ static int db_ready(void){
     return g_ok;
 }
 
+/* the library was rescanned (kopi.32): placements follow albums / artists whose names changed */
+void sphere_ui_library_changed(void){ if(g_ok) ssdb_relink(); }
+
 /* ---- small builders ---- */
 static void fonts_init(void){
     static int done; if(done) return; done = 1;

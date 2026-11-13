@@ -1024,6 +1024,7 @@ static void scanner_poll(lv_timer_t *t){
     ui_scan_orbit(scanner_active());   /* fork: the dot runs around the rim while a scan runs (lost in the 1.2.0 merge) */
     if(scanner_take_finished()){
         mdb_load();               /* reload the in-memory library (also invalidates the group caches) */
+        { void sphere_ui_library_changed(void); sphere_ui_library_changed(); }   /* SongSphere keeps renamed albums placed */
         library_ensure_capacity(); /* grow row buffers if a clean first-boot 1-song alloc just gained thousands */
         library_refresh();        /* rebuild whatever Library view is showing */
         albumwall_prewarm_seed(); /* queue covers for any newly-scanned albums (no Album-view visit required) */
@@ -3946,6 +3947,10 @@ int main(int argc, char **argv){
             int keyed = !g_pk_gpio_ok || (g_pk_down_at && lv_tick_elaps(g_pk_down_at) < 900);
             int flip = g_pwr_last_cbr >= 0 && cbr >= 0 && cbr != g_pwr_last_cbr && (cbr == 0 || g_pwr_last_cbr == 0);
             if(!press && !settling && !ours && flip && keyed) press = 1;
+            /* (kopi.32) Dark, and the player lit the panel: that is the key, always - the player never wakes the screen on
+             * its own. Asleep, the key is read only ~5 times a second, so a quick tap could slip past it; then "keyed" was
+             * false, the wake was ignored and the panel stayed lit but black, not answering touch. */
+            if(!press && !settling && !ours && bl_state == 2 && g_pwr_last_cbr == 0 && cbr > 0) press = 1;
             if(!press && !settling && cbr == 0 && cbp == 0 && keyed) press = 1;   /* (the player blanked a lit panel) */
             if(!press && !settling && !keyed && bl_state == 0 && cbr == 0 && cbp == 0){   /* the player blanked it by itself */
                 fbpan_wake(1); ui_backlight(ui_effective_brightness());       /* (its own timer): we own the screen, relight - */
@@ -3998,7 +4003,7 @@ int main(int argc, char **argv){
              * to us. */
             static volatile uint32_t *gpe; static int gpe_tried; static uint32_t last_pkpoll;
             static int pk_down, pk_shown, pk_seen_up; static uint32_t pk_since, pk_rel;   /* pk_seen_up: ignore a key still held from power-on */
-            if(lv_tick_elaps(last_pkpoll) >= 50){
+            if(lv_tick_elaps(last_pkpoll) >= 20){                     /* (kopi.32: every loop while lit - one register read) */
                 last_pkpoll = lv_tick_get();
                 if(!gpe && !gpe_tried){
                     gpe_tried = 1;
@@ -4176,7 +4181,9 @@ int main(int argc, char **argv){
         } else {
             /* lit and nothing moving: wake when a timer is due, or at once on a touch (the poll below), instead of
              * 33 times a second for nothing. Kept at 30 ms while the play-button shortcuts need the GPIO watched. */
-            uint32_t cap = busy ? 5 : (simple_cfg_get_int("pk_port", -1) >= 0 ? 30 : 100);
+            /* (kopi.32) 50 ms while the power key can be read: a quick press (~80 ms) is never missed between two looks,
+             * which left the screen on (or lit and black) when it should have switched. */
+            uint32_t cap = busy ? 5 : (simple_cfg_get_int("pk_port", -1) >= 0 ? 30 : g_pk_gpio_ok ? 50 : 100);
             if(wait > cap) wait = cap;
         }
 #ifdef DISKOS_PROFILE

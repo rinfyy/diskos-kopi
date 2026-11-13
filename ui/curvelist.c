@@ -176,7 +176,13 @@ static void curve(curvelist_t *c){
             intptr_t orig = (intptr_t)lv_obj_get_user_data(ch);
             if(!orig){ orig = ((intptr_t)lv_obj_get_x(ch) << 16) | (lv_obj_get_width(ch) & 0xFFFF); lv_obj_set_user_data(ch, (void *)orig); }
             int ox = (int)(orig >> 16), ow = (int)(orig & 0xFFFF);
-            if(ox < 130) continue;
+            if(ox < 130){                                             /* (kopi.32) the title: shrinks with the row, */
+                if(lv_label_get_long_mode(ch) != LV_LABEL_LONG_WRAP && ow > 60){   /* so it never runs under the value */
+                    int nw = d > 0 ? ow - d : ow; if(nw < 60) nw = 60;               /* sliding in from the right (a long */
+                    if(lv_obj_get_width(ch) != nw) lv_obj_set_width(ch, nw);         /* one scrolls instead) */
+                }
+                continue;
+            }
             if(shift && lv_obj_get_style_text_align(ch, 0) == LV_TEXT_ALIGN_RIGHT && ow - d >= 40){   /* Disco: shrink it in place, */
                 lv_obj_set_x(ch, ox); lv_obj_set_width(ch, ow - d);                                     /* so it never runs into the title */
             } else { lv_obj_set_x(ch, ox - d); if(shift || lv_obj_get_width(ch) < ow) lv_obj_set_width(ch, ow); }   /* right-hand value slides in; a shrunk one gets its width back */

@@ -248,6 +248,7 @@ static void poll_cb(lv_timer_t *t){
     br_result_t r = g_res; unsigned gen = g_res_gen; g_ready = 0; memset(&g_res, 0, sizeof g_res);
     pthread_mutex_unlock(&g_mu);
     if(gen != g_gen){ hdoc_free(&r.doc); return; }                       /* the user went elsewhere meanwhile */
+    if(g_poll) lv_timer_pause(g_poll);                                    /* (kopi.32) delivered: rest until the next page */
     g_loading = 0; addr_paint();
     if(r.err){
         hdoc_free(&r.doc);
@@ -276,7 +277,7 @@ static void load(const char *url, int push){
     g_loading = 1; addr_paint();
     lv_label_set_text(g_title, "");
     message("Loading", is_local(u) ? NULL : "Fetching the page over Wi-Fi");
-    if(!g_poll) g_poll = lv_timer_create(poll_cb, 80, NULL);
+    if(!g_poll) g_poll = lv_timer_create(poll_cb, 80, NULL); else lv_timer_resume(g_poll);
     pthread_mutex_lock(&g_mu);
     if(!g_started){ pthread_t th; if(pthread_create(&th, NULL, worker, NULL) == 0){ pthread_detach(th); g_started = 1; } }
     if(g_started){ snprintf(g_want_url, sizeof g_want_url, "%s", u); g_want_gen = ++g_gen; g_want = 1; pthread_cond_signal(&g_cv); }

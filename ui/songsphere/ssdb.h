@@ -13,6 +13,7 @@ int  ssdb_get(int kind, const char *key, float *x, float *y);   /* 1 = placed */
 int  ssdb_put(int kind, const char *key, float x, float y);     /* 1 = saved */
 int  ssdb_del(int kind, const char *key);
 int  ssdb_coverage(int *placed, int *albums);
+int  ssdb_relink(void);                     /* after a library update: placements follow renamed albums / artists (count moved) */
 /* the playlist for a spot: up to `want` song IDs (malloc'd), a few per album/artist, near first, recent plays
  * less likely. *radius_out = how far it had to look (0..2). Returns the count, 0 if nothing is placed near enough. */
 int  ssdb_pick(float x, float y, int want, int **ids, float *radius_out);

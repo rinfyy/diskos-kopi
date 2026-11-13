@@ -497,7 +497,7 @@ static void *srv_main(void *arg){
     (void)arg;
     while(atomic_load(&g_run)){
         struct pollfd pf = { g_fd, POLLIN, 0 };
-        if(poll(&pf, 1, 500) <= 0) continue;
+        if(poll(&pf, 1, 200) <= 0) continue;                     /* (kopi.32: 200 ms - Stop waits for this) */
         int c = accept(g_fd, NULL, NULL); if(c < 0) continue;
         fcntl(c, F_SETFD, FD_CLOEXEC); fcntl(c, F_SETFL, fcntl(c, F_GETFL) & ~O_NONBLOCK);   /* blocking, with timeouts */
         if(atomic_load(&g_conns) >= WF_MAXCONN){ text(c, "503 Service Unavailable", "Busy, try again"); close(c); continue; }
@@ -539,7 +539,8 @@ static void core_stop(void){
     if(!g_live) return;
     atomic_store(&g_run, 0);
     pthread_join(g_th, NULL);
-    for(int i = 0; i < 40 && atomic_load(&g_conns) > 0; i++) usleep(50 * 1000);   /* the transfers notice g_run */
+    /* the transfers notice g_run; wait a moment for them, not 2 s (this runs on the UI thread: the screen froze) */
+    for(int i = 0; i < 8 && atomic_load(&g_conns) > 0; i++) usleep(25 * 1000);
     if(g_fd >= 0){ close(g_fd); g_fd = -1; }
     g_live = 0;
     wifi_powersave(0); cpu_fast(0);

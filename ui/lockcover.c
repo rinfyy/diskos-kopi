@@ -131,6 +131,7 @@ static void poll_cb(lv_timer_t *t){
     uint8_t *buf = g_res; unsigned gen = g_res_gen; g_res = NULL; g_res_ready = 0;
     pthread_mutex_unlock(&g_mu);
     if(gen != g_gen){ free(buf); return; }                /* a newer choice is on its way */
+    if(g_poll) lv_timer_pause(g_poll);                    /* (kopi.32) delivered: rest until the next request */
     if(g_buf) lv_image_cache_drop(&g_dsc);
     free(g_buf); g_buf = buf; g_failed = !buf;
     if(buf){
@@ -156,7 +157,7 @@ void lockcover_request(void){
     if(g_buf && !strcmp(g_have, name)) return;            /* already showing it */
     if(!strcmp(g_asked, name)) return;                    /* already asked (or it failed: don't loop) */
     snprintf(g_asked, sizeof g_asked, "%s", name); g_failed = 0;
-    if(!g_poll) g_poll = lv_timer_create(poll_cb, 150, NULL);
+    if(!g_poll) g_poll = lv_timer_create(poll_cb, 150, NULL); else lv_timer_resume(g_poll);
     pthread_mutex_lock(&g_mu);
     if(!g_started){ pthread_t th; if(pthread_create(&th, NULL, worker, NULL) == 0){ pthread_detach(th); g_started = 1; } }
     if(g_started){

@@ -1422,6 +1422,14 @@ int main(int argc, char **argv){
             if(getenv("NT_MENU")){disco_nav_set_open(1);nav_wait(300);}
             if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}if(getenv("POWERMENU")){power_menu_open();nav_wait(60);}if(getenv("MATDEMO")){lv_obj_t *c=lv_obj_create(lv_layer_top());lv_obj_remove_style_all(c);lv_obj_set_size(c,250,150);lv_obj_center(c);idisc_glass(c,40);lv_obj_t *t=lv_label_create(c);lv_label_set_text(t,"Glass");lv_obj_set_style_text_font(t,TF(HEADER),0);lv_obj_set_style_text_color(t,TC(TEXT_PRIMARY),0);lv_obj_center(t);if(getenv("MATPRESS"))lv_obj_add_state(c,LV_STATE_USER_1);idisc_material(c,atoi(getenv("MATDEMO")));nav_wait(400);}
             if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}
+            if(getenv("SEEK_TEST")){   /* kopi.32: "x,y,dx,holdms,shot" - press, hold, slide, (screenshot while held when shot=1), release */
+                int x=180,y=310,dx=80,hold=2100,shot=0; sscanf(getenv("SEEK_TEST"),"%d,%d,%d,%d,%d",&x,&y,&dx,&hold,&shot);
+                lv_indev_t*in=lv_indev_create();lv_indev_set_type(in,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(in,nav_read);lv_indev_set_long_press_time(in,400);lv_timer_set_period(lv_indev_get_read_timer(in),10);
+                nav_pointer=(lv_indev_data_t){.point={x,y},.state=LV_INDEV_STATE_PRESSED};nav_wait(hold);
+                for(int k=1;k<=10;k++){nav_pointer.point.x=x+dx*k/10;nav_wait(20);}
+                if(!shot){nav_pointer.state=LV_INDEV_STATE_RELEASED;nav_wait(60);}
+                fprintf(stderr,"SEEK_TEST done\n");
+            }
             if(getenv("NT_SPIN")){nt_spin_open();for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();}
                 if(!strcmp(getenv("NT_SPIN"),"0")){for(int i=0;i<460;i++){lv_tick_inc(10);lv_timer_handler();}}}   /* 0: after the controls hide */
             if(getenv("NT_IMM")){nt_lyrics_open();for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}

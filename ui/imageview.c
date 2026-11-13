@@ -121,6 +121,7 @@ static void poll_cb(lv_timer_t *t){
     iv_result_t r = g_res; unsigned gen = g_res_gen; g_res.px = NULL; g_ready = 0;
     pthread_mutex_unlock(&g_mu);
     if(gen != g_gen){ free(r.px); return; }                     /* the user has already moved on */
+    if(g_poll) lv_timer_pause(g_poll);                          /* (kopi.32) delivered: no more looking until the next load */
     if(!r.px){
         message(r.rc == 6 ? "Picture too large\n(up to 4 megapixels, 8 MB)" : r.rc == 4 ? "This picture format\nisn't supported"
                 : r.rc == 5 || r.rc == 3 ? "Couldn't read this picture" : "Couldn't open this picture");
@@ -145,7 +146,7 @@ static void load(void){
     lv_label_set_text(g_count, cnt); lv_label_set_text(g_name, g_names[g_cur]);
     lv_obj_add_flag(g_img, LV_OBJ_FLAG_HIDDEN);                 /* never the previous picture under a new name */
     message("Loading");
-    if(!g_poll) g_poll = lv_timer_create(poll_cb, 60, NULL);
+    if(!g_poll) g_poll = lv_timer_create(poll_cb, 60, NULL); else lv_timer_resume(g_poll);
     pthread_mutex_lock(&g_mu);
     if(!g_started){ pthread_t th; if(pthread_create(&th, NULL, worker, NULL) == 0){ pthread_detach(th); g_started = 1; } }
     if(g_started){

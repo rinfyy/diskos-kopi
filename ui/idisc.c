@@ -511,7 +511,7 @@ static void progress_paint(void){
     if(!g_drag) lv_obj_set_width(g_fill, 216 * frac / 1000);
     char e[24], r[24], rr[28]; fmt_time(pos, e, sizeof e); fmt_time(dur > pos ? dur - pos : 0, r, sizeof r);
     snprintf(rr, sizeof rr, "-%s", r);
-    set_text(g_el, e); set_text(g_rem, rr);
+    if(!g_drag){ set_text(g_el, e); set_text(g_rem, rr); }
     lyrics_refresh(pos);
 }
 static void view_apply(void){
@@ -523,46 +523,68 @@ static void view_apply(void){
 }
 static void tick_cb(lv_timer_t *t){ (void)t; if(screen_current() == SCR_HOME) progress_paint(); }
 
-/* touch: the cover - tap for the lyrics, hold for the track actions, swipe sideways to skip, up for Immersive;
- * the title - tap for the track actions, hold for the Title hold; the bar - drag to seek; the buttons. */
-/* The cover (kopi.27): its upper half does nothing (it sits under the top edge's Quick Settings pull). Its lower
- * half: tap = lyrics, hold = track actions, swipe up = Immersive, slide sideways = move through the song (the card's
- * width ~ the whole song; the time shows under the bar, which itself only shows). */
+/* touch: the cover - tap for the lyrics, hold for Immersive, swipe up for Immersive; the title - tap for the lyrics
+ * line, hold for the song; the time - hold 2 s, then slide to seek; the buttons. */
+/* The cover (kopi.27; kopi.32: no seeking here): its upper half does nothing (it sits under the top edge's Quick
+ * Settings pull). Its lower half: tap = lyrics, hold = Immersive, swipe up = Immersive; sliding sideways does nothing. */
 static lv_point_t g_down; static uint32_t g_t0; static int g_moved, g_cmode; static long g_pos0, g_dur0, g_target;
 static void card_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p = { 0, 0 };
     if(in) lv_indev_get_point(in, &p);
-    if(c == LV_EVENT_PRESSED){
-        g_down = p; g_t0 = lv_tick_get(); g_moved = 0; g_cmode = p.y < ART_CY ? -1 : 1;
-        track_state_t st; ipc_get_state(&st); g_pos0 = st.position_ms; g_dur0 = st.duration_ms; g_target = g_pos0;
-        return;
-    }
+    if(c == LV_EVENT_PRESSED){ g_down = p; g_t0 = lv_tick_get(); g_moved = 0; g_cmode = p.y < ART_CY ? -1 : 1; return; }
     if(g_cmode < 0) return;
     if(c == LV_EVENT_PRESSING){
         int dx = p.x - g_down.x, dy = p.y - g_down.y;
         if(abs(dx) > 10 || abs(dy) > 10) g_moved = 1;
         if(g_cmode == 1 && g_moved) g_cmode = (abs(dy) > 2 * abs(dx) && dy < 0) ? 3 : 2;
-        if(g_cmode == 2 && g_dur0 > 0){
-            g_target = g_pos0 + (long)((long long)dx * g_dur0 / 240);
-            if(g_target < 0) g_target = 0;
-            if(g_target > g_dur0 - 1000) g_target = g_dur0 - 1000;
-            g_drag = 1; lv_obj_set_height(g_bar, 10); lv_obj_set_style_radius(g_bar, 5, 0); lv_obj_set_height(g_fill, 10);
-            lv_obj_set_width(g_fill, (int)(216LL * g_target / g_dur0));
-            char b[24]; fmt_time(g_target, b, sizeof b); set_text(g_el, b);
-        }
         return;
     }
     if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
         int dx = p.x - g_down.x, dy = p.y - g_down.y; uint32_t dt = lv_tick_elaps(g_t0);
-        if(g_cmode == 2){
-            if(c == LV_EVENT_RELEASED && g_dur0 > 0) ui_seek_to(g_target);
-            g_drag = 0; lv_obj_set_height(g_bar, 6); lv_obj_set_style_radius(g_bar, 3, 0); lv_obj_set_height(g_fill, 6);
-            progress_paint();
-        } else if(g_cmode == 3 && dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
+        if(g_cmode == 3 && dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
         return;
     }
     if(c == LV_EVENT_SHORT_CLICKED && !g_moved){ onboarding_discovered(HINT_MUSIC); nt_lyrics_open(); }
     else if(c == LV_EVENT_LONG_PRESSED && !g_moved && g_cmode == 1) disco_open_np_immersive();   /* (kopi.28: hold = Immersive) */
+}
+/* The bar and its times (kopi.32): hold 2 s - the bar grows - then slide to move through the song (240 px = the whole
+ * song), lift to go there. Moving before the 2 s does nothing. */
+#define SEEK_HOLD_MS 2000
+static int g_sk_armed, g_sk_off;
+static void seek_look(int on){
+    g_drag = on;
+    lv_obj_set_height(g_bar, on ? 10 : 6); lv_obj_set_style_radius(g_bar, on ? 5 : 3, 0); lv_obj_set_height(g_fill, on ? 10 : 6);
+    lv_obj_set_style_text_opa(g_el, on ? 255 : 160, 0);
+    if(!on) progress_paint();
+}
+static void seek_cb(lv_event_t *e){
+    lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p = { 0, 0 };
+    if(in) lv_indev_get_point(in, &p);
+    if(c == LV_EVENT_PRESSED){ g_down = p; g_t0 = lv_tick_get(); g_sk_armed = 0; g_sk_off = 0; return; }
+    if(c == LV_EVENT_PRESSING){
+        if(g_sk_off) return;
+        if(!g_sk_armed){
+            if(abs(p.x - g_down.x) > 12 || abs(p.y - g_down.y) > 12){ g_sk_off = 1; return; }
+            if(lv_tick_elaps(g_t0) < SEEK_HOLD_MS) return;
+            track_state_t st; ipc_get_state(&st);
+            if(!g_have || st.duration_ms <= 0){ g_sk_off = 1; return; }
+            g_pos0 = st.position_ms; g_dur0 = st.duration_ms; g_target = g_pos0;
+            g_down = p; g_sk_armed = 1; seek_look(1);
+            ui_toast("Slide to move through the song");
+        }
+        long t = g_pos0 + (long)((long long)(p.x - g_down.x) * g_dur0 / 240);
+        if(t < 0) t = 0;
+        if(t > g_dur0 - 1000) t = g_dur0 - 1000 > 0 ? g_dur0 - 1000 : 0;
+        g_target = t;
+        lv_obj_set_width(g_fill, (int)(216LL * t / g_dur0));
+        char b[24], r[24], rr[28]; fmt_time(t, b, sizeof b); set_text(g_el, b);
+        fmt_time(g_dur0 > t ? g_dur0 - t : 0, r, sizeof r); snprintf(rr, sizeof rr, "-%s", r); set_text(g_rem, rr);
+        return;
+    }
+    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
+        if(g_sk_armed){ if(c == LV_EVENT_RELEASED) ui_seek_to(g_target); g_sk_armed = 0; seek_look(0); }
+        g_sk_off = 1;
+    }
 }
 static void info_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e);
@@ -617,8 +639,10 @@ void idisc_home_create(lv_obj_t *root){
     lv_obj_set_style_text_opa(g_artist, 165, 0);
 
     /* the scrubber and its times */
-    lv_obj_t *seek = plain(g_layer); lv_obj_set_size(seek, 236, 30); lv_obj_set_pos(seek, 62, 244);
-    g_bar = plain(seek); lv_obj_set_size(g_bar, 216, 6); lv_obj_center(g_bar);
+    lv_obj_t *seek = plain(g_layer); lv_obj_set_size(seek, 236, 36); lv_obj_set_pos(seek, 62, 244);   /* (kopi.32) hold 2 s, slide */
+    lv_obj_add_flag(seek, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK); lv_obj_remove_flag(seek, LV_OBJ_FLAG_GESTURE_BUBBLE);
+    lv_obj_add_event_cb(seek, seek_cb, LV_EVENT_ALL, NULL); g_sk_armed = 0; g_drag = 0;
+    g_bar = plain(seek); lv_obj_set_size(g_bar, 216, 6); lv_obj_align(g_bar, LV_ALIGN_TOP_MID, 0, 12);
     lv_obj_set_style_radius(g_bar, 3, 0); lv_obj_set_style_clip_corner(g_bar, true, 0);
     lv_obj_set_style_bg_color(g_bar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(g_bar, 64, 0);
     g_fill = plain(g_bar); lv_obj_set_size(g_fill, 0, 6); lv_obj_align(g_fill, LV_ALIGN_LEFT_MID, 0, 0);
@@ -674,6 +698,7 @@ int idisc_home_owns_point(int x, int y){
     if(!g_layer || !g_have) return 0;
     int r = g_card_d / 2;
     if(abs(x - 180) <= r && y >= ART_CY && y <= ART_CY + r) return 1;       /* the cover's lower half */
+    if(x >= 62 && x <= 298 && y >= 244 && y < 280) return 1;               /* the bar: hold to seek */
     return y >= 283 && y <= 345 && x >= 72 && x <= 288;                  /* the buttons */
 }
 

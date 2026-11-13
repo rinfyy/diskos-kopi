@@ -25,6 +25,9 @@ int ssdb_open(void){
     sqlite3_busy_timeout(g_ss, 1500);
     if(sqlite3_exec(g_ss, "CREATE TABLE IF NOT EXISTS PLACE(KIND INTEGER NOT NULL, KEY TEXT NOT NULL, X REAL NOT NULL, "
                           "Y REAL NOT NULL, AT INTEGER NOT NULL, PRIMARY KEY(KIND, KEY)) WITHOUT ROWID;", 0, 0, 0) != SQLITE_OK) goto fail;
+    /* (kopi.32) where a placed album / artist lives: its folders, so a placement follows its music when the tags change */
+    sqlite3_exec(g_ss, "CREATE TABLE IF NOT EXISTS HOME(KIND INTEGER NOT NULL, KEY TEXT NOT NULL, DIR TEXT NOT NULL, "
+                       "PRIMARY KEY(KIND, KEY, DIR)) WITHOUT ROWID;", 0, 0, 0);
     if(sqlite3_open_v2(lib_path(), &g_lib, SQLITE_OPEN_READONLY, NULL) != SQLITE_OK) goto fail;
     sqlite3_busy_timeout(g_lib, 1500);
     char *q = sqlite3_mprintf("ATTACH %Q AS ss;", ss_path());
@@ -34,6 +37,7 @@ int ssdb_open(void){
     if(sqlite3_prepare_v2(g_lib, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='PLAY_STATS';", -1, &st, NULL) == SQLITE_OK){
         g_has_stats = sqlite3_step(st) == SQLITE_ROW; sqlite3_finalize(st);
     }
+    ssdb_relink();
     return 1;
 fail:
     ssdb_close();
@@ -87,6 +91,7 @@ int ssdb_get(int kind, const char *key, float *x, float *y){
     sqlite3_finalize(st);
     return ok;
 }
+static void remember_homes(void);
 int ssdb_put(int kind, const char *key, float x, float y){
     sqlite3_stmt *st; int ok = 0;
     if(!g_ss || sqlite3_prepare_v2(g_ss, "INSERT OR REPLACE INTO PLACE(KIND,KEY,X,Y,AT) VALUES(?1,?2,?3,?4,?5);", -1, &st, NULL) != SQLITE_OK) return 0;
@@ -95,6 +100,7 @@ int ssdb_put(int kind, const char *key, float x, float y){
     sqlite3_bind_int64(st, 5, (long long)time(NULL));
     ok = sqlite3_step(st) == SQLITE_DONE;
     sqlite3_finalize(st);
+    if(ok && kind != SS_SONG && g_lib) remember_homes();
     return ok;
 }
 int ssdb_del(int kind, const char *key){
@@ -103,6 +109,9 @@ int ssdb_del(int kind, const char *key){
     sqlite3_bind_int(st, 1, kind); sqlite3_bind_text(st, 2, key, -1, SQLITE_STATIC);
     ok = sqlite3_step(st) == SQLITE_DONE;
     sqlite3_finalize(st);
+    if(ok && sqlite3_prepare_v2(g_ss, "DELETE FROM HOME WHERE KIND=?1 AND KEY=?2;", -1, &st, NULL) == SQLITE_OK){
+        sqlite3_bind_int(st, 1, kind); sqlite3_bind_text(st, 2, key, -1, SQLITE_STATIC); sqlite3_step(st); sqlite3_finalize(st);
+    }
     return ok;
 }
 int ssdb_coverage(int *placed, int *albums){
@@ -196,4 +205,109 @@ int ssdb_pick(float x, float y, int want, int **ids, float *radius_out){
     if(!got){ free(out); return 0; }
     *ids = out;
     return got;
+}
+
+/* ---- placements that follow their music (kopi.32) ----
+ * Albums and artists are placed by name. When a library update changes a name (tags edited on a PC, an album renamed,
+ * "Artist" vs "artist"), the old placement would match nothing and SongSphere looked reset. So each placed album /
+ * artist also remembers the folders its songs are in, and after every rescan a placement whose name has gone is moved
+ * to the name the songs in those folders carry now: the same name in other letter case first, else the name most of
+ * those songs share. Never onto a name that is already placed. Song placements are by file, so they need nothing. */
+#define OWNER_S "COALESCE(NULLIF(S.ALBUM_ARTIST,''),S.ARTIST,'')"
+static void dir_of(const char *path, char *out, size_t cap){
+    snprintf(out, cap, "%s", path); char *sl = strrchr(out, '/'); if(sl && sl != out) *sl = 0; else out[0] = 0;
+}
+static void remember_homes(void){                                    /* placed and present: note their folders */
+    sqlite3_stmt *st, *del = NULL, *ins = NULL;
+    if(sqlite3_prepare_v2(g_lib,
+        "SELECT * FROM (SELECT 1 AS K, S.ALBUM AS N, S.PATH FROM SONG S JOIN ss.PLACE P ON P.KIND=1 AND P.KEY=S.ALBUM "
+        "WHERE S.PATH NOT LIKE '%.m4b' UNION ALL SELECT 2, " OWNER_S ", S.PATH FROM SONG S JOIN ss.PLACE P ON P.KIND=2 AND "
+        "P.KEY=" OWNER_S " WHERE S.PATH NOT LIKE '%.m4b') ORDER BY 1, 2, 3;",        /* one pass over the library */
+        -1, &st, NULL) != SQLITE_OK) return;
+    if(sqlite3_prepare_v2(g_ss, "DELETE FROM HOME WHERE KIND=?1 AND KEY=?2;", -1, &del, NULL) != SQLITE_OK ||
+       sqlite3_prepare_v2(g_ss, "INSERT OR IGNORE INTO HOME(KIND,KEY,DIR) VALUES(?1,?2,?3);", -1, &ins, NULL) != SQLITE_OK){
+        sqlite3_finalize(st); sqlite3_finalize(del); sqlite3_finalize(ins); return;
+    }
+    /* collect first (the read handle sees our file attached; write through the other one after the read is done) */
+    typedef struct { int kind; char key[200], dir[400]; } row_t;
+    int cap = 256, n = 0; row_t *v = malloc((size_t)cap * sizeof *v);
+    char lastkey[200] = ""; int lastkind = -1, ndirs = 0; char lastdir[400] = "";
+    while(v && sqlite3_step(st) == SQLITE_ROW){
+        int k = sqlite3_column_int(st, 0); const char *key = col(st, 1); char d[400]; dir_of(col(st, 2), d, sizeof d);
+        if(!d[0]) continue;
+        if(k != lastkind || strcmp(key, lastkey)){ lastkind = k; snprintf(lastkey, sizeof lastkey, "%s", key); ndirs = 0; lastdir[0] = 0; }
+        if(!strcmp(d, lastdir) || ndirs >= 24) continue;                           /* a few folders are plenty */
+        int dup = 0; for(int i = n - ndirs; i < n; i++) if(!strcmp(v[i].dir, d)){ dup = 1; break; }
+        snprintf(lastdir, sizeof lastdir, "%s", d);
+        if(dup) continue;
+        if(n == cap){ cap *= 2; row_t *nv = realloc(v, (size_t)cap * sizeof *v); if(!nv) break; v = nv; }
+        v[n].kind = k; snprintf(v[n].key, sizeof v[n].key, "%s", key); snprintf(v[n].dir, sizeof v[n].dir, "%s", d); n++; ndirs++;
+    }
+    sqlite3_finalize(st);
+    if(v && n){
+        sqlite3_exec(g_ss, "BEGIN;", 0, 0, 0);
+        for(int i = 0; i < n; i++){
+            if(i == 0 || v[i].kind != v[i-1].kind || strcmp(v[i].key, v[i-1].key)){                  /* fresh list per name */
+                sqlite3_reset(del); sqlite3_bind_int(del, 1, v[i].kind); sqlite3_bind_text(del, 2, v[i].key, -1, SQLITE_STATIC); sqlite3_step(del);
+            }
+            sqlite3_reset(ins); sqlite3_bind_int(ins, 1, v[i].kind); sqlite3_bind_text(ins, 2, v[i].key, -1, SQLITE_STATIC);
+            sqlite3_bind_text(ins, 3, v[i].dir, -1, SQLITE_STATIC); sqlite3_step(ins);
+        }
+        sqlite3_exec(g_ss, "COMMIT;", 0, 0, 0);
+    }
+    free(v); sqlite3_finalize(del); sqlite3_finalize(ins);
+}
+/* the name the songs in a placement's folders carry now ("" none) */
+static void new_name(int kind, const char *old, char *out, size_t cap){
+    out[0] = 0;
+    sqlite3_stmt *st;
+    const char *same = kind == SS_ALBUM ? "SELECT ALBUM FROM SONG WHERE ALBUM=?1 COLLATE NOCASE AND TRIM(ALBUM)<>'' LIMIT 1;"
+                                        : "SELECT " OWNER_S " FROM SONG S WHERE " OWNER_S "=?1 COLLATE NOCASE AND TRIM(" OWNER_S ")<>'' LIMIT 1;";
+    if(sqlite3_prepare_v2(g_lib, same, -1, &st, NULL) == SQLITE_OK){
+        sqlite3_bind_text(st, 1, old, -1, SQLITE_STATIC);
+        if(sqlite3_step(st) == SQLITE_ROW) snprintf(out, cap, "%s", col(st, 0));
+        sqlite3_finalize(st);
+        if(out[0]) return;
+    }
+    char q[700];
+    snprintf(q, sizeof q, "SELECT %s AS K, COUNT(*) FROM ss.HOME H JOIN SONG S ON substr(S.PATH,1,length(H.DIR)+1)=H.DIR||'/' "
+             "AND instr(substr(S.PATH,length(H.DIR)+2),'/')=0 WHERE H.KIND=?1 AND H.KEY=?2 AND S.PATH NOT LIKE '%%.m4b' "
+             "AND TRIM(K)<>'' GROUP BY 1 ORDER BY 2 DESC LIMIT 1;", kind == SS_ALBUM ? "S.ALBUM" : OWNER_S);
+    if(sqlite3_prepare_v2(g_lib, q, -1, &st, NULL) != SQLITE_OK) return;
+    sqlite3_bind_int(st, 1, kind); sqlite3_bind_text(st, 2, old, -1, SQLITE_STATIC);
+    if(sqlite3_step(st) == SQLITE_ROW) snprintf(out, cap, "%s", col(st, 0));
+    sqlite3_finalize(st);
+}
+int ssdb_relink(void){
+    if(!g_lib || !g_ss) return 0;
+    /* placements whose name the library no longer has */
+    typedef struct { int kind; char key[200]; } gone_t;
+    gone_t *g = NULL; int ng = 0, cap = 0;
+    sqlite3_stmt *st;
+    if(sqlite3_prepare_v2(g_lib, "SELECT KIND, KEY FROM ss.PLACE WHERE (KIND=1 AND KEY NOT IN (SELECT ALBUM FROM SONG WHERE ALBUM "
+                                 "IS NOT NULL)) OR (KIND=2 AND KEY NOT IN (SELECT " OWNER_S " FROM SONG S));", -1, &st, NULL) != SQLITE_OK) return 0;
+    while(sqlite3_step(st) == SQLITE_ROW){
+        int k = sqlite3_column_int(st, 0); const char *key = col(st, 1);
+        if(ng == cap){ cap = cap ? cap * 2 : 16; gone_t *ngp = realloc(g, (size_t)cap * sizeof *g); if(!ngp) break; g = ngp; }
+        g[ng].kind = k; snprintf(g[ng].key, sizeof g[ng].key, "%s", key); ng++;
+    }
+    sqlite3_finalize(st);
+    int moved = 0;
+    for(int i = 0; i < ng; i++){
+        char nn[200]; new_name(g[i].kind, g[i].key, nn, sizeof nn);
+        if(!nn[0] || !strcmp(nn, g[i].key)) continue;
+        float x, y; if(ssdb_get(g[i].kind, nn, &x, &y)) continue;                  /* the new name has its own spot */
+        sqlite3_stmt *u;
+        if(sqlite3_prepare_v2(g_ss, "UPDATE PLACE SET KEY=?3 WHERE KIND=?1 AND KEY=?2;", -1, &u, NULL) != SQLITE_OK) continue;
+        sqlite3_bind_int(u, 1, g[i].kind); sqlite3_bind_text(u, 2, g[i].key, -1, SQLITE_STATIC); sqlite3_bind_text(u, 3, nn, -1, SQLITE_STATIC);
+        if(sqlite3_step(u) == SQLITE_DONE && sqlite3_changes(g_ss) > 0) moved++;
+        sqlite3_finalize(u);
+        if(sqlite3_prepare_v2(g_ss, "UPDATE OR REPLACE HOME SET KEY=?3 WHERE KIND=?1 AND KEY=?2;", -1, &u, NULL) == SQLITE_OK){
+            sqlite3_bind_int(u, 1, g[i].kind); sqlite3_bind_text(u, 2, g[i].key, -1, SQLITE_STATIC); sqlite3_bind_text(u, 3, nn, -1, SQLITE_STATIC);
+            sqlite3_step(u); sqlite3_finalize(u);
+        }
+    }
+    free(g);
+    remember_homes();                                                    /* then note where everything placed lives now */
+    return moved;
 }
