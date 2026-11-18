@@ -27,7 +27,10 @@ use librespot_connect::{ConnectConfig, LoadContextOptions, LoadRequest, LoadRequ
 use librespot_core::{
     authentication::Credentials, cache::Cache, config::DeviceType, session::Session, SessionConfig,
 };
+use librespot_core::{spotify_id::SpotifyId, spotify_uri::SpotifyUri};
 use librespot_metadata::audio::{AudioItem, UniqueFields};
+use librespot_metadata::{Metadata, Track};
+use protobuf::Message;
 use librespot_playback::{
     audio_backend::{Sink, SinkResult},
     config::{AudioFormat, Bitrate, PlayerConfig},
@@ -143,13 +146,9 @@ fn set_state(st: &St, state: &'static str, msg: &str) {
 }
 
 // ------------------------------------------------------------------------------------------------ Web API (lists)
-async fn webapi(session: &Session, client_id: &str, path: &str) -> Result<serde_json::Value, String> {
-    let token = if client_id.is_empty() {
-        session.token_provider().get_token(SCOPES).await
-    } else {
-        session.token_provider().get_token_with_client_id(SCOPES, client_id).await
-    }
-    .map_err(|e| format!("No access token ({e})"))?;
+async fn webapi(session: &Session, _client_id: &str, path: &str) -> Result<serde_json::Value, String> {
+    // (kopi.35 fix) the token comes from login5, as librespot's own requests do: the old keymaster route is gone
+    let token = session.login5().auth_token().await.map_err(|e| format!("No access token ({e})"))?;
     let url = if path.starts_with("https://") { path.to_string() } else { format!("https://api.spotify.com/v1/{path}") };
     let req = http::Request::builder()
         .method("GET")
@@ -158,8 +157,13 @@ async fn webapi(session: &Session, client_id: &str, path: &str) -> Result<serde_
         .header("Accept", "application/json")
         .body(bytes::Bytes::new())
         .map_err(|e| e.to_string())?;
-    let body = session.http_client().request_body(req).await.map_err(|e| format!("Spotify said no ({e})"))?;
-    serde_json::from_slice(&body).map_err(|e| format!("Bad answer ({e})"))
+    let body = session.http_client().request_body(req).await.map_err(|e| format!("Web API: {e}"))?;
+    let v: serde_json::Value = serde_json::from_slice(&body).map_err(|_| "Web API: not JSON".to_string())?;
+    if let Some(e) = v.get("error") {
+        let msg = e.get("message").and_then(|m| m.as_str()).or_else(|| e.as_str()).unwrap_or("refused");
+        return Err(format!("Web API: {msg}"));
+    }
+    Ok(v)
 }
 fn js<'a>(v: &'a serde_json::Value, k: &str) -> &'a str { v.get(k).and_then(|x| x.as_str()).unwrap_or("") }
 fn artists(t: &serde_json::Value) -> String {
@@ -178,6 +182,15 @@ fn pct(q: &str) -> String {
 }
 // rows: "C\t<context uri>" first (tracks), then "P\t<name>\t<uri>\t<detail>" or "T\t<title>\t<artist>\t<uri>\t<ms>"
 async fn make_list(session: &Session, client_id: &str, what: &str) -> Result<String, String> {
+    match web_list(session, client_id, what).await {
+        Ok(l) => Ok(l),
+        Err(web) => {
+            log::warn!("spotdisc: {web}; trying Spotify's own API");
+            inner_list(session, what).await.map_err(|e| format!("{web} / {e}"))
+        }
+    }
+}
+async fn web_list(session: &Session, client_id: &str, what: &str) -> Result<String, String> {
     let mut out = String::new();
     let mut words = what.splitn(2, ' ');
     let kind = words.next().unwrap_or("");
@@ -226,6 +239,90 @@ async fn make_list(session: &Session, client_id: &str, what: &str) -> Result<Str
         _ => return Err("Unknown list".into()),
     }
     Ok(out)
+}
+
+// The fallback: Spotify's internal API (spclient), the one librespot plays through. Playlists from the rootlist; songs
+// from the playlist, the collection or a search context, then each song's name and artists from its metadata.
+async fn track_rows(session: &Session, uris: Vec<String>) -> String {
+    use futures_util::stream::{self, StreamExt};
+    let rows: Vec<Option<String>> = stream::iter(uris.into_iter().filter(|u| u.starts_with("spotify:track:")).take(200))
+        .map(|u| {
+            let s = session.clone();
+            async move {
+                let id = SpotifyUri::from_uri(&u).ok()?;
+                let t = Track::get(&s, &id).await.ok()?;
+                let a = t.artists.0.iter().map(|x| x.name.clone()).collect::<Vec<_>>().join(", ");
+                Some(format!("T\t{}\t{}\t{}\t{}\n", clean(&t.name), clean(&a), u, t.duration.max(0)))
+            }
+        })
+        .buffered(8)
+        .collect()
+        .await;
+    rows.into_iter().flatten().collect()
+}
+async fn context_uris(session: &Session, uri: &str) -> Result<Vec<String>, String> {
+    let ctx = session.spclient().get_context(uri).await.map_err(|e| format!("context: {e}"))?;
+    let mut out = Vec::new();
+    for page in ctx.pages.iter() {
+        for t in page.tracks.iter() { out.push(t.uri().to_string()); }
+        let mut next = page.next_page_url().to_string();
+        let mut hops = 0;
+        while !next.is_empty() && out.len() < 200 && hops < 8 {
+            hops += 1;
+            let b = match session.spclient().get_next_page(&next).await { Ok(b) => b, Err(_) => break };
+            let v: serde_json::Value = match serde_json::from_slice(&b) { Ok(v) => v, Err(_) => break };
+            for t in v.get("tracks").and_then(|x| x.as_array()).into_iter().flatten() { out.push(js(t, "uri").to_string()); }
+            next = v.get("next_page_url").or_else(|| v.get("nextPageUrl")).and_then(|x| x.as_str()).unwrap_or("").to_string();
+        }
+        if out.len() >= 200 { break; }
+    }
+    Ok(out)
+}
+async fn inner_list(session: &Session, what: &str) -> Result<String, String> {
+    use librespot_protocol::playlist4_external::SelectedListContent;
+    let mut words = what.splitn(2, ' ');
+    let kind = words.next().unwrap_or("");
+    let arg = words.next().unwrap_or("").trim();
+    let user = session.username();
+    match kind {
+        "playlists" => {
+            let b = session.spclient().get_rootlist(0, Some(200)).await.map_err(|e| format!("rootlist: {e}"))?;
+            let l = SelectedListContent::parse_from_bytes(&b).map_err(|e| format!("rootlist: {e}"))?;
+            let mut out = format!("P\tLiked Songs\tspotify:user:{user}:collection\tYour liked songs\n");
+            if let Some(c) = l.contents.as_ref() {
+                for (i, it) in c.items.iter().enumerate() {
+                    let uri = it.uri();
+                    if !uri.starts_with("spotify:playlist:") { continue; }   // (folders: spotify:start-group / end-group)
+                    let m = c.meta_items.get(i);
+                    let name = m.and_then(|m| m.attributes.as_ref()).map(|a| a.name().to_string()).unwrap_or_default();
+                    let n = m.map(|m| m.length()).unwrap_or(0);
+                    let owner = m.map(|m| m.owner_username().to_string()).unwrap_or_default();
+                    out += &format!("P\t{}\t{}\t{} songs{}{}\n", clean(if name.is_empty() { "Playlist" } else { &name }), uri, n,
+                                    if owner.is_empty() || owner == user { "" } else { " \u{b7} " }, if owner == user { "" } else { &owner });
+                }
+            }
+            Ok(out)
+        }
+        "playlist" => {
+            let id = arg.trim_start_matches("spotify:playlist:");
+            let sid = SpotifyId::from_base62(id).map_err(|e| format!("playlist id: {e}"))?;
+            let b = session.spclient().get_playlist(&sid).await.map_err(|e| format!("playlist: {e}"))?;
+            let l = SelectedListContent::parse_from_bytes(&b).map_err(|e| format!("playlist: {e}"))?;
+            let uris: Vec<String> = l.contents.as_ref().map(|c| c.items.iter().map(|i| i.uri().to_string()).collect()).unwrap_or_default();
+            Ok(format!("C\tspotify:playlist:{id}\n") + &track_rows(session, uris).await)
+        }
+        "liked" => {
+            let ctx = format!("spotify:user:{user}:collection");
+            let uris = context_uris(session, &ctx).await?;
+            Ok(format!("C\t{ctx}\n") + &track_rows(session, uris).await)
+        }
+        "search" => {
+            let q: String = arg.split_whitespace().map(pct).collect::<Vec<_>>().join("+");
+            let uris = context_uris(session, &format!("spotify:search:{q}")).await?;
+            Ok("C\t\n".to_string() + &track_rows(session, uris).await)
+        }
+        _ => Err("Unknown list".into()),
+    }
 }
 
 // ------------------------------------------------------------------------------------------------ now playing

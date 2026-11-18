@@ -2290,7 +2290,9 @@ dependencies = [
  "librespot-discovery",
  "librespot-metadata",
  "librespot-playback",
+ "librespot-protocol",
  "log",
+ "protobuf",
  "serde_json",
  "tokio",
 ]

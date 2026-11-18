@@ -15,6 +15,8 @@ librespot-connect = { version = "=0.8.0", default-features = false, features = [
 librespot-discovery = { version = "=0.8.0", default-features = false, features = ["with-libmdns", "rustls-tls-webpki-roots"] }
 librespot-playback = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
 librespot-metadata = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-protocol = { version = "=0.8.0", default-features = false }
+protobuf = "3.7"
 tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 futures-util = { version = "0.3", default-features = false }
 http = "1"
