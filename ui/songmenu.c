@@ -76,7 +76,8 @@ static void pick(int i){
         case A_DELETE:   fileops_action(g_dir, g_name, g_is_dir, g_done, 2); break;
         case A_PLAY:     if(g_is_dir){ if(ui_play_folder(g_path, NULL)) screen_show(SCR_NOWPLAYING); }   /* (kopi.33) a folder, straight through */
                          else if(g_gplay) g_gplay(0); break;
-        case A_SHUFFLE:  if(g_gplay) g_gplay(1); break;
+        case A_SHUFFLE:  if(g_is_dir){ if(ui_play_folder_ex(g_path, NULL, 1)) screen_show(SCR_NOWPLAYING); }   /* (kopi.34) a folder, shuffled */
+                         else if(g_gplay) g_gplay(1); break;
         case A_SELECT:   if(g_sel) g_sel(); break;
         case A_MOOD:     sphere_ui_tag(!strcmp(g_gcol, "ALBUM") ? 1 : 2, g_gval, g_gval); break;   /* SongSphere: where it sits */
     }
@@ -178,8 +179,8 @@ void songmenu_open_folder(const char *dir, const char *name, void (*done)(void))
     snprintf(g_path, sizeof g_path, "%s/%s", dir, name);
     snprintf(g_dir, sizeof g_dir, "%s", dir); snprintf(g_name, sizeof g_name, "%s", name);
     g_gcol[0] = 0; g_is_dir = 1; g_done = done; g_have_song = 0; g_fav = 0;
-    static const int A[7] = { A_PLAY, A_QUEUE, A_PLAYLIST, A_TAGS, A_RENAME, A_COPYMOVE, A_DELETE };   /* (kopi.33: Play) */
-    open_menu(name, A, 7);
+    static const int A[8] = { A_PLAY, A_SHUFFLE, A_QUEUE, A_PLAYLIST, A_TAGS, A_RENAME, A_COPYMOVE, A_DELETE };   /* (kopi.33: Play; kopi.34: Shuffle) */
+    open_menu(name, A, 8);
 }
 void songmenu_open_group(const char *col, const char *val, const char *title, void (*play)(int shuffle)){   /* Library: album / artist / genre */
     if(!col || !val || !val[0]) return;

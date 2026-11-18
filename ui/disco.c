@@ -827,7 +827,7 @@ int screen_popping(void);
 void disco_screen_entering(int which){
     if(th_simple()){onboarding_dismiss();if(which==SCR_SEARCH&&!screen_popping())search_landing_reset();simple_nav_screen(which);dhome_overlay_close();ed_close();return;}
     onboarding_dismiss();
-    if(th_nt()) nt_imm_close_now();                                     /* NTDisk's Immersive never outlives its screen */
+    if(th_nt() && !((which == SCR_QUICK || which == SCR_HOME) && nt_imm_tucked())) nt_imm_close_now();   /* NTDisk's Immersive never outlives its screen (kopi.34: tucked under Quick Settings, it waits) */
     nav_cancel_tap();
     if(which == SCR_SEARCH && !screen_popping()) search_landing_reset();  /* Menu > Search: the landing page first; back keeps results */
     dhome_overlay_close(); ed_close();                                    /* top-layer panels never outlive their screen (standby, keys) */

@@ -1422,6 +1422,20 @@ int main(int argc, char **argv){
             if(getenv("NT_MENU")){disco_nav_set_open(1);nav_wait(300);}
             if(getenv("SLEEPSHEET")){void sleep_sheet_open(void);sleep_sheet_open();nav_wait(60);}if(getenv("POWERMENU")){power_menu_open();nav_wait(60);}if(getenv("MATDEMO")){lv_obj_t *c=lv_obj_create(lv_layer_top());lv_obj_remove_style_all(c);lv_obj_set_size(c,250,150);lv_obj_center(c);idisc_glass(c,40);lv_obj_t *t=lv_label_create(c);lv_label_set_text(t,"Glass");lv_obj_set_style_text_font(t,TF(HEADER),0);lv_obj_set_style_text_color(t,TC(TEXT_PRIMARY),0);lv_obj_center(t);if(getenv("MATPRESS"))lv_obj_add_state(c,LV_STATE_USER_1);idisc_material(c,atoi(getenv("MATDEMO")));nav_wait(400);}
             if(getenv("WEBFILES")){void webfiles_demo(void);if(atoi(getenv("WEBFILES")))webfiles_demo();webfiles_open();nav_wait(60);}
+            if(getenv("VINYL_SWITCH")){void nt_home_record_apply(void);cfg_set_int("nt_record",atoi(getenv("VINYL_SWITCH")));nt_home_record_apply();nav_wait(300);}   /* kopi.34: the in-place restart */
+            if(getenv("DRAG_TEST")){   /* kopi.34: "x,y,dx,dy,steps" - press, move, release; then report Immersive */
+                int x=180,y=110,dx=0,dy=100,n=10; sscanf(getenv("DRAG_TEST"),"%d,%d,%d,%d,%d",&x,&y,&dx,&dy,&n);
+                lv_indev_t*in=lv_indev_create();lv_indev_set_type(in,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(in,nav_read);lv_timer_set_period(lv_indev_get_read_timer(in),10);
+                nav_pointer=(lv_indev_data_t){.point={x,y},.state=LV_INDEV_STATE_PRESSED};nav_wait(40);
+                for(int k=1;k<=n;k++){nav_pointer.point.x=x+dx*k/n;nav_pointer.point.y=y+dy*k/n;nav_wait(20);}
+                nav_pointer.state=LV_INDEV_STATE_RELEASED;nav_wait(500);
+                fprintf(stderr,"DRAG_TEST imm=%d\n",nt_imm_visible());
+            }
+            if(getenv("TAP_TEST")){    /* kopi.34: "x,y,count,gapms" - taps; then a screenshot */
+                int x=180,y=110,c=1,g=600; sscanf(getenv("TAP_TEST"),"%d,%d,%d,%d",&x,&y,&c,&g);
+                lv_indev_t*in=lv_indev_create();lv_indev_set_type(in,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(in,nav_read);lv_timer_set_period(lv_indev_get_read_timer(in),10);
+                for(int k=0;k<c;k++){nav_pointer=(lv_indev_data_t){.point={x,y},.state=LV_INDEV_STATE_PRESSED};nav_wait(60);nav_pointer.state=LV_INDEV_STATE_RELEASED;nav_wait(g);}
+            }
             if(getenv("SEEK_TEST")){   /* kopi.32: "x,y,dx,holdms,shot" - press, hold, slide, (screenshot while held when shot=1), release */
                 int x=180,y=310,dx=80,hold=2100,shot=0; sscanf(getenv("SEEK_TEST"),"%d,%d,%d,%d,%d",&x,&y,&dx,&hold,&shot);
                 lv_indev_t*in=lv_indev_create();lv_indev_set_type(in,LV_INDEV_TYPE_POINTER);lv_indev_set_read_cb(in,nav_read);lv_indev_set_long_press_time(in,400);lv_timer_set_period(lv_indev_get_read_timer(in),10);
@@ -1430,13 +1444,14 @@ int main(int argc, char **argv){
                 if(!shot){nav_pointer.state=LV_INDEV_STATE_RELEASED;nav_wait(60);}
                 fprintf(stderr,"SEEK_TEST done\n");
             }
+            if(getenv("PP_STATE")){int pl=atoi(getenv("PP_STATE"));nt_home_now_playing("Northern Lights","The Midnight",!pl);nav_wait(50);nt_home_now_playing("Northern Lights","The Midnight",pl);nav_wait(300);}   /* kopi.34 */
             if(getenv("IMM_MID")){if(getenv("IMM_ANIM"))screen_set_anim(1);nt_spin_open();for(int i=0;i<atoi(getenv("IMM_MID"));i++){lv_tick_inc(10);lv_timer_handler();}}   /* kopi.33: mid-morph */
             if(getenv("IMM_TEST")){   /* kopi.33: open, (QS round trip), back - "spin"|"lyr", then checks */
                 if(getenv("IMM_ANIM"))screen_set_anim(1);
                 const char *m=getenv("IMM_TEST"); int spin=!strcmp(m,"spin")||!strcmp(m,"spinqs"), qs=strstr(m,"qs")!=NULL;
                 if(spin) nt_spin_open(); else nt_lyrics_open(); nav_wait(500);
                 if(!nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL open\n");exit(3);}
-                if(qs){nt_imm_suspend();screen_show(SCR_QUICK);nav_wait(300);if(nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL suspend\n");exit(3);}
+                if(qs){nt_imm_suspend();screen_show(SCR_QUICK);nav_wait(300);if(!nt_imm_tucked()){fprintf(stderr,"IMM_TEST FAIL suspend\n");exit(3);}
                        screen_back();nav_wait(500);if(!nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL resume\n");exit(3);}}
                 nt_imm_back();nav_wait(600);
                 if(nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL back\n");exit(3);}
@@ -2998,6 +3013,15 @@ render:
     if(getenv("POPUP")){extern void disco_track_overlay_open(void);disco_track_overlay_open();nav_wait(300);}   /* the track popup, any Disco-family theme */
     if(th_simple()&&getenv("SIMPLE_ARROW_MS")){simple_action_feedback();for(int i=0;i<atoi(getenv("SIMPLE_ARROW_MS"))/10;i++){lv_tick_inc(10);lv_timer_handler();}}
     if(th_simple()&&getenv("SIMPLE_ARROW_FRAME"))simple_test_feedback_frame(atoi(getenv("SIMPLE_ARROW_FRAME")));
+    if(getenv("IMM_QS")){   /* kopi.34: "down,N" / "up,N" - Quick Settings over Immersive, N x 10 ms into the slide */
+                screen_set_anim(1); int up=getenv("IMM_QS")[0]=='u', n=atoi(strchr(getenv("IMM_QS"),',')+1);
+                nt_spin_open(); nav_wait(500); nt_imm_suspend(); screen_show(SCR_QUICK);
+                if(up){ nav_wait(400); screen_back(); }
+                for(int i=0;i<n;i++){lv_tick_inc(10);lv_timer_handler();}
+                fprintf(stderr,"IMM_QS tucked=%d visible=%d\n",nt_imm_tucked(),nt_imm_visible());
+            }
+    if(getenv("ART_BENCH")){void nt_home_record_apply(void);struct timespec t0,t1;clock_gettime(CLOCK_MONOTONIC,&t0);for(int i=0;i<50;i++){nt_home_record_apply();if(getenv("ART_REFR"))lv_refr_now(d);}clock_gettime(CLOCK_MONOTONIC,&t1);
+        fprintf(stderr,"ART_BENCH %.2f ms/apply+frame\n",((t1.tv_sec-t0.tv_sec)*1e3+(t1.tv_nsec-t0.tv_nsec)/1e6)/50);}
     lv_refr_now(d);
     if(th_simple()&&getenv("SQUASH_VOLUME")){ui_show_volume(atoi(getenv("SQUASH_VOLUME")));nav_wait(180);lv_refr_now(d);}
     if(getenv("VOLUME_CONCEPT")){volume_concept(atoi(getenv("VOLUME_CONCEPT")));lv_refr_now(d);}

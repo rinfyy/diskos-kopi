@@ -263,7 +263,7 @@ static void stat_set(stat_t *t, lv_color_t fg){
 }
 
 /* ---- Music --------------------------------------------------------------------------------------------------------- */
-static lv_obj_t *g_layer, *g_disc, *g_art, *g_hub, *g_hole, *g_state, *g_ring, *g_pbtn;
+static lv_obj_t *g_layer, *g_disc, *g_art, *g_hub, *g_hole, *g_state, *g_ring, *g_pbtn, *g_rim;
 static lv_obj_t *g_info, *g_artist, *g_title, *g_lyric, *g_line, *g_line_fill, *g_el, *g_tot, *g_idle_box, *g_start;
 static face_t g_face;
 static stat_t g_stat, g_istat, g_sstat;
@@ -286,7 +286,7 @@ static uint32_t *g_src, *g_out; static uint8_t *g_mask; static int g_sd;   /* d 
 static int16_t *g_span;                                                     /* per row: the disc's first and last+1 column */
 static uint32_t g_bgpx = 0xFFFFFFFFu;                                       /* the canvas colour g_out's corners hold */
 static lv_image_dsc_t g_spin_dsc; static int g_angle10, g_src_ok, g_row0;   /* angle in tenths of a degree */
-static unsigned g_src_rev = ~0u; static lv_timer_t *g_spin_tm;
+static unsigned g_src_rev = ~0u; static lv_timer_t *g_spin_tm; static int g_src_vinyl = -1;   /* (kopi.34) the look g_src was made in */
 static uint32_t px_of(lv_color_t c){ return 0xFF000000u | ((uint32_t)c.red << 16) | ((uint32_t)c.green << 8) | c.blue; }
 static void spin_alloc(int d){
     if(g_sd == d) return;
@@ -311,18 +311,40 @@ static void spin_alloc(int d){
 }
 /* ---- the record (kopi.33, Music Screen > Record): a CD, or a black vinyl record with the album as its label ---- */
 int nt_vinyl(void){ return cfg_get_int("nt_record", 0) == 1; }
-/* the picture area-averaged into an L x L square */
+static void art_apply(int force);
+/* (kopi.34) the middle of the record: a CD's clear hub and hole, or the vinyl's spindle - set again on a change */
+static void record_look(void){
+    if(!g_hole) return;
+    int v = nt_vinyl();
+    if(g_hub){ if(v) lv_obj_add_flag(g_hub, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(g_hub, LV_OBJ_FLAG_HIDDEN); }
+    if(g_rim){ if(v) lv_obj_add_flag(g_rim, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(g_rim, LV_OBJ_FLAG_HIDDEN); }
+    lv_obj_set_size(g_hole, v ? 14 : 42, v ? 14 : 42); lv_obj_center(g_hole);
+    lv_obj_set_style_bg_color(g_hole, v ? TC(FIXED_MEDIA_HINT) : MC(CANVAS), 0);
+    lv_obj_set_style_border_width(g_hole, v ? 2 : 3, 0);
+    lv_obj_set_style_border_color(g_hole, v ? TC(FIXED_MEDIA_BLACK) : MC(SURFACE_STRONG), 0);
+}
+/* Settings > Music Screen > Record: applies at once, no restart (kopi.34) */
+void nt_home_record_apply(void){ record_look(); art_apply(1); }
+/* the picture area-averaged into an L x L square. (kopi.34) The column bounds are worked out once per call and the
+ * three divides per pixel are one multiply by a table's reciprocal: a new song's record is built ~3x faster. */
 static void scale_square(uint32_t *dst, int L, const lv_image_dsc_t *a){
     int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
     int st = a->header.stride ? (int)a->header.stride : w * bpp;
+    static uint16_t xa[512], xb[512]; static uint32_t inv[257];
+    if(!inv[1]) for(int n = 1; n <= 256; n++) inv[n] = (65536u + (unsigned)n - 1) / (unsigned)n;
+    if(L > 512) L = 512;
+    for(int x = 0; x < L; x++){ int x0 = x * w / L, x1 = (x + 1) * w / L; if(x1 <= x0) x1 = x0 + 1; if(x1 > w) x1 = w; xa[x] = (uint16_t)x0; xb[x] = (uint16_t)x1; }
     for(int y = 0; y < L; y++){
         int y0 = y * h / L, y1 = (y + 1) * h / L; if(y1 <= y0) y1 = y0 + 1; if(y1 > h) y1 = h;
+        uint32_t *o = dst + (size_t)y * L;
         for(int x = 0; x < L; x++){
-            int x0 = x * w / L, x1 = (x + 1) * w / L; if(x1 <= x0) x1 = x0 + 1; if(x1 > w) x1 = w;
-            unsigned r = 0, g = 0, b = 0, n = 0;
+            int x0 = xa[x], x1 = xb[x];
+            unsigned r = 0, g = 0, b = 0, n = (unsigned)((y1 - y0) * (x1 - x0));
             for(int yy = y0; yy < y1; yy++){ const uint8_t *p = a->data + (size_t)yy * st + (size_t)x0 * bpp;
-                for(int xx = x0; xx < x1; xx++, p += bpp){ b += p[0]; g += p[1]; r += p[2]; n++; } }
-            dst[y * L + x] = 0xFF000000u | (r / n) << 16 | (g / n) << 8 | (b / n);
+                for(int xx = x0; xx < x1; xx++, p += bpp){ b += p[0]; g += p[1]; r += p[2]; } }
+            if(n <= 256){ uint32_t k = inv[n]; r = (r * k) >> 16; g = (g * k) >> 16; b = (b * k) >> 16; }
+            else { r /= n; g /= n; b /= n; }
+            o[x] = 0xFF000000u | (r > 255 ? 255 : r) << 16 | (g > 255 ? 255 : g) << 8 | (b > 255 ? 255 : b);
         }
     }
 }
@@ -361,6 +383,7 @@ static void vinyl_source(int d, const lv_image_dsc_t *a){
     free(lab);
 }
 /* the album into g_src (or, with no cover, a plain disc with grooves and a red mark so the turn is visible) */
+static void scale_square(uint32_t *dst, int L, const lv_image_dsc_t *a);
 static void spin_source(void){
     int d = g_sd; if(!d) return;
     const lv_image_dsc_t *a = g_have ? ui_current_sharp_img() : NULL;
@@ -370,20 +393,10 @@ static void spin_source(void){
     }
     int ok = a && a->data && a->header.w > 0 &&
              (a->header.cf == LV_COLOR_FORMAT_RGB888 || a->header.cf == LV_COLOR_FORMAT_XRGB8888 || a->header.cf == LV_COLOR_FORMAT_ARGB8888);
-    if(nt_vinyl()){ vinyl_source(d, ok ? a : NULL); g_src_ok = 1; g_src_rev = ui_art_revision(); return; }
+    g_src_vinyl = nt_vinyl();
+    if(g_src_vinyl){ vinyl_source(d, ok ? a : NULL); g_src_ok = 1; g_src_rev = ui_art_revision(); return; }
     if(ok){
-        int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
-        int st = a->header.stride ? (int)a->header.stride : w * bpp;
-        for(int y = 0; y < d; y++){                                       /* area-averaged (a box of source pixels) */
-            int y0 = y * h / d, y1 = (y + 1) * h / d; if(y1 <= y0) y1 = y0 + 1; if(y1 > h) y1 = h;
-            for(int x = 0; x < d; x++){
-                int x0 = x * w / d, x1 = (x + 1) * w / d; if(x1 <= x0) x1 = x0 + 1; if(x1 > w) x1 = w;
-                unsigned r = 0, g = 0, b = 0, n = 0;
-                for(int yy = y0; yy < y1; yy++){ const uint8_t *p = a->data + (size_t)yy * st + (size_t)x0 * bpp;
-                    for(int xx = x0; xx < x1; xx++, p += bpp){ b += p[0]; g += p[1]; r += p[2]; n++; } }
-                g_src[y * d + x] = 0xFF000000u | (r / n) << 16 | (g / n) << 8 | (b / n);
-            }
-        }
+        scale_square(g_src, d, a);                                        /* area-averaged (a box of source pixels) */
     } else {
         uint32_t bg = px_of(MC(SURFACE)), gr = px_of(MC(BORDER_STRONG)), red = px_of(MC(ACCENT_PRIMARY));
         float c = d / 2.0f;
@@ -533,7 +546,8 @@ static void art_apply(int force){
     static int last_have = -1;
     spin_alloc(g_imm_img ? 360 : g_mode ? BIG_D : DISC_D);
     if(!g_sd){ if(g_art) lv_obj_add_flag(g_art, LV_OBJ_FLAG_HIDDEN); return; }
-    if(!force && g_src_ok && last_have == g_have && g_src_rev == ui_art_revision()) return;   /* nothing new */
+    /* (kopi.34) the CD / Vinyl switch counts as new: "Restart" only restarts the screen, so the old picture was kept */
+    if(!force && g_src_ok && last_have == g_have && g_src_rev == ui_art_revision() && g_src_vinyl == nt_vinyl()) return;   /* nothing new */
     last_have = g_have;
     spin_source(); spin_render();
     if(g_imm_img){ lv_image_set_src(g_imm_img, NULL); lv_image_set_src(g_imm_img, &g_spin_dsc); }
@@ -560,16 +574,34 @@ static void lyric_place(const char *t){   /* t: the whole line (a "..." label ke
 }
 /* (kopi.33) The play / pause button on the record: hidden until you touch the record (or the music starts or stops),
  * then it fades in, stays 1.6 s and fades away. A tap on it (the hub) plays / pauses and keeps it up a moment longer. */
+/* (kopi.34) Tap the record: the button fades in (play or pause, from the player's own state) and stays 3 s; tap it to
+ * play / pause; tap the record again to put it away. It also shows for a moment when the music starts or stops. */
+static int g_pb_vis;
 static void hub_opa(void *o, int32_t v){ lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
-static void hub_flash(void){
+static void hub_icon(void){
+    if(!g_state) return;
+    const char *want = g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY;      /* what a tap on it will do */
+    if(strcmp(lv_label_get_text(g_state), want)) lv_label_set_text(g_state, want);
+}
+static void hub_gone(lv_anim_t *a){ (void)a; g_pb_vis = 0; }
+static void hub_flash(void){                                              /* show (or keep showing) for 3 s */
+    if(!g_pbtn) return;
+    hub_icon();
+    lv_opa_t from = lv_obj_get_style_opa(g_pbtn, 0);
+    lv_anim_delete(g_pbtn, hub_opa); g_pb_vis = 1;
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_pbtn); lv_anim_set_exec_cb(&a, hub_opa);
+    lv_anim_set_values(&a, from, LV_OPA_COVER); lv_anim_set_duration(&a, from > 200 ? 1 : 180);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_playback_delay(&a, 3000); lv_anim_set_playback_duration(&a, 420);   /* then back to nothing */
+    lv_anim_set_completed_cb(&a, hub_gone);
+    lv_anim_start(&a);
+}
+static void hub_hide(void){                                               /* a second tap: away now */
     if(!g_pbtn) return;
     lv_opa_t from = lv_obj_get_style_opa(g_pbtn, 0);
-    lv_anim_delete(g_pbtn, hub_opa);
+    lv_anim_delete(g_pbtn, hub_opa); g_pb_vis = 0;
     lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_pbtn); lv_anim_set_exec_cb(&a, hub_opa);
-    lv_anim_set_values(&a, from, LV_OPA_COVER); lv_anim_set_duration(&a, from > 200 ? 1 : 160);
-    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
-    lv_anim_set_playback_delay(&a, 1600); lv_anim_set_playback_duration(&a, 420);   /* then back to nothing */
-    lv_anim_start(&a);
+    lv_anim_set_values(&a, from, LV_OPA_TRANSP); lv_anim_set_duration(&a, 220); lv_anim_start(&a);
 }
 static void lyrics_refresh(long pos){
     if(!g_lyric) return;
@@ -614,8 +646,8 @@ static void view_apply(void){
     if(idle){ lv_obj_add_flag(g_disc, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_info, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(g_idle_box, LV_OBJ_FLAG_HIDDEN); }
     else { lv_obj_remove_flag(g_disc, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(g_idle_box, LV_OBJ_FLAG_HIDDEN);
            if(g_mode) lv_obj_add_flag(g_info, LV_OBJ_FLAG_HIDDEN); else lv_obj_remove_flag(g_info, LV_OBJ_FLAG_HIDDEN); }
-    if(strcmp(lv_label_get_text(g_state), g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY)){
-        lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY); hub_flash(); }
+    { static int last = -1; int pl = g_playing;                    /* started or stopped: show it a moment */
+      if(last >= 0 && pl != last) hub_flash(); else hub_icon(); last = pl; }
     art_apply(0); progress_paint();
     spin_run();
 }
@@ -637,6 +669,7 @@ static void dtap_fire(lv_timer_t *t){
     (void)t; int k = g_dtap_kind; g_dtap_kind = -1; lv_timer_pause(g_dtap_tm);
     if(k == 0) ui_transport_command("0201000C0000");
     else if(k == 1) nt_title_tap();                                       /* (kopi.31) the title: lyrics line / title */
+    else if(k == 3){ if(g_pb_vis) hub_hide(); else hub_flash(); }        /* (kopi.34) the record: the button in / out */
 }
 /* Tap the title: switch between the song's title and its lyric line in that place (Lyrics as title), and say which */
 void nt_title_tap(void){
@@ -660,41 +693,38 @@ static void dtap(int kind){                                               /* kin
     lv_timer_reset(g_dtap_tm); lv_timer_resume(g_dtap_tm);
 }
 static void layer_cb(lv_event_t *e){ if(lv_event_get_code(e) == LV_EVENT_SHORT_CLICKED && g_have) dtap(2); }
-/* The CD (kopi.27; kopi.32: no seeking here): only its lower half answers - the upper half sits under the top edge,
- * where the Quick Settings pull starts, so a touch there does nothing at all. On the lower half: tap the hub = play /
- * pause (at once); swipe up = Immersive; hold = Immersive; double-tap = next (right) / previous (left). Sliding
- * sideways does nothing: the song is moved from the time under the CD (hold it 2 s, then slide - seek_cb). */
+/* The record (kopi.27 ... kopi.34): only its lower half answers - the upper half sits under the top edge, where the
+ * Quick Settings pull starts, so a touch there does nothing at all. On the lower half:
+ *   tap = the play / pause button in or out (tap the button itself to play / pause);
+ *   drag down (a deliberate 90 px, mostly straight down) = Immersive; hold = Immersive;
+ *   double-tap = next (right half) / previous (left half).
+ * Sliding sideways does nothing: the song is moved from the time under it (hold it 2 s, then slide - seek_cb). */
+#define DRAG_IMM 90
 static void disc_cb(lv_event_t *e){
     lv_event_code_t c = lv_event_get_code(e); lv_indev_t *in = lv_indev_active(); lv_point_t p = { 0, 0 };
     if(in) lv_indev_get_point(in, &p);
     if(c == LV_EVENT_PRESSED){
         g_down = p; g_g_moved = 0; g_g_t0 = lv_tick_get();
         int hx = p.x - disc_cx(), hy = p.y - disc_cy();
-        g_g_mode = (p.y < disc_cy() && hx * hx + hy * hy > HUB_R * HUB_R) ? -1 : 1;   /* -1: the upper half (bar the hub), ignored */
-        if(g_g_mode > 0) hub_flash();
+        g_g_mode = (p.y < 40 || (p.y < disc_cy() && hx * hx + hy * hy > HUB_R * HUB_R)) ? -1 : 1;   /* -1: the top edge and the upper half (bar the hub), ignored */
         return;
     }
     if(g_g_mode < 0) return;
     if(c == LV_EVENT_PRESSING){
         int dx = p.x - g_down.x, dy = p.y - g_down.y;
-        if(abs(dx) > 10 || abs(dy) > 10) g_g_moved = 1;
-        if(g_g_mode == 1 && g_g_moved) g_g_mode = (abs(dy) > 2 * abs(dx) && dy < 0) ? 3 : 2;   /* 3 = upward, 2 = sideways (nothing) */
+        if(abs(dx) > 12 || abs(dy) > 12) g_g_moved = 1;
+        if(g_g_mode == 1 && g_g_moved) g_g_mode = (dy > 0 && dy > 2 * abs(dx)) ? 3 : 2;   /* 3 = down, 2 = anything else (nothing) */
+        if(g_g_mode == 3 && dy >= DRAG_IMM && dy > 2 * abs(dx)){ g_g_mode = 2; disco_open_np_immersive(); }   /* far enough: go */
         return;
     }
-    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
-        int dx = p.x - g_down.x, dy = p.y - g_down.y; uint32_t dt = lv_tick_elaps(g_g_t0);
-        if(g_g_mode == 3 && dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
-        if(c == LV_EVENT_PRESS_LOST) g_g_mode = 0;
-        return;
-    }
+    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){ if(c == LV_EVENT_PRESS_LOST) g_g_mode = 0; return; }
     if(c == LV_EVENT_SHORT_CLICKED && !g_g_moved){
         int dx = g_down.x - disc_cx(), dy = g_down.y - disc_cy();
-        if(dx * dx + dy * dy <= HUB_R * HUB_R){                           /* the hub: at once, no double-tap wait */
+        if(g_pb_vis && dx * dx + dy * dy <= 36 * 36){                    /* the button: play / pause at once */
             g_dtap_kind = -1; if(g_dtap_tm) lv_timer_pause(g_dtap_tm);
             ui_transport_command("0201000C0000");
-            g_playing = ui_is_playing();
-            lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY); hub_flash(); spin_run();
-        } else { hub_flash(); dtap(2); }                                 /* (kopi.33) elsewhere: show the button */
+            g_playing = ui_is_playing(); hub_flash(); spin_run();        /* (the icon follows the new state) */
+        } else dtap(3);                                                   /* the record: the button in / out, or a double-tap */
     }
     else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode == 1) disco_open_np_immersive();   /* (kopi.28: hold = Immersive) */
 }
@@ -768,19 +798,14 @@ void nt_home_create(lv_obj_t *root){
     lv_obj_add_flag(g_disc, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_PRESS_LOCK); lv_obj_remove_flag(g_disc, LV_OBJ_FLAG_GESTURE_BUBBLE);
     lv_obj_add_event_cb(g_disc, disc_cb, LV_EVENT_ALL, NULL);
     g_art = lv_image_create(g_disc); lv_obj_remove_flag(g_art, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_t *rim = plain(g_disc); lv_obj_set_size(rim, d, d); lv_obj_center(rim);             /* a fine edge */
+    lv_obj_t *rim = g_rim = plain(g_disc); lv_obj_set_size(rim, d, d); lv_obj_center(rim);             /* a fine edge */
     lv_obj_set_style_radius(rim, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_border_width(rim, 2, 0);
     lv_obj_set_style_border_color(rim, MC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(rim, LV_OPA_20, 0);
     g_hub = dot(g_disc, 96, MC(TEXT_PRIMARY)); lv_obj_set_style_bg_opa(g_hub, LV_OPA_30, 0); lv_obj_center(g_hub);   /* the clear hub */
     lv_obj_set_style_border_width(g_hub, 1, 0); lv_obj_set_style_border_color(g_hub, MC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(g_hub, LV_OPA_40, 0);
     g_hole = dot(g_disc, 42, MC(CANVAS)); lv_obj_center(g_hole);
     lv_obj_set_style_border_width(g_hole, 3, 0); lv_obj_set_style_border_color(g_hole, MC(SURFACE_STRONG), 0);
-    if(nt_vinyl()){                                                      /* vinyl: no clear hub, just the spindle */
-        lv_obj_add_flag(g_hub, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(rim, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_set_size(g_hole, 14, 14); lv_obj_center(g_hole);
-        lv_obj_set_style_bg_color(g_hole, TC(FIXED_MEDIA_HINT), 0); lv_obj_set_style_border_width(g_hole, 2, 0);
-        lv_obj_set_style_border_color(g_hole, TC(FIXED_MEDIA_BLACK), 0);
-    }
+    record_look();                                                       /* CD hub, or the vinyl's spindle */
     g_pbtn = dot(g_disc, 66, MC(CANVAS)); lv_obj_center(g_pbtn);            /* (kopi.33) the play / pause button */
     lv_obj_set_style_bg_opa(g_pbtn, 220, 0); lv_obj_set_style_border_width(g_pbtn, 1, 0);
     lv_obj_set_style_border_color(g_pbtn, MC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(g_pbtn, LV_OPA_40, 0);
@@ -893,6 +918,7 @@ int nt_home_owns_point(int x, int y){
     int cx = 180, cy = g_mode ? 180 : DISC_CY, r = (g_mode ? BIG_D : DISC_D) / 2;
     int d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
     if(!g_mode && x >= 65 && x <= 295 && y >= 200 + 94 && y <= 200 + 144) return 1;   /* the time: hold to seek */
+    if(y < 40) return 0;                                                 /* (kopi.34) the top edge stays the Quick Settings pull */
     return (y >= cy && d2 <= r * r) || d2 <= HUB_R * HUB_R;              /* the CD's lower half, and its hub */
 }
 
@@ -1100,7 +1126,7 @@ static void s_paint(void){
     char e[24], d[24], b[56]; fmt_time(st.position_ms, e, sizeof e); fmt_time(st.duration_ms, d, sizeof d);
     snprintf(b, sizeof b, "%s / %s", e, d); if(strcmp(lv_label_get_text(s_time), b)) lv_label_set_text(s_time, b);
     lv_arc_set_value(s_ring, st.duration_ms > 0 ? (int)((long long)st.position_ms * 1000 / st.duration_ms) : 0);
-    const char *g = ui_is_playing() ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY; if(strcmp(lv_label_get_text(s_pp_l), g)) lv_label_set_text(s_pp_l, g);
+    const char *g = g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY; if(strcmp(lv_label_get_text(s_pp_l), g)) lv_label_set_text(s_pp_l, g);
     lv_obj_t *t = lv_obj_get_user_data(s_ctl);                            /* (kopi.31) the title follows the song */
     if(t && st.have_track && st.title[0] && strcmp(lv_label_get_text(t), st.title)) lv_label_set_text(t, st.title);
 }
@@ -1171,7 +1197,7 @@ static void spin_open(int anim){
         lv_arc_set_bg_angles(s_ring, 0, 360); lv_arc_set_rotation(s_ring, 270); lv_arc_set_range(s_ring, 0, 1000);
         lv_obj_set_style_arc_width(s_ring, 4, LV_PART_MAIN); lv_obj_set_style_arc_color(s_ring, TC(FIXED_MEDIA_WHITE), LV_PART_MAIN); lv_obj_set_style_arc_opa(s_ring, 50, LV_PART_MAIN);
         lv_obj_set_style_arc_width(s_ring, 4, LV_PART_INDICATOR); lv_obj_set_style_arc_rounded(s_ring, true, LV_PART_INDICATOR);
-        lv_obj_set_style_arc_color(s_ring, th_idisc() ? TC(FIXED_MEDIA_WHITE) : TC(ACCENT_PRIMARY), LV_PART_INDICATOR);
+        lv_obj_set_style_arc_color(s_ring, ui_current_accent(), LV_PART_INDICATOR);   /* (kopi.34: the accent in iDisc too) */
         s_button(s_ctl, -84, 56, LV_SYMBOL_PREV, "0201000C0002", NULL);
         s_pp = s_button(s_ctl, 0, 78, LV_SYMBOL_PAUSE, "0201000C0000", &s_pp_l);
         s_button(s_ctl, 84, 56, LV_SYMBOL_NEXT, "0201000C0001", NULL);
@@ -1215,6 +1241,7 @@ static void morph_open_done(lv_anim_t *a){
 }
 static void spin_show(int anim){
     { lv_obj_t *t = lv_obj_get_user_data(s_ctl); if(t) lv_label_set_text(t, g_t); }
+    if(s_ring) lv_obj_set_style_arc_color(s_ring, ui_current_accent(), LV_PART_INDICATOR);   /* (kopi.34) the accent, as it is now */
     if(!g_imm_img) g_imm_img = g_imm_img_keep;
     if(!g_spin_tm){ g_spin_tm = lv_timer_create(spin_tick, SPIN_MS, NULL); lv_timer_pause(g_spin_tm); }   /* (iDisc: made here) */
     g_row0 = 0; s_spin_ms = SPIN_MS + 10;                                   /* a bigger picture: 16 a second */
@@ -1267,17 +1294,42 @@ int nt_imm_visible(void){ return nt_lyrics_visible() || nt_spin_visible(); }
 void nt_imm_back(void){ if(nt_spin_visible() && !nt_lyrics_visible()) nt_spin_close(); else if(nt_lyrics_visible()) lyrics_close_anim(); }   /* main.c: a swipe */
 /* (kopi.33) Quick Settings over Immersive: put Immersive away while the top bar is down, bring it back when it goes up */
 static int g_imm_susp;                                                     /* 1 lyrics, 2 the spinning album (3 both) */
+/* (kopi.34) Quick Settings over Immersive. Immersive lives on the top layer, above every screen, so it used to be
+ * closed for the panel, and Music flashed through while the panel slid down - then on the way back up Immersive
+ * jumped in over the panel before it had gone. Now it is tucked into the screen underneath for the time (kept
+ * as it is, its timers paused) and the panel slides over it, then it goes back on top: no flash, no jump. */
+static lv_obj_t *g_tuck;                                                  /* the screen Immersive is tucked into */
+static void imm_parent(lv_obj_t *p){
+    if(s_root && lv_obj_get_parent(s_root) != p){ lv_obj_set_parent(s_root, p); lv_obj_move_foreground(s_root); }
+    if(l_root && lv_obj_get_parent(l_root) != p){ lv_obj_set_parent(l_root, p); lv_obj_move_foreground(l_root); }
+}
+static void imm_retop(lv_timer_t *t){ (void)t; if(!g_tuck) imm_parent(lv_layer_top()); }   /* (not if put away again meanwhile) */
 void nt_imm_suspend(void){
     g_imm_susp = (nt_lyrics_visible() ? 1 : 0) | (nt_spin_visible() ? 2 : 0);
-    if(nt_lyrics_visible()) nt_lyrics_close();
-    if(nt_spin_visible()) spin_close_now();
+    if(!g_imm_susp) return;
+    lv_obj_t *under = screen_get_root(screen_current());
+    if(!under || s_morph){ g_tuck = NULL; nt_imm_close_now(); return; }   /* (mid-morph: the old way) */
+    g_tuck = under; imm_parent(under);
+    if(s_tm) lv_timer_pause(s_tm);
+    if(l_tm) lv_timer_pause(l_tm);
+    if(g_spin_tm) lv_timer_pause(g_spin_tm);                              /* nothing turns under the panel */
 }
+int nt_imm_tucked(void){ return g_tuck != NULL; }
 void nt_imm_resume(void){
     int k = g_imm_susp; g_imm_susp = 0;
+    if(g_tuck){                                                           /* still open: back on top once the panel has gone */
+        g_tuck = NULL;
+        if(screen_get_anim()){ lv_timer_t *t = lv_timer_create(imm_retop, 240, NULL); lv_timer_set_repeat_count(t, 1); }
+        else imm_parent(lv_layer_top());
+        if((k & 2) && nt_spin_visible() && s_tm){ lv_timer_resume(s_tm); s_tick(NULL); }
+        if((k & 1) && nt_lyrics_visible() && l_tm){ lv_timer_resume(l_tm); l_tick(NULL); }
+        spin_run();
+        return;
+    }
     if(k & 2) spin_open(0);
     if(k & 1) nt_lyrics_open();
 }
-void nt_imm_forget(void){ g_imm_susp = 0; }
+void nt_imm_forget(void){ g_imm_susp = 0; if(g_tuck){ g_tuck = NULL; nt_imm_close_now(); imm_parent(lv_layer_top()); } }
 void nt_imm_close_now(void){ nt_lyrics_close(); spin_close_now(); }
 void nt_imm_open(void){ if(cfg_get_int("nt_imm", 0) == 1) nt_spin_open(); else nt_lyrics_open(); }
 

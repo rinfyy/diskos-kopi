@@ -579,7 +579,7 @@ static void apply_nt_music(int v){ (void)v; theme_reload_or_revert("nt_music"); 
 static void apply_nt_lyrics(int v){ nt_home_lyrics_apply(v); }
 static const char *OPT_NTDISC[] = { "Album", "My picture" };
 static const char *OPT_NTREC[] = { "CD", "Vinyl" };                     /* (kopi.33) Music Screen > Record */
-static void apply_nt_record(int v){ (void)v; theme_reload_or_revert("nt_record"); }
+static void apply_nt_record(int v){ (void)v; void nt_home_record_apply(void); nt_home_record_apply(); }   /* (kopi.34: at once, no restart) */
 static const char *OPT_NTIDLE[] = { "Plain", "My picture", "Blurred" };
 static const char *OPT_NTIMM[] = { "Lyrics", "Spinning album" };
 static const char *OPT_IDSTYLE[] = { "Dark", "Light", "Automatic" };

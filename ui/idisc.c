@@ -524,7 +524,7 @@ static void view_apply(void){
 }
 static void tick_cb(lv_timer_t *t){ (void)t; if(screen_current() == SCR_HOME) progress_paint(); }
 
-/* touch: the cover - tap for the lyrics, hold for Immersive, swipe up for Immersive; the title - tap for the lyrics
+/* touch: the cover - tap for the lyrics, hold for Immersive, drag down for Immersive (kopi.34); the title - tap for the lyrics
  * line, hold for the song; the time - hold 2 s, then slide to seek; the buttons. */
 /* The cover (kopi.27; kopi.32: no seeking here): its upper half does nothing (it sits under the top edge's Quick
  * Settings pull). Its lower half: tap = lyrics, hold = Immersive, swipe up = Immersive; sliding sideways does nothing. */
@@ -536,15 +536,12 @@ static void card_cb(lv_event_t *e){
     if(g_cmode < 0) return;
     if(c == LV_EVENT_PRESSING){
         int dx = p.x - g_down.x, dy = p.y - g_down.y;
-        if(abs(dx) > 10 || abs(dy) > 10) g_moved = 1;
-        if(g_cmode == 1 && g_moved) g_cmode = (abs(dy) > 2 * abs(dx) && dy < 0) ? 3 : 2;
+        if(abs(dx) > 12 || abs(dy) > 12) g_moved = 1;
+        if(g_cmode == 1 && g_moved) g_cmode = (dy > 0 && dy > 2 * abs(dx)) ? 3 : 2;   /* (kopi.34) 3 = down */
+        if(g_cmode == 3 && dy >= 90 && dy > 2 * abs(dx)){ g_cmode = 2; disco_open_np_immersive(); }   /* a deliberate drag down */
         return;
     }
-    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST){
-        int dx = p.x - g_down.x, dy = p.y - g_down.y; uint32_t dt = lv_tick_elaps(g_t0);
-        if(g_cmode == 3 && dt < 800 && dy <= -50 && -dy > 2 * abs(dx)) disco_open_np_immersive();
-        return;
-    }
+    if(c == LV_EVENT_RELEASED || c == LV_EVENT_PRESS_LOST) return;
     if(c == LV_EVENT_SHORT_CLICKED && !g_moved){ onboarding_discovered(HINT_MUSIC); nt_lyrics_open(); }
     else if(c == LV_EVENT_LONG_PRESSED && !g_moved && g_cmode == 1) disco_open_np_immersive();   /* (kopi.28: hold = Immersive) */
 }

@@ -480,6 +480,7 @@ int ui_transport_command(const char *cmd)
         if(!g_skip_timer) g_skip_timer = lv_timer_create(skip_pace_cb, SKIP_GAP_MS, NULL);
         return 0;                                                   /* counted: it will be sent in turn */
     }
+    if(skip){ void ui_note_skip_sent(void); ui_note_skip_sent(); }   /* (kopi.34) the icon stays on Pause through the change */
     if(skip) g_skip_last = lv_tick_get() | 1;
     else if(!strcmp(cmd, "0201000C0000")) g_skip_pending = 0;       /* Play/Pause: stop any skips still waiting */
     return transport_now(cmd);

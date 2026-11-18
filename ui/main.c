@@ -1060,7 +1060,14 @@ int ui_is_playing(void){ return g_playing; }
  * player up to ~1.6 s to show, so the button used to change back and forth. After a tap the state the tap asked for
  * is shown straight away, for up to 2.5 s or until the player agrees. */
 static int g_pp_expect = -1; static uint32_t g_pp_expect_at;
-void ui_note_toggle_sent(void){ g_pp_expect = !g_playing; g_pp_expect_at = lv_tick_get(); g_playing = g_pp_expect; }
+/* (kopi.34) A skip, or the next song starting by itself, while playing: the position drops to 0 and the new file
+ * takes a moment to load, which the inference read as a pause, so the icon went to Play and back. Playing is held
+ * through the change until the new song is seen moving (or 3.5 s). A Play/Pause tap ends the hold. */
+static int      g_pp_hint = -1;          /* -1 none; 0 predict paused; 1 predict playing */
+static uint32_t g_pp_hint_until = 0;
+static int g_skip_hold; static uint32_t g_skip_hold_at; static unsigned g_skip_hold_from, g_seen_path_seq;
+void ui_note_skip_sent(void){ g_pp_hint = -1; if(g_playing && g_pp_expect != 0){ g_skip_hold = 1; g_skip_hold_at = lv_tick_get(); g_skip_hold_from = g_seen_path_seq; } }
+void ui_note_toggle_sent(void){ g_skip_hold = 0; g_pp_expect = !g_playing; g_pp_expect_at = lv_tick_get(); g_playing = g_pp_expect; }
 /* Admission for an output-route switch (modes.c): NULL = go, else the toast reason. 0666 re-inits the output, so never
  * during a start-up, a book, another source, a BT route or the post-restart settle. */
 const char *ui_output_blocked(void){
@@ -1078,10 +1085,10 @@ const char *ui_output_blocked(void){
  * flips to paused); resuming is instant because the position advances immediately. On a play/pause tap
  * we predict the new state and show it at once; the real inference reconciles a beat later. Main-thread
  * only (taps + the glyph refresh both run on the LVGL loop), so no locking. */
-static int      g_pp_hint = -1;          /* -1 none; 0 predict paused; 1 predict playing */
-static uint32_t g_pp_hint_until = 0;
-void ui_pp_tap_hint(void){               /* a toggle tap -> predict the opposite of the current state */
-    g_pp_hint = ui_pp_icon_playing(g_playing) ? 0 : 1;
+void ui_pp_tap_hint(void){               /* a toggle tap -> show the state the tap asked for. (kopi.34) ui_note_toggle_sent has
+                                          * already flipped g_playing, so the hint IS g_playing: it used to flip it a second
+                                          * time, and the button showed the old state for ~2 s after Play/Pause */
+    g_pp_hint = g_playing ? 1 : 0;
     g_pp_hint_until = lv_tick_get() + 2200; /* exceeds the 1600ms position-inference grace */
 }
 int ui_pp_icon_playing(int real_playing){
@@ -1443,12 +1450,19 @@ static int on_song_play(int id){
 }
 /* (kopi.33) Play straight through a folder: its songs (and its sub-folders'), in file order, starting at start_path
  * (NULL: the first). Next / previous and the end of a song stay inside the folder. 1 = sent. */
-int ui_play_folder(const char *dir, const char *start_path){
+int ui_play_folder(const char *dir, const char *start_path){ return ui_play_folder_ex(dir, start_path, 0); }
+/* (kopi.34) shuffle = the folder's songs in a fresh random order, then played straight through */
+int ui_play_folder_ex(const char *dir, const char *start_path, int shuffle){
     mdb_plan_t plan;
     if(!mdb_folder_plan(dir, &plan)){ if(!start_path) ui_toast("No songs in this folder"); return 0; }
     if(start_path && plan.count > 3000){ mdb_plan_free(&plan); return 0; }   /* a tap in a huge folder (the card's root): the
                                                                               * caller plays the whole library as before */
-    int id = start_path && start_path[0] ? mdb_song_id_by_path(start_path) : plan.ids[0];
+    if(shuffle && plan.count > 1){
+        static unsigned seed; if(!seed) seed = (unsigned)time(NULL) ^ (unsigned)lv_tick_get();
+        for(int i = plan.count - 1; i > 0; i--){ seed = seed * 1103515245u + 12345u; int j = (int)((seed >> 8) % (unsigned)(i + 1));
+                                                  int t = plan.ids[i]; plan.ids[i] = plan.ids[j]; plan.ids[j] = t; }
+    }
+    int id = !shuffle && start_path && start_path[0] ? mdb_song_id_by_path(start_path) : plan.ids[0];
     if(id <= 0 || mdb_plan_pos(&plan, id) < 1) id = plan.ids[0];
     int ok = ui_play_plan(&plan, id);
     mdb_plan_free(&plan);
@@ -3566,6 +3580,15 @@ int main(int argc, char **argv){
          * original heuristic except a backward/rewind jump no longer counts as advancing. max_adv_ms=0
          * keeps "any forward change counts"; the paused-forward-seek bound is device-tunable. */
         int playing = playstate_playing(&g_ps, st.have_track, st.position_ms, lv_tick_get(), 1600, 0);
+        if(st.path_seq != g_seen_path_seq){                                       /* a new song: hold Playing through the load */
+            if(g_seen_path_seq && g_playing && !g_skip_hold && g_pp_expect != 0){ g_skip_hold = 1; g_skip_hold_at = lv_tick_get(); g_skip_hold_from = g_seen_path_seq; }
+            g_seen_path_seq = st.path_seq;
+        }
+        if(g_skip_hold){
+            int arrived = st.path_seq != g_skip_hold_from && st.pos_seq > st.path_seq && st.position_ms < 5000 && playing;
+            if(arrived || lv_tick_elaps(g_skip_hold_at) > 3500) g_skip_hold = 0;
+            else playing = 1;
+        }
         if(g_pp_expect >= 0){                                                   /* a tap's answer, until the player shows it */
             if(playing == g_pp_expect || lv_tick_elaps(g_pp_expect_at) > 2500 || !st.have_track) g_pp_expect = -1;
             else playing = g_pp_expect;
