@@ -42,7 +42,6 @@ use librespot_playback::{
 use tokio::sync::mpsc;
 
 const DIR: &str = "/tmp/spot";
-const SCOPES: &str = "playlist-read-private,playlist-read-collaborative,user-library-read,user-read-private";
 
 extern "C" {
     fn spot_c_pcm(pcm: *const i16, frames: usize) -> c_int; // paced into AirPlay; blocks while ahead
@@ -50,19 +49,41 @@ extern "C" {
 }
 
 // ------------------------------------------------------------------------------------------------ log to stderr
+// /tmp/spot/log gets warnings and librespot's playback/connect steps; the last problem is kept for the status (err=),
+// incl. Connect's "could not dispatch command", which librespot only logs at debug level (a load that failed).
+static LAST_ERR: Mutex<(u32, String)> = Mutex::new((0, String::new()));
+static RING: Mutex<Vec<String>> = Mutex::new(Vec::new());
 struct Log;
 impl log::Log for Log {
     fn enabled(&self, m: &log::Metadata) -> bool {
-        m.level() <= log::Level::Warn || (m.level() <= log::Level::Info && m.target().starts_with("spotdisc"))
+        let t = m.target();
+        m.level() <= log::Level::Warn
+            || (m.level() <= log::Level::Info && (t.starts_with("spotdisc") || t.starts_with("librespot_connect") || t.starts_with("librespot_playback")))
+            || (m.level() <= log::Level::Debug && t.starts_with("librespot_connect::spirc"))
     }
     fn log(&self, r: &log::Record) {
-        if self.enabled(r.metadata()) {
-            eprintln!("{} {}: {}", r.level(), r.target(), r.args());
+        if !self.enabled(r.metadata()) { return; }
+        let msg = format!("{}", r.args());
+        let dispatch = msg.starts_with("could not dispatch");
+        if r.level() == log::Level::Debug && !dispatch { return; }
+        let line = format!("{} {}: {}", r.level(), r.target(), msg);
+        eprintln!("{line}");
+        if let Ok(mut g) = RING.lock() { g.push(line); let n = g.len(); if n > 60 { g.drain(0..n - 60); } }
+        if r.level() <= log::Level::Error || dispatch || (r.level() == log::Level::Warn && r.target().starts_with("librespot")) {
+            if let Ok(mut e) = LAST_ERR.lock() { e.0 = e.0.wrapping_add(1); e.1 = msg; }
         }
     }
     fn flush(&self) {}
 }
 static LOG: Log = Log;
+fn last_err() -> (u32, String) { LAST_ERR.lock().map(|e| e.clone()).unwrap_or_default() }
+// the last lines of the log, next to spot-disc on the SD card: something to read on a computer after a problem
+fn log_to_card() {
+    let lines = RING.lock().map(|g| g.join("\n")).unwrap_or_default();
+    for dir in ["/tmp/sdcard", "/tmp/sdcard/diskos"] {
+        if std::path::Path::new(&format!("{dir}/spot-disc")).exists() { let _ = fs::write(format!("{dir}/spot-disc.log"), lines + "\n"); return; }
+    }
+}
 
 // the sound leaves ~0.5 s after it is decoded (spot_c_pcm's cushion): positions are stamped that much later
 const LEAD_MS: i64 = 500;
@@ -471,6 +492,9 @@ async fn run(name: String, device_id: String, cache_dir: String, client_id: Stri
     let mut connecting = last_credentials.is_some();
     if !connecting { set_state(&st, "waiting", ""); }
     let mut fails = 0u32;
+    let mut play_wait: Option<(i64, u32)> = None;          // a play we sent: when, and the error count then
+    let mut shown_err_until = 0i64;                        // a "Couldn't play" shown on Music, until then
+    let mut tick = tokio::time::interval(Duration::from_secs(1));
 
     loop {
         tokio::select! {
@@ -519,7 +543,8 @@ async fn run(name: String, device_id: String, cache_dir: String, client_id: Stri
             ev = events.recv() => {
                 let Some(ev) = ev else { set_state(&st, "error", "Player stopped"); return 4; };
                 match ev {
-                    PlayerEvent::TrackChanged { audio_item } => { tokio::spawn(track_changed(session.clone(), st.clone(), *audio_item)); }
+                    PlayerEvent::TrackChanged { audio_item } => {
+                        play_wait = None; shown_err_until = 0; tokio::spawn(track_changed(session.clone(), st.clone(), *audio_item)); }
                     PlayerEvent::Playing { position_ms, .. } | PlayerEvent::Seeked { position_ms, .. } | PlayerEvent::PositionCorrection { position_ms, .. } => {
                         let playing_now = !matches!(ev, PlayerEvent::Seeked { .. }) || st.lock().unwrap().playing;
                         { let mut s = st.lock().unwrap(); s.pos = position_ms; s.pos_at = mono_ms() + LEAD_MS; s.playing = playing_now; if s.state != "error" { s.state = if playing_now { "playing" } else { "ready" }; } }
@@ -535,6 +560,28 @@ async fn run(name: String, device_id: String, cache_dir: String, client_id: Stri
                     }
                     PlayerEvent::SessionClientChanged { client_name, .. } => { log::info!("spotdisc: controlled from {client_name}"); }
                     _ => {}
+                }
+            },
+            _ = tick.tick() => {
+                let now = mono_ms();
+                if let Some((at, n0)) = play_wait {
+                    let (n, e) = last_err();
+                    if n != n0 || now - at > 15000 {
+                        play_wait = None;
+                        let why = if n != n0 { e } else { "No answer from Spotify".to_string() };
+                        log::warn!("spotdisc: couldn't play: {why}");
+                        log_to_card();
+                        // shown on Music as the song, so the reason is seen right where the tap led
+                        { let mut s = st.lock().unwrap(); s.title = "Couldn't play".into(); s.artist = why.chars().take(150).collect(); s.album.clear();
+                          s.track.clear(); s.dur = 0; s.pos = 0; s.pos_at = now; s.playing = false; if s.state == "playing" { s.state = "ready"; } }
+                        status_write(&st);
+                        shown_err_until = now + 20000;
+                    }
+                }
+                if shown_err_until > 0 && now > shown_err_until {
+                    shown_err_until = 0;
+                    { let mut s = st.lock().unwrap(); if s.title == "Couldn't play" { s.title.clear(); s.artist.clear(); } }
+                    status_write(&st);
                 }
             },
             cmd = crx.recv() => {
@@ -572,7 +619,12 @@ async fn run(name: String, device_id: String, cache_dir: String, client_id: Stri
                     "previous" => sp.prev(),
                     "seek" => sp.set_position_ms(rest.parse().unwrap_or(0)),
                     "vol" => sp.set_volume((rest.parse::<u32>().unwrap_or(50).min(100) * 65535 / 100) as u16),
-                    "play" | "shuffle" => {
+                    "play" | "shuffle" | "tracks" if !rest.is_empty() => { play_wait = Some((mono_ms(), last_err().0)); log::info!("spotdisc: {verb} {rest}"); Ok(()) }
+                    _ => Ok(()),
+                };
+                if let Err(e) = r { log::warn!("spotdisc: {verb}: {e}"); }
+                let r = match verb {
+                    "play" | "shuffle" if !rest.is_empty() => {
                         let mut it = rest.splitn(2, ' ');
                         let ctxu = it.next().unwrap_or("").to_string();
                         let track = it.next().filter(|t| !t.is_empty()).map(|t| PlayingTrack::Uri(t.to_string()));
