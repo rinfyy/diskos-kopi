@@ -1430,6 +1430,18 @@ int main(int argc, char **argv){
                 if(!shot){nav_pointer.state=LV_INDEV_STATE_RELEASED;nav_wait(60);}
                 fprintf(stderr,"SEEK_TEST done\n");
             }
+            if(getenv("IMM_MID")){if(getenv("IMM_ANIM"))screen_set_anim(1);nt_spin_open();for(int i=0;i<atoi(getenv("IMM_MID"));i++){lv_tick_inc(10);lv_timer_handler();}}   /* kopi.33: mid-morph */
+            if(getenv("IMM_TEST")){   /* kopi.33: open, (QS round trip), back - "spin"|"lyr", then checks */
+                if(getenv("IMM_ANIM"))screen_set_anim(1);
+                const char *m=getenv("IMM_TEST"); int spin=!strcmp(m,"spin")||!strcmp(m,"spinqs"), qs=strstr(m,"qs")!=NULL;
+                if(spin) nt_spin_open(); else nt_lyrics_open(); nav_wait(500);
+                if(!nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL open\n");exit(3);}
+                if(qs){nt_imm_suspend();screen_show(SCR_QUICK);nav_wait(300);if(nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL suspend\n");exit(3);}
+                       screen_back();nav_wait(500);if(!nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL resume\n");exit(3);}}
+                nt_imm_back();nav_wait(600);
+                if(nt_imm_visible()){fprintf(stderr,"IMM_TEST FAIL back\n");exit(3);}
+                fprintf(stderr,"IMM_TEST OK %s\n",m);
+            }
             if(getenv("NT_SPIN")){nt_spin_open();for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();}
                 if(!strcmp(getenv("NT_SPIN"),"0")){for(int i=0;i<460;i++){lv_tick_inc(10);lv_timer_handler();}}}   /* 0: after the controls hide */
             if(getenv("NT_IMM")){nt_lyrics_open();for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();lyrics_poll(NULL);usleep(2000);}
@@ -1457,7 +1469,7 @@ int main(int argc, char **argv){
             assert(ui_action_find("eq.delete")&&!lv_obj_has_state(ui_action_find("eq.delete"),LV_STATE_DISABLED));
             printf("EQ_CLIP_OK\n");unlink(cp);scr=SCR_EQ;}
         if(getenv("SNAKE_LANDING")){snake_landing();nav_wait(60);}
-        if(getenv("DOOM_LANDING")){doom_landing();nav_wait(60);}
+        if(getenv("RACER_LANDING")){racer_landing();nav_wait(60);}
         if(getenv("VIDEOS_OPEN")){folderbrowser_open_videos();nav_wait(80);}
         if(getenv("APPS_OPEN")){if(getenv("APPS_ALL"))simple_cfg_set_int("apps_show_all",atoi(getenv("APPS_ALL")));appshelf_reload();screen_show(SCR_APPSHELF);nav_wait(60);
             if(getenv("APPS_SCROLL")){lv_obj_t*appshelf_scroller(void);lv_obj_scroll_to_y(appshelf_scroller(),atoi(getenv("APPS_SCROLL")),LV_ANIM_OFF);nav_wait(60);}}

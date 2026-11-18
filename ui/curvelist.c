@@ -178,8 +178,12 @@ static void curve(curvelist_t *c){
             int ox = (int)(orig >> 16), ow = (int)(orig & 0xFFFF);
             if(ox < 130){                                             /* (kopi.32) the title: shrinks with the row, */
                 if(lv_label_get_long_mode(ch) != LV_LABEL_LONG_WRAP && ow > 60){   /* so it never runs under the value */
-                    int nw = d > 0 ? ow - d : ow; if(nw < 60) nw = 60;               /* sliding in from the right (a long */
-                    if(lv_obj_get_width(ch) != nw) lv_obj_set_width(ch, nw);         /* one scrolls instead) */
+                    /* (kopi.33) in 16 px steps, and only a name too long for the narrower row: resizing a label
+                     * re-measures it and restarts its scrolling, which every scroll frame of every row used to do */
+                    int dq = d > 0 ? (d + 15) / 16 * 16 : 0;
+                    int nw = ow - dq; if(nw < 60) nw = 60;
+                    if(lv_obj_get_self_width(ch) <= nw) nw = ow;                      /* it fits: leave it whole */
+                    if(lv_obj_get_width(ch) != nw) lv_obj_set_width(ch, nw);
                 }
                 continue;
             }

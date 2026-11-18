@@ -44,14 +44,8 @@ BOOM_FLAGS := -O2 -pipe -std=c11 -static -Wall -Wextra -ffunction-sections -fdat
   -Dmain=boomshine_main $(REPRO_FLAGS) $(FP_FLAGS)
 # Snake (GPL, ui/snake): built in like Boomshine and run as `mq_ui --snake`; no LVGL, no theme roles (it reads the
 # theme's colours from /tmp/diskos-app-env at launch).
-SNAKE_OBJS := $(APP)/snake/snake.o $(APP)/games/platform.o $(APP)/games/echo.o $(APP)/games/glide.o $(APP)/games/pet.o
+SNAKE_OBJS := $(APP)/snake/snake.o $(APP)/games/platform.o $(APP)/games/echo.o $(APP)/games/glide.o $(APP)/games/racer.o
 SNAKE_FLAGS := -O2 -pipe -std=gnu11 -static -Wall -Wextra -ffunction-sections -fdata-sections $(REPRO_FLAGS) $(FP_FLAGS)
-# Doom (GPL-2.0-or-later, ui/vendor/doomgeneric) and its backend doom_disc.c: built in like Snake and run as
-# `mq_ui --doom`. They're linked first into one object whose only global symbol is doom_main, so Doom's many short
-# global names (screens, viewwidth, sha1...) never meet the UI's. No LVGL, no theme roles (a full-screen game).
-DOOM_SRCS := $(sort $(wildcard $(APP)/vendor/doomgeneric/*.c)) $(APP)/doom_disc.c
-DOOM_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -DDOOMGENERIC_RESX=320 -DDOOMGENERIC_RESY=200 \
-  -DNORMALUNIX -DLINUX -D_DEFAULT_SOURCE -I$(APP)/vendor/doomgeneric -I$(APP) $(REPRO_FLAGS) $(FP_FLAGS)
 OBJCOPY_LOCAL ?= llvm-objcopy
 # Videos (video_disc.c): run as `mq_ui --video <file>`; its sound
 # goes to the Disc's own AirPlay receiver (ss_airplay.h, as MA Sendspin does). A full-screen child: no LVGL.
@@ -61,7 +55,7 @@ FFMPEG_SRC ?= $(APP)/vendor/ffmpeg-src
 FFMPEG := $(APP)/vendor/ffmpeg-build
 FFMPEG_LIBS := $(FFMPEG)/lib/libavformat.a $(FFMPEG)/lib/libavcodec.a $(FFMPEG)/lib/libswscale.a $(FFMPEG)/lib/libswresample.a $(FFMPEG)/lib/libavutil.a
 VIDEO_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sections -I$(APP) -I$(FFMPEG)/include $(REPRO_FLAGS) $(FP_FLAGS)
-OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/doom_all.o $(APP)/video_disc.o $(APP)/vendor/smb-build/libsmb2.a
+OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/video_disc.o $(APP)/vendor/smb-build/libsmb2.a
 
 # Every on-screen colour is a theme role (theme.h); theme.c is the only place RGB becomes a colour. The link fails if
 # any other app source (.c, or any header in the tree) builds a colour itself: an LVGL colour constructor, palette,
@@ -141,12 +135,6 @@ $(FFMPEG)/lib/libavcodec.a:
 $(FFMPEG_LIBS): $(FFMPEG)/lib/libavcodec.a
 $(APP)/video_disc.o: $(APP)/video_disc.c $(APP)/ss_airplay.h $(APP)/games/platform.h $(FFMPEG)/lib/libavcodec.a
 	$(CC) $(VIDEO_FLAGS) -c $< -o $@
-%.doom.o: %.c
-	$(CC) $(DOOM_FLAGS) -c $< -o $@
-$(APP)/doom_all.o: $(DOOM_SRCS:.c=.doom.o)
-	$(CC) -r -nostdlib -o $@.tmp $^
-	$(OBJCOPY_LOCAL) --keep-global-symbol=doom_main $@.tmp $@
-	rm -f $@.tmp
 $(APP)/boomshine/%.o: $(APP)/boomshine/%.c $(APP)/boomshine/game.h $(APP)/boomshine/fonts.h
 	$(CC) $(BOOM_FLAGS) -c $< -o $@
 
@@ -154,7 +142,7 @@ $(APP)/boomshine/%.o: $(APP)/boomshine/%.c $(APP)/boomshine/game.h $(APP)/boomsh
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) $(OBJS:.o=.d) $(DOOM_SRCS:.c=.doom.o) mq_ui mq_ui.debug mq_ui.manifest ipodos-ui diskos-bootprobe diskos-artdec
+	rm -f $(OBJS) $(OBJS:.o=.d) mq_ui mq_ui.debug mq_ui.manifest ipodos-ui diskos-bootprobe diskos-artdec
 -include $(patsubst %.o,%.d,$(filter %.o,$(OBJS)))
 
 # Native render/action diagnostics. Explicitly separate from the production theme/cross-build gates.

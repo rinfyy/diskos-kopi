@@ -2006,6 +2006,17 @@ static int stock_index_drop(sqlite3 *d, sqlite3_int64 pid){
 }
 /* Reconcile the two registries (idempotent; a no-op once they agree). Atomic: all of it or none. Returns 2 when the
  * stock index exists and now agrees, 1 when there is no stock index (nothing to do yet), 0 on failure. */
+/* (kopi.33) When each playlist last changed - made, renamed, a song in or out - so the lists can put the newest and the
+ * most recently changed first. diskOS's own table (like DISKOS_PL_EXPORT); the stock player never reads it. The time
+ * is milliseconds-ish and always above the last one written, so two changes in one second keep their order. */
+static void pl_touch(sqlite3 *d, long pid){
+    if(!d || pid <= 0) return;
+    sqlite3_exec(d, "CREATE TABLE IF NOT EXISTS DISKOS_PL_TOUCH (ID INTEGER PRIMARY KEY, AT INT8);", 0, 0, 0);
+    sqlite3_stmt *st;
+    if(sqlite3_prepare_v2(d, "INSERT OR REPLACE INTO DISKOS_PL_TOUCH(ID,AT) VALUES(?1, MAX(CAST(strftime('%s','now') AS INTEGER)*1000, "
+                             "(SELECT IFNULL(MAX(AT),0)+1 FROM DISKOS_PL_TOUCH)));", -1, &st, NULL) != SQLITE_OK) return;
+    sqlite3_bind_int64(st, 1, pid); sqlite3_step(st); sqlite3_finalize(st);
+}
 int mdb_playlist_sync_registry(void){
     sqlite3 *d = db(); if(!d) return 0;
     if(!stock_index_present(d)) return 1;
@@ -2162,7 +2173,7 @@ long mdb_playlist_create(const char *name){
     }
 
     /* commit only if RELEASE actually succeeds (a busy DB can fail it, leaving the txn open) */
-    if(ok && sqlite3_exec(d, "RELEASE plcreate;", 0, 0, 0) == SQLITE_OK) return (long)id;
+    if(ok && sqlite3_exec(d, "RELEASE plcreate;", 0, 0, 0) == SQLITE_OK){ pl_touch(d, (long)id); return (long)id; }
     sqlite3_exec(d, "ROLLBACK TO plcreate;", 0, 0, 0);
     sqlite3_exec(d, "RELEASE plcreate;", 0, 0, 0);
     /* ROLLBACK TO does not end the transaction, and the RELEASE above can also fail under a reader lock. If
@@ -2190,7 +2201,8 @@ int mdb_playlist_add_song_ex(long pid, const char *path, int *hard_err){
     if(rc != SQLITE_DONE){ if(hard_err) *hard_err = 1; return 0; }
     /* OR IGNORE + SELECT-from-SONG can succeed (DONE) yet insert 0 rows (path not in
      * SONG, or already present) - report a real add only when a row changed. */
-    return (sqlite3_changes(d) > 0) ? 1 : 0;
+    if(sqlite3_changes(d) > 0){ pl_touch(d, pid); return 1; }
+    return 0;
 }
 int mdb_playlist_add_song(long pid, const char *path){
     return mdb_playlist_add_song_ex(pid, path, NULL);
@@ -2253,7 +2265,8 @@ int mdb_playlist_add_subtrack(long pid, const char *path, int track, int *hard_e
     sqlite3_bind_int64(st, 1, pid); sqlite3_bind_text(st, 2, path, -1, SQLITE_STATIC); sqlite3_bind_int(st, 3, track);
     int rc = sqlite3_step(st); sqlite3_finalize(st);
     if(rc != SQLITE_DONE){ if(hard_err) *hard_err = 1; return 0; }
-    return (sqlite3_changes(d) > 0) ? 1 : 0;
+    if(sqlite3_changes(d) > 0){ pl_touch(d, pid); return 1; }
+    return 0;
 }
 /* 1 if the playlist already holds that exact sub-track. */
 int mdb_playlist_has_subtrack(long pid, const char *path, int track){
@@ -2371,7 +2384,9 @@ int mdb_playlist_add_group(long pid, const char *col, const char *val){
     sqlite3_bind_int64(st, 1, pid);
     sqlite3_bind_text(st, 2, val, -1, SQLITE_TRANSIENT);
     int rc = sqlite3_step(st); sqlite3_finalize(st);
-    return (rc == SQLITE_DONE) ? sqlite3_changes(d) : 0;
+    int added = rc == SQLITE_DONE ? sqlite3_changes(d) : 0;
+    if(added > 0) pl_touch(d, pid);
+    return added;
 }
 /* Add exactly these SONG rows (by SONG.ID: the songs a list shows, so any grouping - artist credits, album artist, a CUE
  * track - is preserved as displayed). Rows already held, and repeats, are skipped. Returns the number added, or -1 if the
@@ -2390,7 +2405,7 @@ int mdb_playlist_add_ids(long pid, const int *ids, int n){
         if(sqlite3_step(st) != SQLITE_DONE) ok = 0; else if(sqlite3_changes(d) > 0) added++;
     }
     sqlite3_finalize(st);
-    if(ok && sqlite3_exec(d, "RELEASE pladdids;", 0, 0, 0) == SQLITE_OK) return added;
+    if(ok && sqlite3_exec(d, "RELEASE pladdids;", 0, 0, 0) == SQLITE_OK){ if(added > 0) pl_touch(d, pid); return added; }
     sqlite3_exec(d, "ROLLBACK TO pladdids;", 0, 0, 0);
     sqlite3_exec(d, "RELEASE pladdids;", 0, 0, 0);
     if(owns && !sqlite3_get_autocommit(d)) sqlite3_exec(d, "ROLLBACK;", 0, 0, 0);
@@ -2423,7 +2438,8 @@ int mdb_playlist_remove_at(long pid, int position){
     sqlite3_bind_int64(st, 1, pid);
     sqlite3_bind_int(st, 2, position-1);
     int rc = sqlite3_step(st); sqlite3_finalize(st);
-    return (rc == SQLITE_DONE && sqlite3_changes(d) > 0) ? 1 : 0;
+    if(rc == SQLITE_DONE && sqlite3_changes(d) > 0){ pl_touch(d, pid); return 1; }
+    return 0;
 }
 int sd_write_begin(void); void sd_write_end(void);   /* SD-write ownership guard (main.c, M18) */
 /* Sanitise a playlist name into a safe filename base (keep alnum/space/-/_; others -> _). */
@@ -2760,7 +2776,7 @@ int mdb_playlist_rename(long pid, const char *name){
         sqlite3_finalize(st);
     }
     if(ok && !stock_index_put(d, pid, name)) ok = 0;   /* stock shows the same name */
-    if(ok && sqlite3_exec(d, "RELEASE plrename;", 0, 0, 0) == SQLITE_OK) return 1;
+    if(ok && sqlite3_exec(d, "RELEASE plrename;", 0, 0, 0) == SQLITE_OK){ pl_touch(d, pid); return 1; }
     sqlite3_exec(d, "ROLLBACK TO plrename;", 0, 0, 0);
     sqlite3_exec(d, "RELEASE plrename;", 0, 0, 0);
     if(owns_txn && !sqlite3_get_autocommit(d)) sqlite3_exec(d, "ROLLBACK;", 0, 0, 0);
@@ -3257,7 +3273,10 @@ int mdb_playlist_num(void){
 int mdb_playlists(char names[][MDB_STR], long *ids, int cap){
     sqlite3 *d = db_read(); if(!d) return 0;
     sqlite3_stmt *st;
-    if(sqlite3_prepare_v2(d, "SELECT NAME,ID FROM PLAYLIST_INFO WHERE NAME<>? ORDER BY ADD_TIME,ID;", -1, &st, NULL) != SQLITE_OK) return 0;
+    /* (kopi.33) newest and most recently changed first; before the first change, by when each was made */
+    if(sqlite3_prepare_v2(d, "SELECT P.NAME,P.ID FROM PLAYLIST_INFO P LEFT JOIN DISKOS_PL_TOUCH T ON T.ID=P.ID WHERE P.NAME<>? "
+                             "ORDER BY IFNULL(T.AT, IFNULL(P.ADD_TIME,0)*1000) DESC, P.ID DESC;", -1, &st, NULL) != SQLITE_OK &&
+       sqlite3_prepare_v2(d, "SELECT NAME,ID FROM PLAYLIST_INFO WHERE NAME<>? ORDER BY ADD_TIME DESC,ID DESC;", -1, &st, NULL) != SQLITE_OK) return 0;
     sqlite3_bind_text(st, 1, BOOK_SCOPE_NAME, -1, SQLITE_STATIC);   /* hide the reserved book-scope playlist */
     int n=0;
     while(n<cap && sqlite3_step(st) == SQLITE_ROW){
@@ -3675,6 +3694,7 @@ static int mdb_playlist_add_folder_leased(long pid, const char *dir){
 int mdb_playlist_add_folder(long pid, const char *dir){
     if(!sd_io_begin()) return 0;
     int result = mdb_playlist_add_folder_leased(pid, dir);
+    if(result > 0) pl_touch(db(), pid);
     sd_io_end();
     return result;
 }
@@ -3736,6 +3756,15 @@ int mdb_folder_ids(const char *dir, int **out){
     int result = mdb_folder_ids_leased(dir, out);
     sd_io_end();
     return result;
+}
+/* (kopi.33) A folder as a play list: its songs and its sub-folders' songs, in file order (type 5, the exact queue). */
+int mdb_folder_plan(const char *dir, mdb_plan_t *plan){
+    if(!plan) return 0;
+    memset(plan, 0, sizeof *plan);
+    int *ids = NULL, n = mdb_folder_ids(dir, &ids);
+    if(n <= 0){ free(ids); return 0; }
+    plan->list_type = 5; plan->ids = ids; plan->count = n;
+    return 1;
 }
 static int mdb_song_by_path_leased(const char *path, mdb_song_t *out){
     if(!path || !path[0] || !out) return 0;

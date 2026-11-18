@@ -22,6 +22,8 @@ typedef struct {
     void (*down)(int x, int y);                      /* finger down */
     void (*up)(int x, int y, int moved);             /* finger lifted (not after a hold) */
     void (*hold)(void);                              /* ~0.85 s still press */
+    void (*drag)(int x, int y);                      /* (kopi.33, optional) the finger moved while down */
+    void (*lift)(int x, int y);                      /* (kopi.33, optional) every lift, after a hold too */
 } game_t;
 
 extern int g_dirty;                                  /* set to redraw */

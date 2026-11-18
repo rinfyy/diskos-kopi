@@ -26,6 +26,7 @@
 #include "quicksettings.h"
 #include "ipc.h"
 #include "idisc.h"
+#include "lvgl/src/misc/lv_area_private.h"   /* lv_area_intersect (kopi.33: declared, not implied) */
 #include <ctype.h>
 #include <math.h>
 #include <stdio.h>

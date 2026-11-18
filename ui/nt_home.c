@@ -263,7 +263,7 @@ static void stat_set(stat_t *t, lv_color_t fg){
 }
 
 /* ---- Music --------------------------------------------------------------------------------------------------------- */
-static lv_obj_t *g_layer, *g_disc, *g_art, *g_hub, *g_hole, *g_state, *g_ring;
+static lv_obj_t *g_layer, *g_disc, *g_art, *g_hub, *g_hole, *g_state, *g_ring, *g_pbtn;
 static lv_obj_t *g_info, *g_artist, *g_title, *g_lyric, *g_line, *g_line_fill, *g_el, *g_tot, *g_idle_box, *g_start;
 static face_t g_face;
 static stat_t g_stat, g_istat, g_sstat;
@@ -309,6 +309,57 @@ static void spin_alloc(int d){
     g_spin_dsc.header.w = g_spin_dsc.header.h = (uint32_t)d; g_spin_dsc.header.stride = (uint32_t)d * 4;
     g_spin_dsc.data = (const uint8_t *)g_out; g_spin_dsc.data_size = (uint32_t)d * d * 4;
 }
+/* ---- the record (kopi.33, Music Screen > Record): a CD, or a black vinyl record with the album as its label ---- */
+int nt_vinyl(void){ return cfg_get_int("nt_record", 0) == 1; }
+/* the picture area-averaged into an L x L square */
+static void scale_square(uint32_t *dst, int L, const lv_image_dsc_t *a){
+    int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
+    int st = a->header.stride ? (int)a->header.stride : w * bpp;
+    for(int y = 0; y < L; y++){
+        int y0 = y * h / L, y1 = (y + 1) * h / L; if(y1 <= y0) y1 = y0 + 1; if(y1 > h) y1 = h;
+        for(int x = 0; x < L; x++){
+            int x0 = x * w / L, x1 = (x + 1) * w / L; if(x1 <= x0) x1 = x0 + 1; if(x1 > w) x1 = w;
+            unsigned r = 0, g = 0, b = 0, n = 0;
+            for(int yy = y0; yy < y1; yy++){ const uint8_t *p = a->data + (size_t)yy * st + (size_t)x0 * bpp;
+                for(int xx = x0; xx < x1; xx++, p += bpp){ b += p[0]; g += p[1]; r += p[2]; n++; } }
+            dst[y * L + x] = 0xFF000000u | (r / n) << 16 | (g / n) << 8 | (b / n);
+        }
+    }
+}
+/* Black vinyl: fine grooves (round, so they look still while it turns), a few quiet gaps between the tracks, a raised
+ * lip at the edge and a soft sheen across it; in the middle the album as a round paper label with a thin rim. No
+ * album: a red label with a white mark, so the turn shows. */
+static void vinyl_source(int d, const lv_image_dsc_t *a){
+    float c = d / 2.0f, R = d / 2.0f, Rl = d * 0.27f;                   /* the label: just over half the record across */
+    int L = (int)(2 * Rl + 2), lx = (int)(c - L / 2.0f);
+    uint32_t *lab = a ? malloc((size_t)L * L * 4) : NULL;
+    if(lab) scale_square(lab, L, a);
+    uint32_t red = px_of(MC(ACCENT_PRIMARY)), white = px_of(TC(FIXED_MEDIA_WHITE));
+    for(int y = 0; y < d; y++) for(int x = 0; x < d; x++){
+        float dx = x + 0.5f - c, dy = y + 0.5f - c, r = sqrtf(dx * dx + dy * dy);
+        uint32_t v;
+        if(r < Rl){
+            if(lab){ int ix = x - lx, iy = y - lx; ix = ix < 0 ? 0 : ix >= L ? L - 1 : ix; iy = iy < 0 ? 0 : iy >= L ? L - 1 : iy; v = lab[iy * L + ix]; }
+            else { v = red; if(fabsf(r - Rl * 0.62f) < 1.0f || (dx > -3 && dx < 3 && dy < -Rl * 0.35f && dy > -Rl * 0.85f)) v = white; }
+            if(r > Rl - 1.6f){                                          /* the label's rim */
+                unsigned k = 150; v = 0xFF000000u | (((v >> 16 & 255) * k >> 8) << 16) | (((v >> 8 & 255) * k >> 8) << 8) | ((v & 255) * k >> 8);
+            }
+        } else {
+            float t = (r - Rl) / (R - Rl);                              /* 0 at the label, 1 at the edge */
+            float lum = 17.0f + 5.0f * sinf(r * 2.3f) + 2.0f * sinf(r * 0.73f);   /* grooves */
+            for(int k = 1; k <= 4; k++) if(fabsf(t - (0.14f + k * 0.17f)) < 0.012f) lum = 10.0f;   /* gaps between the tracks */
+            if(t < 0.05f) lum = 24.0f;                                   /* the run-out by the label */
+            if(r > R - 5.0f) lum = 30.0f;                                /* the lip */
+            float ang = atan2f(dy, dx);
+            float sh = cosf(2.0f * (ang - 0.75f)); sh = sh > 0 ? sh * sh * sh * sh : 0;   /* a sheen, two soft fans */
+            lum += 26.0f * sh * (0.35f + 0.65f * t);
+            int g = (int)lum; if(g < 0) g = 0; if(g > 255) g = 255;
+            v = 0xFF000000u | (uint32_t)g << 16 | (uint32_t)g << 8 | (uint32_t)(g + 2 > 255 ? 255 : g + 2);
+        }
+        g_src[y * d + x] = v;
+    }
+    free(lab);
+}
 /* the album into g_src (or, with no cover, a plain disc with grooves and a red mark so the turn is visible) */
 static void spin_source(void){
     int d = g_sd; if(!d) return;
@@ -319,6 +370,7 @@ static void spin_source(void){
     }
     int ok = a && a->data && a->header.w > 0 &&
              (a->header.cf == LV_COLOR_FORMAT_RGB888 || a->header.cf == LV_COLOR_FORMAT_XRGB8888 || a->header.cf == LV_COLOR_FORMAT_ARGB8888);
+    if(nt_vinyl()){ vinyl_source(d, ok ? a : NULL); g_src_ok = 1; g_src_rev = ui_art_revision(); return; }
     if(ok){
         int w = (int)a->header.w, h = (int)a->header.h, bpp = a->header.cf == LV_COLOR_FORMAT_RGB888 ? 3 : 4;
         int st = a->header.stride ? (int)a->header.stride : w * bpp;
@@ -506,13 +558,17 @@ static void lyric_place(const char *t){   /* t: the whole line (a "..." label ke
     int full = 2 * lh + LYR_GAP, h = sz.y > full ? full : sz.y < lh ? lh : sz.y;
     lv_obj_set_height(g_lyric, h); lv_obj_align(g_lyric, LV_ALIGN_TOP_MID, 0, 50 - h / 2);
 }
-/* the play / pause mark in the hub shows on a touch or a change, then fades away after 2 s */
+/* (kopi.33) The play / pause button on the record: hidden until you touch the record (or the music starts or stops),
+ * then it fades in, stays 1.6 s and fades away. A tap on it (the hub) plays / pauses and keeps it up a moment longer. */
 static void hub_opa(void *o, int32_t v){ lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
 static void hub_flash(void){
-    if(!g_state) return;
-    lv_anim_delete(g_state, hub_opa); lv_obj_set_style_opa(g_state, LV_OPA_COVER, 0);
-    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_state); lv_anim_set_exec_cb(&a, hub_opa);
-    lv_anim_set_values(&a, LV_OPA_COVER, LV_OPA_TRANSP); lv_anim_set_delay(&a, 2000); lv_anim_set_duration(&a, 400);
+    if(!g_pbtn) return;
+    lv_opa_t from = lv_obj_get_style_opa(g_pbtn, 0);
+    lv_anim_delete(g_pbtn, hub_opa);
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_pbtn); lv_anim_set_exec_cb(&a, hub_opa);
+    lv_anim_set_values(&a, from, LV_OPA_COVER); lv_anim_set_duration(&a, from > 200 ? 1 : 160);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_playback_delay(&a, 1600); lv_anim_set_playback_duration(&a, 420);   /* then back to nothing */
     lv_anim_start(&a);
 }
 static void lyrics_refresh(long pos){
@@ -638,7 +694,7 @@ static void disc_cb(lv_event_t *e){
             ui_transport_command("0201000C0000");
             g_playing = ui_is_playing();
             lv_label_set_text(g_state, g_playing ? LV_SYMBOL_PAUSE : LV_SYMBOL_PLAY); hub_flash(); spin_run();
-        } else dtap(2);
+        } else { hub_flash(); dtap(2); }                                 /* (kopi.33) elsewhere: show the button */
     }
     else if(c == LV_EVENT_LONG_PRESSED && !g_g_moved && g_g_mode == 1) disco_open_np_immersive();   /* (kopi.28: hold = Immersive) */
 }
@@ -719,7 +775,17 @@ void nt_home_create(lv_obj_t *root){
     lv_obj_set_style_border_width(g_hub, 1, 0); lv_obj_set_style_border_color(g_hub, MC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(g_hub, LV_OPA_40, 0);
     g_hole = dot(g_disc, 42, MC(CANVAS)); lv_obj_center(g_hole);
     lv_obj_set_style_border_width(g_hole, 3, 0); lv_obj_set_style_border_color(g_hole, MC(SURFACE_STRONG), 0);
-    g_state = text(g_hole, TF(UI_14), MC(TEXT_SECONDARY), 0); lv_obj_center(g_state);
+    if(nt_vinyl()){                                                      /* vinyl: no clear hub, just the spindle */
+        lv_obj_add_flag(g_hub, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(rim, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_size(g_hole, 14, 14); lv_obj_center(g_hole);
+        lv_obj_set_style_bg_color(g_hole, TC(FIXED_MEDIA_HINT), 0); lv_obj_set_style_border_width(g_hole, 2, 0);
+        lv_obj_set_style_border_color(g_hole, TC(FIXED_MEDIA_BLACK), 0);
+    }
+    g_pbtn = dot(g_disc, 66, MC(CANVAS)); lv_obj_center(g_pbtn);            /* (kopi.33) the play / pause button */
+    lv_obj_set_style_bg_opa(g_pbtn, 220, 0); lv_obj_set_style_border_width(g_pbtn, 1, 0);
+    lv_obj_set_style_border_color(g_pbtn, MC(TEXT_PRIMARY), 0); lv_obj_set_style_border_opa(g_pbtn, LV_OPA_40, 0);
+    lv_obj_set_style_opa(g_pbtn, LV_OPA_TRANSP, 0);
+    g_state = text(g_pbtn, theme_font_original(24), MC(TEXT_PRIMARY), 0); lv_obj_center(g_state);
     if(g_mode){                                                           /* Disc only: progress round the CD */
         g_ring = lv_arc_create(g_layer); lv_obj_remove_style(g_ring, NULL, LV_PART_KNOB); lv_obj_remove_flag(g_ring, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_set_size(g_ring, d + 30, d + 30); lv_obj_center(g_ring);
@@ -836,7 +902,22 @@ int nt_home_owns_point(int x, int y){
  * anywhere, to close. A song without synced lyrics shows its title and artist. */
 static lv_obj_t *l_root, *l_cover, *l_list, *l_none, *l_time, **l_lab; static int l_n, l_cur = -1; static unsigned l_rev = ~0u;
 static lv_timer_t *l_tm; static uint32_t l_touch; static lyr_line_t *l_lines;
-static void l_close_cb(lv_event_t *e){ (void)e; nt_lyrics_close(); }
+/* ---- Immersive motion (kopi.33) --------------------------------------------------------------------------------
+ * Opening: the record on Music grows into the full-screen spinning album (or zooms up while the lyrics fade in);
+ * going back (swipe up from the bottom edge) runs it the other way. Off with Animations off or Reduce motion. */
+static int imm_motion(void){ return screen_get_anim() && !idisc_reduce_motion(); }
+static void opa_cb(void *o, int32_t v){ lv_obj_set_style_opa(o, (lv_opa_t)v, 0); }
+static void zoom_cb(void *o, int32_t v){ lv_obj_set_style_transform_scale(o, v, 0); }
+static void disc_zoom(int out){                                            /* Music's record: up as the lyrics come, back */
+    if(!g_disc || !imm_motion()) return;
+    int d = lv_obj_get_width(g_disc);
+    lv_obj_set_style_transform_pivot_x(g_disc, d / 2, 0); lv_obj_set_style_transform_pivot_y(g_disc, d / 2, 0);
+    lv_anim_delete(g_disc, zoom_cb);
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, g_disc); lv_anim_set_exec_cb(&a, zoom_cb);
+    lv_anim_set_values(&a, out ? 256 : 330, out ? 330 : 256); lv_anim_set_duration(&a, out ? 220 : 260);
+    lv_anim_set_path_cb(&a, out ? lv_anim_path_ease_in : lv_anim_path_ease_out);
+    lv_anim_start(&a);
+}
 static void l_hold_cb(lv_event_t *e){ if(lv_event_get_code(e) == LV_EVENT_LONG_PRESSED) nt_lyrics_close(); }
 static void l_gesture_cb(lv_event_t *e){                                  /* a swipe sideways closes it, like Back */
     (void)e; lv_indev_t *in = lv_indev_active(); lv_dir_t d = in ? lv_indev_get_gesture_dir(in) : LV_DIR_NONE;
@@ -961,9 +1042,8 @@ void nt_lyrics_open(void){
             lv_obj_set_style_bg_grad_dir(f, LV_GRAD_DIR_VER, 0); lv_obj_set_style_bg_opa(f, LV_OPA_COVER, 0);
             lv_obj_set_style_bg_main_opa(f, k ? 0 : 230, 0); lv_obj_set_style_bg_grad_opa(f, k ? 230 : 0, 0);
         }
-        lv_obj_t *h = plain(l_root); lv_obj_set_size(h, 140, 52); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 0);   /* the close handle: a big target */
-        lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(h, 10); lv_obj_add_event_cb(h, l_close_cb, LV_EVENT_CLICKED, NULL);
-        lv_obj_t *bar = plain(h); lv_obj_set_size(bar, 36, 4); lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 20);
+        /* (kopi.33) the handle sits at the bottom: swipe up from it to go back. The top edge is the Quick Settings pull. */
+        lv_obj_t *bar = plain(l_root); lv_obj_set_size(bar, 40, 4); lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, -10);
         lv_obj_set_style_radius(bar, 2, 0); lv_obj_set_style_bg_color(bar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(bar, 160, 0);
         lv_obj_t *dotr = plain(l_root); lv_obj_set_size(dotr, 6, 6); lv_obj_align(dotr, LV_ALIGN_BOTTOM_MID, -46, -30);
         lv_obj_set_style_radius(dotr, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(dotr, TC(ACCENT_PRIMARY), 0); lv_obj_set_style_bg_opa(dotr, LV_OPA_COVER, 0);
@@ -976,11 +1056,30 @@ void nt_lyrics_open(void){
     l_cover_set();
     l_rev = ~0u; l_touch = 0; lv_label_set_text(l_none, ""); l_build();
     lv_obj_remove_flag(l_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(l_root);
-    lv_obj_set_style_opa(l_root, LV_OPA_COVER, 0);
+    lv_anim_delete(l_root, opa_cb);
+    if(imm_motion() && !nt_spin_visible()){                                /* (kopi.33) the record zooms up, the lines fade in */
+        lv_obj_set_style_opa(l_root, LV_OPA_TRANSP, 0); disc_zoom(1);
+        lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, l_root); lv_anim_set_exec_cb(&a, opa_cb);
+        lv_anim_set_values(&a, 0, 255); lv_anim_set_duration(&a, 220); lv_anim_set_delay(&a, 60); lv_anim_start(&a);
+    } else lv_obj_set_style_opa(l_root, LV_OPA_COVER, 0);
     lv_timer_resume(l_tm); l_tick(NULL);
 }
 void nt_lyrics_test_jump(int i){ l_jump(i); }   /* host renders */
-void nt_lyrics_close(void){ if(l_root) lv_obj_add_flag(l_root, LV_OBJ_FLAG_HIDDEN); if(l_tm) lv_timer_pause(l_tm); spin_run(); }
+void nt_lyrics_close(void){
+    if(l_root){ lv_anim_delete(l_root, opa_cb); lv_obj_set_style_opa(l_root, LV_OPA_COVER, 0); lv_obj_add_flag(l_root, LV_OBJ_FLAG_HIDDEN); }
+    if(l_tm) lv_timer_pause(l_tm);
+    if(g_disc && !lv_anim_get(g_disc, zoom_cb)) lv_obj_set_style_transform_scale(g_disc, 256, 0);   /* (a settling zoom ends by itself) */
+    spin_run();
+}
+static void l_fade_done(lv_anim_t *a){ (void)a; nt_lyrics_close(); }
+static void lyrics_close_anim(void){                                       /* (kopi.33) back: the lines fade, the record settles */
+    if(!nt_lyrics_visible() || !imm_motion() || nt_spin_visible()){ nt_lyrics_close(); return; }
+    if(g_disc){ lv_obj_set_style_transform_scale(g_disc, 330, 0); disc_zoom(0); }
+    lv_anim_delete(l_root, opa_cb);
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, l_root); lv_anim_set_exec_cb(&a, opa_cb);
+    lv_anim_set_values(&a, lv_obj_get_style_opa(l_root, 0), 0); lv_anim_set_duration(&a, 200); lv_anim_set_completed_cb(&a, l_fade_done);
+    lv_anim_start(&a);
+}
 int nt_lyrics_visible(void){ return l_root && !lv_obj_has_flag(l_root, LV_OBJ_FLAG_HIDDEN); }
 
 /* ---- Immersive: the spinning album (kopi.27, Music screen > Immersive: Spinning album) --------------------------
@@ -989,7 +1088,7 @@ int nt_lyrics_visible(void){ return l_root && !lv_obj_has_flag(l_root, LV_OBJ_FL
  * the rim, a handle at the top to close). Hold: the lyrics (hold them again, or swipe, to come back). Swipe sideways:
  * back to Music. The same turning picture as Music's CD, made larger: one image, only redrawn while it turns, and
  * Music under it is hidden so nothing is drawn twice. */
-static lv_obj_t *s_root, *s_hub, *s_ctl, *s_pp, *s_pp_l, *s_time, *s_ring; static lv_timer_t *s_tm; static uint32_t s_shown;
+static lv_obj_t *s_root, *s_hub, *s_ctl, *s_pp, *s_pp_l, *s_time, *s_ring, *s_rim, *s_spindle; static lv_timer_t *s_tm; static uint32_t s_shown;
 static int s_spin_ms;
 static void s_ctl_show(int on){
     if(!s_ctl) return;
@@ -1023,7 +1122,6 @@ static void s_root_cb(lv_event_t *e){
         if(d == LV_DIR_LEFT || d == LV_DIR_RIGHT){ nt_spin_close(); if(in) lv_indev_wait_release(in); }
     }
 }
-static void s_close_cb(lv_event_t *e){ (void)e; nt_spin_close(); }
 static lv_obj_t *s_button(lv_obj_t *p, int x, int d, const char *glyph, const char *cmd, lv_obj_t **lab){
     lv_obj_t *b = plain(p); lv_obj_set_size(b, d, d); lv_obj_align(b, LV_ALIGN_CENTER, x, 0);
     lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_ext_click_area(b, 6);
@@ -1036,7 +1134,8 @@ static lv_obj_t *s_button(lv_obj_t *p, int x, int d, const char *glyph, const ch
     if(lab) *lab = l;
     return b;
 }
-void nt_spin_open(void){
+static void spin_show(int anim);
+static void spin_open(int anim){
     if(!g_have){ ui_toast("Play a track first"); return; }
     if(!s_root){
         s_root = plain(lv_layer_top()); lv_obj_set_size(s_root, 360, 360);
@@ -1045,7 +1144,7 @@ void nt_spin_open(void){
         lv_obj_add_event_cb(s_root, s_root_cb, LV_EVENT_SHORT_CLICKED, NULL); lv_obj_add_event_cb(s_root, s_root_cb, LV_EVENT_LONG_PRESSED, NULL);
         lv_obj_add_event_cb(s_root, s_root_cb, LV_EVENT_GESTURE, NULL);
         g_imm_img = lv_image_create(s_root); lv_obj_remove_flag(g_imm_img, LV_OBJ_FLAG_CLICKABLE); lv_obj_set_pos(g_imm_img, 0, 0);
-        lv_obj_t *rim = plain(s_root); lv_obj_set_size(rim, 360, 360);
+        lv_obj_t *rim = s_rim = plain(s_root); lv_obj_set_size(rim, 360, 360);
         lv_obj_set_style_radius(rim, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_border_width(rim, 2, 0);
         lv_obj_set_style_border_color(rim, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(rim, LV_OPA_20, 0);
         if(th_idisc()){                                                    /* iDisc: a glass spindle */
@@ -1059,6 +1158,10 @@ void nt_spin_open(void){
             lv_obj_t *hole = plain(s_hub); lv_obj_set_size(hole, 46, 46); lv_obj_center(hole);
             lv_obj_set_style_radius(hole, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(hole, TC(FIXED_MEDIA_BLACK), 0); lv_obj_set_style_bg_opa(hole, LV_OPA_COVER, 0);
             lv_obj_set_style_border_width(hole, 3, 0); lv_obj_set_style_border_color(hole, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_border_opa(hole, 60, 0);
+            s_spindle = plain(s_root); lv_obj_set_size(s_spindle, 18, 18); lv_obj_center(s_spindle);   /* (kopi.33) vinyl: the spindle */
+            lv_obj_set_style_radius(s_spindle, LV_RADIUS_CIRCLE, 0); lv_obj_set_style_bg_color(s_spindle, TC(FIXED_MEDIA_HINT), 0);
+            lv_obj_set_style_bg_opa(s_spindle, LV_OPA_COVER, 0); lv_obj_set_style_border_width(s_spindle, 2, 0);
+            lv_obj_set_style_border_color(s_spindle, TC(FIXED_MEDIA_BLACK), 0); lv_obj_add_flag(s_spindle, LV_OBJ_FLAG_HIDDEN);
         }
         /* the controls */
         s_ctl = plain(s_root); lv_obj_set_size(s_ctl, 360, 360);
@@ -1075,28 +1178,82 @@ void nt_spin_open(void){
         s_time = text(s_ctl, TF(UI_14), TC(FIXED_MEDIA_WHITE), 0); lv_obj_align(s_time, LV_ALIGN_CENTER, 0, 66);
         lv_obj_t *t = text(s_ctl, ui_font_cjk(16), TC(FIXED_MEDIA_WHITE), 230); lv_obj_align(t, LV_ALIGN_CENTER, 0, -70);
         lv_label_set_text(t, g_t); lv_obj_set_user_data(s_ctl, t);
-        lv_obj_t *h = plain(s_ctl); lv_obj_set_size(h, 140, 52); lv_obj_align(h, LV_ALIGN_TOP_MID, 0, 0);   /* close */
-        lv_obj_add_flag(h, LV_OBJ_FLAG_CLICKABLE); lv_obj_add_event_cb(h, s_close_cb, LV_EVENT_CLICKED, NULL);
-        lv_obj_t *bar = plain(h); lv_obj_set_size(bar, 36, 4); lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 20);
+        /* (kopi.33) the handle at the bottom: swipe up from it to go back (the top edge pulls Quick Settings) */
+        lv_obj_t *bar = plain(s_ctl); lv_obj_set_size(bar, 40, 4); lv_obj_align(bar, LV_ALIGN_BOTTOM_MID, 0, -10);
         lv_obj_set_style_radius(bar, 2, 0); lv_obj_set_style_bg_color(bar, TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_bg_opa(bar, 170, 0);
         lv_obj_t *hint = text(s_ctl, TF(UI_12), TC(FIXED_MEDIA_WHITE), 0); lv_obj_set_style_text_opa(hint, 150, 0);
         lv_label_set_text(hint, "Hold for lyrics"); lv_obj_align(hint, LV_ALIGN_CENTER, 0, 96);
         s_tm = lv_timer_create(s_tick, 250, NULL); lv_timer_pause(s_tm);
         keep_all(s_root);
     }
+    spin_show(anim);
+}
+void nt_spin_open(void){ spin_open(1); }
+/* the record on Music <-> the full-screen album: one picture (the 360 px album), scaled and moved */
+static int s_morph;                                                        /* 1 while the record grows or shrinks */
+static void spin_hub_look(int show){
+    int v = nt_vinyl();
+    if(s_hub){ if(show && !(v && s_spindle)) lv_obj_remove_flag(s_hub, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s_hub, LV_OBJ_FLAG_HIDDEN); }
+    if(s_spindle){ if(show && v) lv_obj_remove_flag(s_spindle, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s_spindle, LV_OBJ_FLAG_HIDDEN); }
+    if(s_rim){ if(show) lv_obj_remove_flag(s_rim, LV_OBJ_FLAG_HIDDEN); else lv_obj_add_flag(s_rim, LV_OBJ_FLAG_HIDDEN); }
+}
+static int morph_d0(void){ return g_mode ? BIG_D : DISC_D; }
+static int morph_y0(void){ return (g_mode ? 180 : DISC_CY) - 180; }
+static void morph_cb(void *o, int32_t t){                                  /* t: 0 = the record on Music, 1000 = full screen */
+    (void)o; if(!g_imm_img) return;
+    int d0 = morph_d0(), y0 = morph_y0();
+    lv_image_set_scale(g_imm_img, (uint32_t)((d0 * 256 / 360) + (256 - d0 * 256 / 360) * t / 1000));
+    lv_obj_set_y(g_imm_img, y0 - y0 * t / 1000);
+    lv_obj_set_style_bg_opa(s_root, (lv_opa_t)(255 * t / 1000), 0);
+}
+static void morph_open_done(lv_anim_t *a){
+    (void)a; s_morph = 0;
+    lv_image_set_scale(g_imm_img, LV_SCALE_NONE); lv_obj_set_pos(g_imm_img, 0, 0); lv_obj_set_style_bg_opa(s_root, LV_OPA_COVER, 0);
+    if(g_layer) lv_obj_add_flag(g_layer, LV_OBJ_FLAG_HIDDEN);              /* (Music isn't drawn behind it) */
+    if(g_disc) lv_obj_remove_flag(g_disc, LV_OBJ_FLAG_HIDDEN);
+    spin_hub_look(1); s_ctl_show(1); s_paint();
+}
+static void spin_show(int anim){
     { lv_obj_t *t = lv_obj_get_user_data(s_ctl); if(t) lv_label_set_text(t, g_t); }
     if(!g_imm_img) g_imm_img = g_imm_img_keep;
     if(!g_spin_tm){ g_spin_tm = lv_timer_create(spin_tick, SPIN_MS, NULL); lv_timer_pause(g_spin_tm); }   /* (iDisc: made here) */
-    if(g_layer) lv_obj_add_flag(g_layer, LV_OBJ_FLAG_HIDDEN);              /* (Music isn't drawn behind it) */
     g_row0 = 0; s_spin_ms = SPIN_MS + 10;                                   /* a bigger picture: 16 a second */
     if(g_spin_tm) lv_timer_set_period(g_spin_tm, (uint32_t)s_spin_ms);
     art_apply(1); lv_image_set_src(g_imm_img, NULL); lv_image_set_src(g_imm_img, &g_spin_dsc); lv_obj_set_pos(g_imm_img, 0, 0);
     lv_obj_remove_flag(s_root, LV_OBJ_FLAG_HIDDEN); lv_obj_move_foreground(s_root);
-    s_ctl_show(1); s_paint(); lv_timer_resume(s_tm); spin_run();
+    lv_anim_delete(s_root, morph_cb);
+    if(anim && g_disc && g_layer && !lv_obj_has_flag(g_layer, LV_OBJ_FLAG_HIDDEN) && imm_motion()){   /* (kopi.33) the record grows */
+        s_morph = 1; lv_obj_add_flag(g_disc, LV_OBJ_FLAG_HIDDEN);           /* (its buffer is the big picture now) */
+        spin_hub_look(0); s_ctl_show(0); morph_cb(NULL, 0);
+        lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, s_root); lv_anim_set_exec_cb(&a, morph_cb);
+        lv_anim_set_values(&a, 0, 1000); lv_anim_set_duration(&a, 300); lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_set_completed_cb(&a, morph_open_done); lv_anim_start(&a);
+    } else {
+        if(g_layer) lv_obj_add_flag(g_layer, LV_OBJ_FLAG_HIDDEN);
+        lv_image_set_scale(g_imm_img, LV_SCALE_NONE); lv_obj_set_style_bg_opa(s_root, LV_OPA_COVER, 0);
+        spin_hub_look(1); s_ctl_show(1); s_paint();
+    }
+    lv_timer_resume(s_tm); spin_run();
 }
-void nt_spin_close(void){
-    if(!s_root || lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN)) return;
+static void spin_close_now(void);
+static void morph_close_done(lv_anim_t *a){ (void)a; s_morph = 0; spin_close_now(); }
+void nt_spin_close(void){                                                  /* (kopi.33) back: the album shrinks into the record */
+    if(!s_root || lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN) || s_morph) return;
+    if(!(g_disc && g_layer && imm_motion())){ spin_close_now(); return; }
     nt_lyrics_close();
+    s_morph = 1; spin_hub_look(0); s_ctl_show(0);
+    lv_obj_add_flag(g_disc, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(g_layer, LV_OBJ_FLAG_HIDDEN);
+    lv_anim_t a; lv_anim_init(&a); lv_anim_set_var(&a, s_root); lv_anim_set_exec_cb(&a, morph_cb);
+    lv_anim_set_values(&a, 1000, 0); lv_anim_set_duration(&a, 260); lv_anim_set_path_cb(&a, lv_anim_path_ease_in_out);
+    lv_anim_set_completed_cb(&a, morph_close_done); lv_anim_start(&a);
+}
+static void spin_close_now(void){
+    if(!s_root || lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN)) return;
+    lv_anim_delete(s_root, morph_cb); s_morph = 0;
+    nt_lyrics_close();
+    if(g_imm_img){ lv_image_set_scale(g_imm_img, LV_SCALE_NONE); lv_obj_set_pos(g_imm_img, 0, 0); }
+    lv_obj_set_style_bg_opa(s_root, LV_OPA_COVER, 0);
+    if(g_disc) lv_obj_remove_flag(g_disc, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(s_root, LV_OBJ_FLAG_HIDDEN); lv_timer_pause(s_tm);
     lv_obj_t *img = g_imm_img; g_imm_img = NULL; lv_image_set_src(img, NULL); g_imm_img_keep = img;
     if(g_layer) lv_obj_remove_flag(g_layer, LV_OBJ_FLAG_HIDDEN);
@@ -1107,7 +1264,21 @@ void nt_spin_close(void){
 }
 int nt_spin_visible(void){ return s_root && !lv_obj_has_flag(s_root, LV_OBJ_FLAG_HIDDEN); }
 int nt_imm_visible(void){ return nt_lyrics_visible() || nt_spin_visible(); }
-void nt_imm_back(void){ if(nt_lyrics_visible()) nt_lyrics_close(); else nt_spin_close(); }   /* main.c: a sideways swipe */
+void nt_imm_back(void){ if(nt_spin_visible() && !nt_lyrics_visible()) nt_spin_close(); else if(nt_lyrics_visible()) lyrics_close_anim(); }   /* main.c: a swipe */
+/* (kopi.33) Quick Settings over Immersive: put Immersive away while the top bar is down, bring it back when it goes up */
+static int g_imm_susp;                                                     /* 1 lyrics, 2 the spinning album (3 both) */
+void nt_imm_suspend(void){
+    g_imm_susp = (nt_lyrics_visible() ? 1 : 0) | (nt_spin_visible() ? 2 : 0);
+    if(nt_lyrics_visible()) nt_lyrics_close();
+    if(nt_spin_visible()) spin_close_now();
+}
+void nt_imm_resume(void){
+    int k = g_imm_susp; g_imm_susp = 0;
+    if(k & 2) spin_open(0);
+    if(k & 1) nt_lyrics_open();
+}
+void nt_imm_forget(void){ g_imm_susp = 0; }
+void nt_imm_close_now(void){ nt_lyrics_close(); spin_close_now(); }
 void nt_imm_open(void){ if(cfg_get_int("nt_imm", 0) == 1) nt_spin_open(); else nt_lyrics_open(); }
 
 /* ---- standby ------------------------------------------------------------------------------------------------------- */

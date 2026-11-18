@@ -116,6 +116,7 @@ static void transition(int from, int to, int dir)
 {
     if(th_zune()&&from!=to){zune_overlays_close();zsaver_set_visible(to==SCR_SAVER);quicksettings_zune_visible(to==SCR_QUICK&&!ui_display_is_off());}
     if(from==SCR_NOWPLAYING && to!=SCR_NOWPLAYING)ui_imm_control_cancel();
+    if(from==SCR_QUICK && to!=SCR_QUICK && to!=SCR_HOME) nt_imm_forget();   /* (kopi.33) Immersive put away under the top bar: only Home brings it back */
     azjump_close_active();
     albumwall_visible(to==SCR_ALBUMWALL);
     crash_crumb(to);
@@ -209,6 +210,7 @@ static void transition_core(int from, int to, int dir)
     /* Full-screen overlays (screensaver, quick-settings pulldown) are takeovers, not hierarchical
      * navigation - show/hide instantly. */
     if (to == SCR_SAVER || from == SCR_SAVER) { show_raw(to); return; }
+    if (from == SCR_QUICK) { if (to == SCR_HOME) nt_imm_resume(); else nt_imm_forget(); }   /* (kopi.33) Immersive under the top bar */
     if (to == SCR_QUICK || from == SCR_QUICK) { show_raw(to); return; }
 
     /* ---- UNIFIED push/pop - ONE motion language for the whole UI ----------------------------

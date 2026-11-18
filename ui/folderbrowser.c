@@ -444,6 +444,8 @@ static void fb_play(const char *name){
     char full[FB_MAXPATH];
     int n = snprintf(full, sizeof full, "%s/%s", g_dir, name);
     if(n <= 0 || n >= (int)sizeof full){ ui_toast("Path too long"); return; }
+    /* (kopi.33) the folder plays straight through from this song; the old all-songs scope only if that fails */
+    if(mdb_song_id_by_path(full) > 0 && ui_play_folder(g_dir, full)){ screen_show(SCR_NOWPLAYING); return; }
     if(ui_play_song_by_path(full))   /* toasts "Not in library" itself on a miss */
         screen_show(SCR_NOWPLAYING);
 }

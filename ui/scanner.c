@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2026 diskOS contributors */
 #include "sdio.h"
+#include <unistd.h>   /* usleep (kopi.33: declared, not implied) */
 #include <stdatomic.h>
 /* First-run / rescan music scanner for diskOS.
  *

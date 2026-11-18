@@ -1441,6 +1441,19 @@ static int on_song_play(int id){
     if(pos < 1){ ui_toast("Couldn't find that song"); return 0; }  /* don't fall back to track 1 */
     return ui_play_list(lt, name, pos);
 }
+/* (kopi.33) Play straight through a folder: its songs (and its sub-folders'), in file order, starting at start_path
+ * (NULL: the first). Next / previous and the end of a song stay inside the folder. 1 = sent. */
+int ui_play_folder(const char *dir, const char *start_path){
+    mdb_plan_t plan;
+    if(!mdb_folder_plan(dir, &plan)){ if(!start_path) ui_toast("No songs in this folder"); return 0; }
+    if(start_path && plan.count > 3000){ mdb_plan_free(&plan); return 0; }   /* a tap in a huge folder (the card's root): the
+                                                                              * caller plays the whole library as before */
+    int id = start_path && start_path[0] ? mdb_song_id_by_path(start_path) : plan.ids[0];
+    if(id <= 0 || mdb_plan_pos(&plan, id) < 1) id = plan.ids[0];
+    int ok = ui_play_plan(&plan, id);
+    mdb_plan_free(&plan);
+    return ok;
+}
 /* Folder browser -> play a track by absolute path (L24). Resolves the path to its library row and
  * plays it in the all-songs scope, so it starts on THIS track. 1 on success. */
 int ui_play_song_by_path(const char *path){
@@ -1787,10 +1800,9 @@ void app_launch(const char *exec){
         return;
     }
     if(!strcmp(exec, APP_BUILTIN_SNAKE)){ snake_landing(); return; }
-    if(!strcmp(exec, APP_BUILTIN_DOOM)){ doom_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_ECHO)){ echo_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_GLIDE)){ glide_landing(); return; }
-    if(!strcmp(exec, APP_BUILTIN_PET)){ pet_landing(); return; }
+    if(!strcmp(exec, APP_BUILTIN_RACER)){ racer_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_JPCARDS)){ jpcards_open(); return; }
@@ -1923,8 +1935,8 @@ void ui_app_play_ids(int *ids, int n, int shuffle, const char *name, int play, i
 static void app_run(const char *exec){
     /* a game built into mq_ui ("builtin:boomshine") runs as this same program with its own flag */
     int builtin = !strcmp(exec, APP_BUILTIN_BOOMSHINE) || !strcmp(exec, APP_BUILTIN_SNAKE) ||
-                  !strcmp(exec, APP_BUILTIN_ECHO) || !strcmp(exec, APP_BUILTIN_GLIDE) || !strcmp(exec, APP_BUILTIN_PET) ||
-                  !strcmp(exec, APP_BUILTIN_DOOM) || !strcmp(exec, APP_BUILTIN_VIDEO);
+                  !strcmp(exec, APP_BUILTIN_ECHO) || !strcmp(exec, APP_BUILTIN_GLIDE) || !strcmp(exec, APP_BUILTIN_RACER) ||
+                  !strcmp(exec, APP_BUILTIN_VIDEO);
     /* preflight: a missing/non-executable app shouldn't blank the screen for nothing */
     if(!builtin && access(exec, X_OK) != 0){
         lv_obj_invalidate(lv_screen_active()); lv_refr_now(NULL);
@@ -1939,8 +1951,7 @@ static void app_run(const char *exec){
     char *argv[] = { (char *)exec, NULL, NULL, NULL };
     if(builtin){ argv[0] = "/proc/self/exe"; argv[1] = !strcmp(exec, APP_BUILTIN_SNAKE) ? "--snake" : !strcmp(exec, APP_BUILTIN_ECHO) ? "--echo" :
                                                          !strcmp(exec, APP_BUILTIN_GLIDE) ? "--glide" :
-                                                         !strcmp(exec, APP_BUILTIN_PET) ? "--pet" :
-                                                         !strcmp(exec, APP_BUILTIN_DOOM) ? "--doom" :
+                                                         !strcmp(exec, APP_BUILTIN_RACER) ? "--racer" :
                                                          !strcmp(exec, APP_BUILTIN_VIDEO) ? "--video" : "--boomshine";
                  if(!strcmp(exec, APP_BUILTIN_VIDEO)) argv[2] = g_app_arg; }   /* the running image, never a path that can change */
     if(command_spawn(&pid, argv) != 0) pid = -1;   /* posix_spawn in its own group (a fork() of the UI can fail for memory) */
@@ -3178,24 +3189,18 @@ int main(int argc, char **argv){
      * "ma-sendspin --sendspin ...": a different argv[0], so fiio_init's `pgrep -x mq_ui` never mistakes it for the UI) */
     if(argc > 1 && !strcmp(argv[1], "--sendspin")){ int sendspin_main(int, char **); return sendspin_main(argc - 1, argv + 1); }
     crashlog_install();          /* /usr/data/diskos_crash.log: a line per start, player restart and crash */
-    if(argc > 1 && (!strcmp(argv[1], "--echo") || !strcmp(argv[1], "--glide") || !strcmp(argv[1], "--pet"))){   /* Apps > Echo / Glide / Pip */
-        int echo_main(int, char **), glide_main(int, char **), pet_main(int, char **);
-        int glide = !strcmp(argv[1], "--glide"), pet = !strcmp(argv[1], "--pet");
-        if(!freopen(pet ? "/tmp/pip.log" : glide ? "/tmp/glide.log" : "/tmp/echo.log", "w", stdout)) { /* keep going without a log */ }
+    if(argc > 1 && (!strcmp(argv[1], "--echo") || !strcmp(argv[1], "--glide") || !strcmp(argv[1], "--racer"))){   /* Apps > Echo / Glide / Racer */
+        int echo_main(int, char **), glide_main(int, char **), racer_main(int, char **);
+        int glide = !strcmp(argv[1], "--glide"), racer = !strcmp(argv[1], "--racer");
+        if(!freopen(racer ? "/tmp/racer.log" : glide ? "/tmp/glide.log" : "/tmp/echo.log", "w", stdout)) { /* keep going without a log */ }
         dup2(fileno(stdout), fileno(stderr));
-        return pet ? pet_main(argc - 1, argv + 1) : glide ? glide_main(argc - 1, argv + 1) : echo_main(argc - 1, argv + 1);
+        return racer ? racer_main(argc - 1, argv + 1) : glide ? glide_main(argc - 1, argv + 1) : echo_main(argc - 1, argv + 1);
     }
     if(argc > 1 && !strcmp(argv[1], "--video")){            /* Videos (Files > a .mpg): video_disc.c */
         int video_main(int, char **);
         if(!freopen("/tmp/video.log", "w", stdout)) { /* keep going without a log */ }
         dup2(fileno(stdout), fileno(stderr));
         return video_main(argc - 1, argv + 1);
-    }
-    if(argc > 1 && !strcmp(argv[1], "--doom")){             /* Doom (Apps > Doom): doom_disc.c */
-        int doom_main(int, char **);
-        if(!freopen("/tmp/doom.log", "w", stdout)) { /* keep going without a log */ }
-        dup2(fileno(stdout), fileno(stderr));
-        return doom_main(argc - 1, argv + 1);
     }
     if(argc > 1 && !strcmp(argv[1], "--snake")){            /* the built-in Snake game (Apps > Snake) */
         int snake_main(int, char **);
@@ -3309,15 +3314,15 @@ int main(int argc, char **argv){
      * Runtime local AUDIO is asserted separately via 0666+0657 (localplayer_workmode_cb), so 0 here does
      * not affect playback. The player launcher independently resets this before stock exec; this
      * is the belt-and-suspenders for hand-deploys. USB-DAC/Storage stay opt-in per session. */
-    { char *a[] = { "sh", "-c",
-                    "[ -f /usr/data/fiio/db/sysconfig.db ] && sqlite3 -cmd '.timeout 3000' /usr/data/fiio/db/sysconfig.db 'UPDATE SYSCONFIG SET WORK_MODE=0 WHERE ID=1 AND WORK_MODE IS NOT 0'", NULL };
-      run_bounded(a, 8000);   /* bounded: a locked/corrupt sysconfig.db can't wedge boot */ }
-    /* Confirm the row rather than trusting an UPDATE that may have matched no row.
+    /* Then confirm the row rather than trusting an UPDATE that may have matched no row.
      * Unconfirmed -> hold this UI's SD activity for the boot. The player launcher
-     * performs its own fresh reset/read-back instead of trusting a shared marker. */
+     * performs its own fresh reset/read-back instead of trusting a shared marker.
+     * (kopi.33) One shell for both steps instead of two: a little less to wait for at power-on. Still a bounded
+     * child, so a locked/corrupt sysconfig.db (or a stuck card) can't wedge boot. */
     { char *v[] = { "sh", "-c",
-                    "[ -f /usr/data/fiio/db/sysconfig.db ] && [ \"$(sqlite3 -cmd '.timeout 3000' /usr/data/fiio/db/sysconfig.db 'SELECT WORK_MODE FROM SYSCONFIG WHERE ID=1')\" = \"0\" ]", NULL };
-      if(run_bounded(v, 5000) != 0){ g_sd_hold = 1; fprintf(stderr,"WORK_MODE reset UNCONFIRMED -> diskOS SD activity held this boot\n"); fflush(stderr); } }
+                    "[ -f /usr/data/fiio/db/sysconfig.db ] && { sqlite3 -cmd '.timeout 3000' /usr/data/fiio/db/sysconfig.db 'UPDATE SYSCONFIG SET WORK_MODE=0 WHERE ID=1 AND WORK_MODE IS NOT 0'; "
+                    "[ \"$(sqlite3 -cmd '.timeout 3000' /usr/data/fiio/db/sysconfig.db 'SELECT WORK_MODE FROM SYSCONFIG WHERE ID=1')\" = \"0\" ]; }", NULL };
+      if(run_bounded(v, 12000) != 0){ g_sd_hold = 1; fprintf(stderr,"WORK_MODE reset UNCONFIRMED -> diskOS SD activity held this boot\n"); fflush(stderr); } }
     /* SD guard: establish it NOW (before the player is launched 2s after us) so the launcher finds it. If no
      * guard can exist on this system, hold our SD activity: nothing of ours may keep the card busy. */
     if(!rmguard_ensure()){ g_sd_hold = 1; fprintf(stderr,"SD guard could NOT be established -> diskOS SD activity held this boot\n"); fflush(stderr); }
@@ -3810,8 +3815,14 @@ int main(int argc, char **argv){
                     int vert = ady > adx*2, horiz = adx > ady*2;
                     if(th_nt() && nt_imm_visible()){
                         /* NTDisk's full-screen lyrics: a sideways swipe anywhere (Back) closes them - Music itself has
-                         * no Back to go to, so the swipe used to do nothing and the lyrics stayed */
+                         * no Back to go to, so the swipe used to do nothing and the lyrics stayed.
+                         * (kopi.33) Swipe up from the bottom edge: back to Music. Pull down from the top edge: Quick
+                         * Settings, with Immersive put away until it goes up again. */
                         if(horiz && adx >= 50 && dt < 900) nt_imm_back();
+                        else if(vert && dy < 0 && sy > 290 && ady >= 60 && dt < 900) nt_imm_back();
+                        else if(vert && dy > 0 && sy < 40 && dy >= g_swipe_thresh && dt < 700){
+                            nt_imm_suspend(); onboarding_discovered(HINT_QUICK); screen_show(SCR_QUICK);
+                        }
                     } else if(lvgl_owned || ui_np_fsart_active()){
                         /* swallow - LVGL handled (or will handle) the open/close */
                     } else if(!seek_consumed){

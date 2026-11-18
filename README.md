@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="kopi 3.0.1-kopi.31" src="https://img.shields.io/badge/kopi-3.0.1--kopi.31-C9A27E?style=flat-square">
+  <img alt="kopi 3.0.1-kopi.33" src="https://img.shields.io/badge/kopi-3.0.1--kopi.33-C9A27E?style=flat-square">
   <img alt="Firmware V2.57" src="https://img.shields.io/badge/firmware-V2.57-4AD8FF?style=flat-square">
   <img alt="Status: experimental / in testing" src="https://img.shields.io/badge/status-experimental%20%2F%20in%20testing-FFB45A?style=flat-square">
   <a href="ui/COPYING"><img alt="UI GPL-3.0-or-later" src="https://img.shields.io/badge/UI-GPL--3.0--or--later-62F28C?style=flat-square"></a>
@@ -40,8 +40,9 @@
 
 ## What's in kopi
 
-**Latest: 3.0.1-kopi.31**: power-button fixes, Idle Power-off that works with a paused player (and says what
-it's doing), tap the title for the lyric line, Immersive that follows the song.
+**Latest: 3.0.1-kopi.33**: a **vinyl** record look with the album as its label, a play button that fades in
+and out, Immersive with the top bar and a swipe-up back (the record grows into it), **+ Playlist** on the song
+page, newest playlists first, **play straight through a folder**, and **Racer**, a top-down traffic game.
 
 - **Three themes, and only three.** NTDisk, iDisc and Null; Disco, Squash, Zune, Ring, Braun and Stone are
   gone, which made the interface 1.3 MB smaller. A Disc on a removed theme starts in NTDisk.
@@ -54,8 +55,9 @@ it's doing), tap the title for the lyric line, Immersive that follows the song.
 - **Hold the power button** for Shut down / Restart / Cancel. A short press turns the screen on and off.
 - **Sleep timer, one tap away**: 15 min to 2 hours or end of song, from Quick Settings, Shortcuts or Settings.
 - **Shortcuts for anything**: eight slots, any action, app, settings page or single setting.
-- **Music screen made for thumbs**: the top half of the CD / cover does nothing (so the top menu is safe), slide
-  the lower half to seek, hold for Immersive, tap the title for the lyric line, hold it for the song.
+- **Music screen made for thumbs**: a CD or a **vinyl** record; the top half of it does nothing (so the top menu is
+  safe), tap it for the play button, hold for Immersive, hold the time 2 s to seek, tap the title for the lyric
+  line, hold it for the song.
 - **Immersive**: full-screen lyrics that stay centred, or the whole cover as a spinning CD with controls.
 - **Equalizer**: an **IM4 Harman** preset (Fosi Audio IM4 toward the Harman in-ear target), Copy / Paste /
   Delete for USER presets, and a preamp up to +10 dB.
@@ -173,7 +175,7 @@ Power the Disc off, hold **Volume Down** and plug in USB (the screen stays black
 **An mq_ui file on this PC** and pick the kopi `mq_ui`. **On Linux:**
 
 ```sh
-sh ui/tools/owner-keys/diskos-sign.sh path/to/mq_ui 3.0.1-kopi.31   # -> ./diskos-update/
+sh ui/tools/owner-keys/diskos-sign.sh path/to/mq_ui 3.0.1-kopi.33   # -> ./diskos-update/
 ```
 
 Copy the whole `diskos-update` **folder** to the SD card root (kopi's Wi-Fi file transfer works too), then on the

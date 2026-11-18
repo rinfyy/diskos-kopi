@@ -54,13 +54,12 @@ static void scan(void){
     add_builtin("builtin:stopwatch", "Stopwatch", "Time anything, with laps.", "", "Open", APP_BUILTIN_STOPWATCH, NULL);
     add_builtin("builtin:chess", "Chess", "You against the Disc.", "", "Play", APP_BUILTIN_CHESS, NULL);
     add_builtin("builtin:jpcards", "Japanese", "Flashcards: words and kanji, N5-N4.", "", "Study", APP_BUILTIN_JPCARDS, NULL);
-    add_builtin("builtin:pet", "Pip", "A little friend to look after.", "Feed it, play, keep it clean.", "Visit", APP_BUILTIN_PET, NULL);
+    add_builtin("builtin:racer", "Racer", "Dodge the traffic.", "Hold left or right to steer.\nHow far can you go?", "Drive", APP_BUILTIN_RACER, NULL);
     add_builtin("builtin:echo", "Echo", "Watch. Then repeat.", "Four pads light up in turn.\nTap them back in order.",
                 "Play", APP_BUILTIN_ECHO, NULL);
     add_builtin("builtin:glide", "Glide", "One tap to rise.", "Fly the orb through the gaps.\nThe edge is the wall.",
                 "Play", APP_BUILTIN_GLIDE, NULL);
     add_builtin("builtin:videos", "Videos", "Watch on the Disc.", "", "Open", APP_BUILTIN_VIDEOS, NULL);
-    add_builtin("builtin:doom", "Doom", "Rip and tear.", "Left moves. Right fires.", "Play", APP_BUILTIN_DOOM, NULL);
     add_builtin("builtin:snake", "Snake", "Eat. Grow. Don't bite.", "Swipe or tap to turn.\nHow long can you get?",
                 "Play", APP_BUILTIN_SNAKE, NULL);
     add_builtin("builtin:stats", "Listening Stats", "Your music, in numbers.", "Top artists, albums and songs,\nby week, month or year.",

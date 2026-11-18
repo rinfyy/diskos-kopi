@@ -578,6 +578,8 @@ static void apply_nt_font(int v){ (void)v; theme_reload_or_revert("nt_font"); }
 static void apply_nt_music(int v){ (void)v; theme_reload_or_revert("nt_music"); }
 static void apply_nt_lyrics(int v){ nt_home_lyrics_apply(v); }
 static const char *OPT_NTDISC[] = { "Album", "My picture" };
+static const char *OPT_NTREC[] = { "CD", "Vinyl" };                     /* (kopi.33) Music Screen > Record */
+static void apply_nt_record(int v){ (void)v; theme_reload_or_revert("nt_record"); }
 static const char *OPT_NTIDLE[] = { "Plain", "My picture", "Blurred" };
 static const char *OPT_NTIMM[] = { "Lyrics", "Spinning album" };
 static const char *OPT_IDSTYLE[] = { "Dark", "Light", "Automatic" };
@@ -1155,6 +1157,8 @@ static const setting_t TABLE[] = {
       "Swipe up on Music: the song's lyrics full screen, or the album spinning full screen (tap for controls, hold for lyrics).", NULL },
     { "Music Screen", "Lyrics as Title", ST_TOGGLE, "nt_lyrics", 0,1,1, NULL,0, NULL, apply_nt_lyrics, 1,
       "Synced lyrics replace the title on Music while the song plays.", NULL },
+    { "Music Screen", "Record", ST_CYCLER, "nt_record", 0,0,0, OPT_NTREC, 2, NULL, apply_nt_record, 0,
+      "A CD with the album on it, or a black vinyl record with the album as its round label in the middle.", NULL },
     { "Music Screen", "Disc", ST_CYCLER, "nt_disc", 0,0,0, OPT_NTDISC, 2, NULL, apply_nt_pics, 0,
       "What turns on the CD: the album cover, or your own picture from the CustomCover folder on the SD card.", NULL },
     { "Music Screen", "Idle Screen", ST_CYCLER, "nt_idle", 0,0,0, OPT_NTIDLE, 3, NULL, apply_nt_pics, 0,

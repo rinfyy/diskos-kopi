@@ -827,7 +827,7 @@ int screen_popping(void);
 void disco_screen_entering(int which){
     if(th_simple()){onboarding_dismiss();if(which==SCR_SEARCH&&!screen_popping())search_landing_reset();simple_nav_screen(which);dhome_overlay_close();ed_close();return;}
     onboarding_dismiss();
-    if(th_nt()){ nt_lyrics_close(); nt_spin_close(); }                 /* NTDisk's Immersive never outlives its screen */
+    if(th_nt()) nt_imm_close_now();                                     /* NTDisk's Immersive never outlives its screen */
     nav_cancel_tap();
     if(which == SCR_SEARCH && !screen_popping()) search_landing_reset();  /* Menu > Search: the landing page first; back keeps results */
     dhome_overlay_close(); ed_close();                                    /* top-layer panels never outlive their screen (standby, keys) */
@@ -835,6 +835,7 @@ void disco_screen_entering(int which){
     g_cur_scr = which; nav_show();
 }
 void disco_screen_entered(int which, lv_obj_t *root){
+    if(th_nt() && which == SCR_HOME) nt_imm_resume();                  /* (kopi.33) back from Quick Settings: Immersive again */
     if(th_simple()){simple_nav_screen(which);return;}
     if(!g_parent) return;
     int sec_scr = which;                                                /* sub-screens keep their section's heading */

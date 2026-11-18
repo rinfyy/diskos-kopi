@@ -21,7 +21,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SP_MS   2600            /* the whole splash */
+/* the whole splash (kopi.33: shorter - NTDisk / iDisc 1.5 s, was 2.6 s; Null 2 s) */
+#define SP_MS   (th_nt() ? 1500 : 2000)
 #define CDR     178             /* the disc's radius */
 #define HUBR    54              /* its clear centre */
 #define NRIM    36              /* coloured arcs round the rim */

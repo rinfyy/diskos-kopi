@@ -137,6 +137,14 @@ static void ctx_addpl_cb(lv_event_t *e){
     plpick_reload();                  /* refresh list + clear any old toast */
     screen_show(SCR_PLPICK);
 }
+/* (kopi.33) the song page's "Playlist" tile: the playing song into a playlist, or a new one */
+void np_add_current_to_playlist(void){
+    track_state_t st; ipc_get_state(&st);
+    if(!st.have_track || !st.path[0]){ ui_toast("No song to add"); return; }
+    plpick_set_song(st.path, 0, st.title);
+    plpick_reload();
+    screen_show(SCR_PLPICK);
+}
 static void ctx_fav_cb(lv_event_t *e){
     if(lv_event_get_code(e)!=LV_EVENT_CLICKED) return;
     g_fav = !g_fav;                   /* optimistic; player confirms on next a2 */

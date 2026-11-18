@@ -540,7 +540,7 @@ static void ov_swipe_bubble(lv_obj_t *o){
     for(uint32_t i=0;i<lv_obj_get_child_count(o);i++)ov_swipe_bubble(lv_obj_get_child(o,i));
 }
 static void ov_title_cb(lv_event_t *e){ if(lv_event_get_code(e) == LV_EVENT_CLICKED) ov_close(); }
-enum { OV_FAV, OV_ALBUM, OV_ARTIST, OV_QUEUE, OV_LYRICS, OV_INFO, OV_N };
+enum { OV_FAV, OV_ALBUM, OV_ARTIST, OV_QUEUE, OV_LYRICS, OV_INFO, OV_N };   /* (kopi.33: OV_ARTIST's place is Add to playlist) */
 void disco_open_np_immersive(void);
 static void ov_mark(int i, int on){
     lv_obj_t *b = g_ov_btn[i], *l = lv_obj_get_child(b, 0);
@@ -576,7 +576,7 @@ static void ov_act_cb(lv_event_t *e){
     switch(a){
         case OV_FAV:    ui_np_fav_toggle(); ov_paint(); return;       /* stays open */
         case OV_ALBUM:  ov_close(); ui_np_open_album(); break;
-        case OV_ARTIST: ov_close(); ui_np_open_artist(); break;
+        case OV_ARTIST: ov_close(); np_add_current_to_playlist(); break;   /* (kopi.33: was the artist) */
         case OV_QUEUE:  ov_close(); queue_open(); break;                /* our own Queue */
         case OV_LYRICS: ov_close(); lyrics_open(); break;
         case OV_INFO: { track_state_t st; ipc_get_state(&st); ov_close(); songinfo_unpin(); songinfo_set(&st); screen_show(SCR_SONGINFO); break; }
@@ -667,15 +667,15 @@ static void ov_open(void){
     lv_obj_set_height(tb,42+lv_font_get_line_height(lv_obj_get_style_text_font(ar,0)));
     if(th_simple()) simple_keep_label(ar); else kit_keep(ar);
     static const struct { int x, y; const char *cap; } P[OV_N] = {          /* two gentle arcs of three */
-        { 84, 146, "Favourite" }, { 180, 160, "Album" }, { 276, 146, "Artist" },
+        { 84, 146, "Favourite" }, { 180, 160, "Album" }, { 276, 146, "Playlist" },
         { 94, 250, "Queue" },     { 180, 270, "Lyrics" }, { 266, 250, "Info" } };
-    const char *G[OV_N] = { TH_IC_HEART, TH_IC_RECORD, "\xEF\x84\xB0", LV_SYMBOL_LIST, LV_SYMBOL_FILE, "i" };   /* Artist: microphone; Info: circled i */
+    const char *G[OV_N] = { TH_IC_HEART, TH_IC_RECORD, LV_SYMBOL_PLUS, LV_SYMBOL_LIST, LV_SYMBOL_FILE, "i" };   /* Add to playlist: plus; Info: circled i */
     for(int i = 0; i < OV_N; i++){
         int py = P[i].y - (i < 3 ? (mood ? 26 : 0) : (mood ? 36 : 0));
         lv_obj_t *b = glass_circle(g_ov, P[i].x, py, mood ? 60 : 70, G[i]);
         g_ov_btn[i] = b; lv_obj_set_style_text_color(lv_obj_get_child(b, 0), g_acc, 0); lv_obj_set_style_border_color(b, g_acc, 0); lv_obj_set_style_border_opa(b, 140, 0);
         if(i == OV_FAV || i == OV_ALBUM) lv_obj_set_style_text_font(lv_obj_get_child(b, 0), &font_theme_24, 0);
-        if(i == OV_ARTIST) lv_obj_set_style_text_font(lv_obj_get_child(b, 0), TF(ICON_28), 0);
+        if(i == OV_ARTIST) lv_obj_set_style_text_font(lv_obj_get_child(b, 0), theme_font_original(28), 0);
         if(i == OV_INFO){
             lv_obj_t *ic = lv_obj_get_child(b, 0);
             lv_obj_set_style_text_font(ic, TF(UI_24), 0); lv_obj_set_size(ic, 32, 32);
@@ -683,13 +683,13 @@ static void ov_open(void){
             lv_obj_set_style_border_width(ic, 2, 0); lv_obj_set_style_border_color(ic, g_acc, 0);
             lv_obj_set_style_radius(ic, LV_RADIUS_CIRCLE, 0); lv_obj_center(ic);
         }
-        static const char *const actions[OV_N] = { "disco.track.favourite", "disco.track.album", "disco.track.artist", "disco.track.queue", "disco.track.lyrics", "disco.track.info" };
+        static const char *const actions[OV_N] = { "disco.track.favourite", "disco.track.album", "disco.track.playlist", "disco.track.queue", "disco.track.lyrics", "disco.track.info" };
         ui_on(b, ov_act_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i, actions[i], UI_REACHABLE);
         g_ov_cap[i] = lv_label_create(g_ov); lv_label_set_text(g_ov_cap[i], P[i].cap);
         lv_obj_set_style_text_font(g_ov_cap[i], TF(UI_18), 0); lv_obj_set_style_text_color(g_ov_cap[i], TC(TEXT_PRIMARY), 0);
         if(mood) lv_obj_set_style_text_font(g_ov_cap[i], TF(UI_16), 0);
         if(th_null()){
-            static const char *const caps[OV_N]={"FAV","ALB","ART","QUE","LYR","INF"};
+            static const char *const caps[OV_N]={"FAV","ALB","PL+","QUE","LYR","INF"};
             lv_label_set_text(g_ov_cap[i],caps[i]);
             lv_obj_set_style_text_font(g_ov_cap[i],TF(HEADER_SM),0);
             kit_keep(g_ov_cap[i]);
@@ -717,9 +717,9 @@ static void nt_ov_build(int mood){
     lv_obj_t *ar = lv_label_create(tb); lv_label_set_text(ar, L_ARTIST.cur); lv_label_set_long_mode(ar, LV_LABEL_LONG_SCROLL_CIRCULAR);
     lv_obj_set_width(ar, 220); lv_obj_set_style_text_align(ar, LV_TEXT_ALIGN_CENTER, 0); lv_obj_set_style_text_font(ar, ui_font_cjk(14), 0);
     lv_obj_set_style_text_color(ar, TC(TEXT_MUTED), 0); lv_obj_align(ar, LV_ALIGN_TOP_MID, 0, 28); kit_keep(ar);
-    static const char *const NM[OV_N] = { "Favourite", "Album", "Artist", "Queue", "Lyrics", "Info" };
-    const char *G[OV_N] = { TH_IC_HEART, TH_IC_RECORD, "\xEF\x84\xB0", LV_SYMBOL_LIST, LV_SYMBOL_FILE, LV_SYMBOL_FILE };
-    static const char *const actions[OV_N] = { "disco.track.favourite", "disco.track.album", "disco.track.artist", "disco.track.queue", "disco.track.lyrics", "disco.track.info" };
+    static const char *const NM[OV_N] = { "Favourite", "Album", "Playlist", "Queue", "Lyrics", "Info" };
+    const char *G[OV_N] = { TH_IC_HEART, TH_IC_RECORD, LV_SYMBOL_PLUS, LV_SYMBOL_LIST, LV_SYMBOL_FILE, LV_SYMBOL_FILE };
+    static const char *const actions[OV_N] = { "disco.track.favourite", "disco.track.album", "disco.track.playlist", "disco.track.queue", "disco.track.lyrics", "disco.track.info" };
     int y0 = mood ? 100 : 114;
     for(int i = 0; i < OV_N; i++){
         int col = i % 2, row = i / 2;
@@ -728,7 +728,7 @@ static void nt_ov_build(int mood){
         lv_obj_set_style_radius(b, 23, 0); lv_obj_set_style_bg_opa(b, LV_OPA_COVER, 0); lv_obj_set_style_bg_color(b, TC(SURFACE), 0);
         lv_obj_set_style_bg_color(b, TC(SURFACE_PRESSED), LV_STATE_PRESSED);
         lv_obj_t *ic = lv_label_create(b); lv_label_set_text(ic, i == OV_INFO ? "i" : G[i]);
-        lv_obj_set_style_text_font(ic, i == OV_FAV || i == OV_ALBUM ? &font_theme_20 : i == OV_ARTIST ? TF(ICON_20) : i == OV_INFO ? TF(UI_18) : theme_font_original(18), 0);
+        lv_obj_set_style_text_font(ic, i == OV_FAV || i == OV_ALBUM ? &font_theme_20 : i == OV_INFO ? TF(UI_18) : theme_font_original(18), 0);
         lv_obj_set_style_text_color(ic, TC(TEXT_PRIMARY), 0); lv_obj_set_width(ic, 24); lv_obj_set_style_text_align(ic, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_align(ic, LV_ALIGN_LEFT_MID, 14, 0);
         lv_obj_t *nm = lv_label_create(b); lv_label_set_text(nm, NM[i]); lv_obj_set_style_text_font(nm, TF(UI_14), 0);

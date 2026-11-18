@@ -248,9 +248,7 @@ void echo_landing(void);
 void video_play(const char *path);
 void folderbrowser_open_videos(void);   /* Apps > Videos */
 #define APP_BUILTIN_VIDEOS "builtin:videos"         /* the Videos app: Files in the Videos folder */
-#define APP_BUILTIN_DOOM "builtin:doom"             /* Doom (mq_ui --doom, doom_disc.c + vendor/doomgeneric) */
-void doom_landing(void);
-#define APP_BUILTIN_PET "builtin:pet"               /* Pip, the virtual pet (mq_ui --pet, games/pet.c) */
+#define APP_BUILTIN_RACER "builtin:racer"           /* Racer, the top-down traffic racer (mq_ui --racer, games/racer.c; kopi.33) */
 void stopwatch_create(lv_obj_t *root);
 void stopwatch_open(void);
 #define APP_BUILTIN_CHESS "builtin:chess"           /* Chess against the Disc (SCR_CHESS, chess.c) */
@@ -262,7 +260,11 @@ void jpcards_open(void);
 void browser_create(lv_obj_t *root);
 void browser_open(const char *url);     /* NULL: where it was; a web address or an SD-card path: that page */
 int  browser_back_consumed(void);
-void pet_landing(void);
+void racer_landing(void);
+void np_add_current_to_playlist(void);
+void quicksettings_zune_visible(int on);   /* quicksettings.c */
+int  ui_volume_overlay_visible(void);       /* ui.c */
+int  ui_play_folder(const char *dir, const char *start_path);   /* main.c (kopi.33): a folder, file order, from start_path */   /* npmenus.c (kopi.33): the playing song -> Add to Playlist */
 void glide_landing(void);
 #define APP_BUILTIN_SPHERE "builtin:songsphere"     /* SongSphere: built in since 2.2.0 (sphere_ui.c) */
 #define APP_BUILTIN_STATS "builtin:stats"           /* Listening Stats: a screen of mq_ui, opened from its landing page */
@@ -537,7 +539,7 @@ void nt_home_status(int batt, int charging, int wifi, int bt);
 void nt_home_pictures_apply(void);   /* NTDisk Disc / Idle screen pictures changed */
 void nt_lyrics_open(void); void nt_lyrics_close(void); int nt_lyrics_visible(void);
 void nt_spin_open(void); void nt_spin_close(void); int nt_spin_visible(void);   /* Immersive: the spinning album */
-int nt_imm_visible(void); void nt_imm_back(void); void nt_imm_open(void);        /* either Immersive (the chosen one) */
+int nt_imm_visible(void); void nt_imm_back(void); void nt_imm_open(void); void nt_imm_suspend(void); void nt_imm_resume(void); void nt_imm_forget(void); void nt_imm_close_now(void); int nt_vinyl(void);        /* either Immersive (the chosen one) */
 void nt_saver_create(lv_obj_t *root); void nt_saver_clock(const char *t); void nt_saver_weather(const char *s);
 void nt_saver_track(const char *title, const char *artist);
 int  disco_mirror(void);

@@ -4,7 +4,7 @@
 /* Long-press menus in the orbit style (like Quick Settings and the file operations):
  *   Library song:   Add to queue, Playlist, Favourite, Album, Artist, Info, Tags
  *   folder song:    Add to queue, Playlist, Favourite, Info, Tags, Rename, Copy / Move, Delete
- *   folder:         Add to queue, Playlist, Tags, Rename, Copy / Move, Delete
+ *   folder:         Play (straight through, kopi.33), Add to queue, Playlist, Tags, Rename, Copy / Move, Delete
  *   album (Library, fork): Play, Shuffle, Add to queue, Playlist, Tags, Mood; artist: Play, Shuffle, Add to queue, Playlist, Mood;
  *   genre: Play, Shuffle, Add to queue, Playlist (Mood: SongSphere's tag page, when SongSphere is on)
  * The name sits at the top; the hub in the middle cancels. Favourite is filled red when it already is one. */
@@ -74,7 +74,8 @@ static void pick(int i){
         case A_RENAME:   fileops_action(g_dir, g_name, g_is_dir, g_done, 0); break;
         case A_COPYMOVE: fileops_action(g_dir, g_name, g_is_dir, g_done, 1); break;
         case A_DELETE:   fileops_action(g_dir, g_name, g_is_dir, g_done, 2); break;
-        case A_PLAY:     if(g_gplay) g_gplay(0); break;
+        case A_PLAY:     if(g_is_dir){ if(ui_play_folder(g_path, NULL)) screen_show(SCR_NOWPLAYING); }   /* (kopi.33) a folder, straight through */
+                         else if(g_gplay) g_gplay(0); break;
         case A_SHUFFLE:  if(g_gplay) g_gplay(1); break;
         case A_SELECT:   if(g_sel) g_sel(); break;
         case A_MOOD:     sphere_ui_tag(!strcmp(g_gcol, "ALBUM") ? 1 : 2, g_gval, g_gval); break;   /* SongSphere: where it sits */
@@ -177,8 +178,8 @@ void songmenu_open_folder(const char *dir, const char *name, void (*done)(void))
     snprintf(g_path, sizeof g_path, "%s/%s", dir, name);
     snprintf(g_dir, sizeof g_dir, "%s", dir); snprintf(g_name, sizeof g_name, "%s", name);
     g_gcol[0] = 0; g_is_dir = 1; g_done = done; g_have_song = 0; g_fav = 0;
-    static const int A[6] = { A_QUEUE, A_PLAYLIST, A_TAGS, A_RENAME, A_COPYMOVE, A_DELETE };
-    open_menu(name, A, 6);
+    static const int A[7] = { A_PLAY, A_QUEUE, A_PLAYLIST, A_TAGS, A_RENAME, A_COPYMOVE, A_DELETE };   /* (kopi.33: Play) */
+    open_menu(name, A, 7);
 }
 void songmenu_open_group(const char *col, const char *val, const char *title, void (*play)(int shuffle)){   /* Library: album / artist / genre */
     if(!col || !val || !val[0]) return;

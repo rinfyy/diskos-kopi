@@ -185,6 +185,8 @@ static void read_touch(touch_t *t, const game_t *g){
             if(g->down) g->down(t->x0, t->y0);
         }
         if(t->down && (abs(t->x - t->x0) > 14 || abs(t->y - t->y0) > 14)) t->moved = 1;
+        if(t->down && t->was && g->drag) g->drag(t->x, t->y);
+        if(!t->down && t->was && g->lift) g->lift(t->x, t->y);
         if(!t->down && t->was && !t->used){ t->used = 1; if(g->up) g->up(t->x0, t->y0, t->moved); }
         t->was = t->down;
     }
