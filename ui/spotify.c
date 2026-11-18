@@ -13,6 +13,7 @@
 #include "md5.h"
 #include "vlist.h"
 #include "spotify.h"
+#include "sdio.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -27,7 +28,12 @@
 #include <sys/wait.h>
 
 #define SPOT_CACHE "/usr/data/diskos/spotify"     /* the saved sign-in (librespot's reusable credentials) */
-enum { SP_OFF, SP_WAITING, SP_CONNECTING, SP_READY, SP_PLAYING, SP_ERROR };
+enum { SP_OFF, SP_WAITING, SP_CONNECTING, SP_READY, SP_PLAYING, SP_ERROR, SP_MISSING };
+/* The helper is its own program, kept off /usr/data (an update needs twice mq_ui's size free there): spot-disc on the
+ * SD card, copied into /tmp (RAM) and run from there. */
+#define SPOT_RUN "/tmp/spot/spot-disc"
+static const char *SPOT_SRC[] = { "/tmp/sdcard/spot-disc", "/tmp/sdcard/diskos/spot-disc", "/tmp/sdcard/Spotify/spot-disc", "/usr/data/diskos/spot-disc" };
+static int g_missing;                            /* no spot-disc found the last time it was looked for */
 static int g_state = SP_OFF, g_test = -1;
 static char g_user[64], g_msg[96], g_title[160], g_artist[160], g_album[160], g_track[128];
 static long g_dur, g_prog; static long long g_prog_at; static int g_speed;
@@ -63,14 +69,43 @@ static void helper_kill_stale(void){
     }
     unlink("/tmp/spot/status");
 }
+static int copy_file(const char *from, const char *to){
+    int in = open(from, O_RDONLY); if(in < 0) return -1;
+    char tmp[64]; snprintf(tmp, sizeof tmp, "%s.part", to);
+    int out = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0755); if(out < 0){ close(in); return -1; }
+    static char buf[65536]; ssize_t n; int ok = 1;
+    while((n = read(in, buf, sizeof buf)) > 0) if(write(out, buf, (size_t)n) != n){ ok = 0; break; }
+    if(n < 0) ok = 0;
+    close(in); if(close(out) != 0) ok = 0;
+    if(!ok || rename(tmp, to) != 0){ unlink(tmp); return -1; }
+    chmod(to, 0755); return 0;
+}
+static int helper_fetch(void){                   /* spot-disc into /tmp/spot (once per boot, or when it changed) */
+    mkdir("/tmp/spot", 0755);
+    struct stat run; int have = stat(SPOT_RUN, &run) == 0 && run.st_size > 0;
+    if(!sd_io_begin()){ g_missing = !have; return have ? 0 : -1; }   /* the card is busy: what's there already will do */
+    int rc = -1;
+    for(size_t i = 0; i < sizeof SPOT_SRC / sizeof SPOT_SRC[0]; i++){
+        struct stat src; if(stat(SPOT_SRC[i], &src) != 0 || src.st_size < 100000) continue;
+        if(have && run.st_size == src.st_size){ rc = 0; break; }
+        rc = copy_file(SPOT_SRC[i], SPOT_RUN);
+        if(rc == 0) fprintf(stderr, "spotify: %s -> " SPOT_RUN "\n", SPOT_SRC[i]);
+        break;
+    }
+    sd_io_end();
+    if(rc != 0 && have) rc = 0;
+    g_missing = rc != 0;
+    return rc;
+}
 static void helper_start(void){
     if(g_pid > 0) return;
+    if(helper_fetch() != 0){ fprintf(stderr, "spotify: spot-disc not found on the SD card\n"); g_restart_at = lv_tick_get() + 15000; return; }
     labels_load();
     char name[48], id[40], cid[48];
     snprintf(name, sizeof name, "%s", g_spot_name_lbl); device_id(id);
     snprintf(cid, sizeof cid, "%s", strcmp(g_spot_cid_lbl, "Built-in") ? g_spot_cid_lbl : "");
     mkdir("/usr/data/diskos", 0755); mkdir(SPOT_CACHE, 0700); mkdir("/tmp/spot", 0755);
-    char *argv[] = { "spot-disc", "--spotify", name, id, SPOT_CACHE, cid, NULL };
+    char *argv[] = { "spot-disc", name, id, SPOT_CACHE, cid, NULL };
     posix_spawn_file_actions_t fa; posix_spawnattr_t at;
     posix_spawn_file_actions_init(&fa); posix_spawnattr_init(&at);
     posix_spawn_file_actions_addopen(&fa, 0, "/dev/null", O_RDONLY, 0);
@@ -81,8 +116,7 @@ static void helper_start(void){
     posix_spawnattr_setsigmask(&at, &mask); posix_spawnattr_setpgroup(&at, 0);
     posix_spawnattr_setflags(&at, POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_SETSIGMASK);
     extern char **environ; pid_t pid = 0;
-    int rc = posix_spawn(&pid, "/proc/self/exe", &fa, &at, argv, environ);    /* (see ma.c: the in-RAM copy) */
-    if(rc != 0) rc = posix_spawn(&pid, "/usr/data/mq_ui", &fa, &at, argv, environ);
+    int rc = posix_spawn(&pid, SPOT_RUN, &fa, &at, argv, environ);
     posix_spawn_file_actions_destroy(&fa); posix_spawnattr_destroy(&at);
     if(rc == 0){ g_pid = pid; fprintf(stderr, "spotify: helper started (pid %d)\n", (int)pid); }
     else { fprintf(stderr, "spotify: spawn failed: %s\n", strerror(rc)); g_restart_at = lv_tick_get() + 5000; }
@@ -111,7 +145,7 @@ static void helper_watch(void){
     if(g_pid == 0 && g_restart_at && (int32_t)(lv_tick_get() - g_restart_at) >= 0){ g_restart_at = 0; helper_start(); }
     static int tries;                                /* AirPlay carries the sound: three quiet tries to switch it on */
     if(ui_get_source_mode() == 5) tries = 0;
-    else if(!g_leaving && tries < 3){ static uint32_t last; if(!last || lv_tick_elaps(last) > 10000){ last = lv_tick_get(); tries++; ui_set_source_mode(5); } }
+    else if(!g_leaving && !g_missing && tries < 3){ static uint32_t last; if(!last || lv_tick_elaps(last) > 10000){ last = lv_tick_get(); tries++; ui_set_source_mode(5); } }
 }
 void spot_restart(void){ if(spot_is_on()){ helper_stop(); g_restart_at = lv_tick_get() + 300; } }
 
@@ -119,7 +153,7 @@ static void status_read(void){
     if(g_test >= 0){ g_state = g_test; return; }
     if(!spot_is_on()){ g_state = SP_OFF; return; }
     FILE *f = fopen("/tmp/spot/status", "r");
-    if(!f){ g_state = SP_CONNECTING; return; }
+    if(!f){ g_state = g_missing && g_pid <= 0 ? SP_MISSING : SP_CONNECTING; return; }
     char line[320]; int have = 0;
     g_title[0] = g_artist[0] = g_album[0] = g_track[0] = g_msg[0] = g_list_err[0] = 0; g_speed = 0;
     while(fgets(line, sizeof line, f)){
@@ -149,8 +183,12 @@ void spot_set_on(int on){
     cfg_set_int("spot_on", on ? 1 : 0);
     if(on){
         if(!wifi_radio_live()) ui_toast("Wi-Fi is off - turn it on for Spotify");
-        if(ma_is_on()) ma_mode_leaving();                                  /* one AirPlay sender at a time */
         helper_kill_stale();
+        if(helper_fetch() != 0){                                           /* (read before AirPlay takes over the player) */
+            status_read(); if(screen_current() == SCR_SPOTIFY) spot_refresh();
+            g_restart_at = lv_tick_get() + 15000; return;                  /* it looks again now and then */
+        }
+        if(ma_is_on()) ma_mode_leaving();                                  /* one AirPlay sender at a time */
         if(ui_get_source_mode() != 5) ui_set_source_mode(5);
         if(g_dying > 0) g_restart_at = lv_tick_get() + 300; else helper_start();
     } else { helper_stop(); if(ui_get_source_mode() == 5){ g_leaving = 1; ui_set_source_mode(0); g_leaving = 0; } }
@@ -323,6 +361,9 @@ void spot_refresh(void){
             case SP_WAITING: snprintf(st, sizeof st, "%s", g_msg[0] ? g_msg : "Sign in once");
                              snprintf(d1, sizeof d1, "Spotify > Devices:");
                              snprintf(d2, sizeof d2, "%s", g_spot_name_lbl); break;
+            case SP_MISSING: snprintf(st, sizeof st, "Add Spotify first");
+                             snprintf(d1, sizeof d1, "Copy spot-disc to the");
+                             snprintf(d2, sizeof d2, "top of the SD card"); break;
             case SP_CONNECTING: snprintf(st, sizeof st, "%s", wifi_radio_live() ? (g_msg[0] ? g_msg : "Connecting") : "Wi-Fi is off");
                              snprintf(d1, sizeof d1, "%s", wifi_radio_live() ? "Reaching Spotify" : "Turn on Wi-Fi for Spotify"); break;
             default: snprintf(st, sizeof st, "Can't reach Spotify"); snprintf(d1, sizeof d1, "%s", g_msg[0] ? g_msg : "Trying again"); break;

@@ -58,15 +58,23 @@ VIDEO_FLAGS := -O2 -pipe -std=gnu11 -static -w -ffunction-sections -fdata-sectio
 # Spotify (kopi.35): the "spot-disc" helper's Spotify side is a Rust static library on librespot (spotify/), built for
 # the Disc with a custom target (MIPS32r2, hard float FP64, NaN2008, musl) and the standard library rebuilt from
 # source (-Zbuild-std; nightly features on a stable compiler via RUSTC_BOOTSTRAP). Needs rustc with the rust-src
-# component. The C toolchain builds its C parts (spotify/cc-wrap.sh). Linked into mq_ui only (not the host renders).
+# component. The C toolchain builds its C parts (spotify/cc-wrap.sh). It is its own program, spot-disc (~6.5 MB), not
+# part of mq_ui: an update needs twice mq_ui's size free on /usr/data, and with Spotify inside that was ~40 MB. The
+# user copies spot-disc to the SD card; mq_ui copies it into /tmp (RAM) and runs it there (spotify.c).
 SPOT_LIB := $(APP)/spotify/target/mipsel-disc-linux-musl/release/libspotdisc.a
 CARGO ?= cargo
 $(SPOT_LIB): $(APP)/spotify/src/lib.rs $(APP)/spotify/Cargo.toml $(APP)/spotify/Cargo.lock $(APP)/spotify/mipsel-disc-linux-musl.json
 	cd $(APP)/spotify && RUSTC_BOOTSTRAP=1 SPOT_REAL_CC="$(CC)" CC_mipsel_disc_linux_musl=$(APP)/spotify/cc-wrap.sh \
 	  AR_mipsel_disc_linux_musl=$(CROSS)ar CFLAGS_mipsel_disc_linux_musl=-Os \
 	  $(CARGO) build --release --locked --target $(APP)/spotify/mipsel-disc-linux-musl.json -Zjson-target-spec -Zbuild-std=std,panic_abort
-OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/video_disc.o $(APP)/vendor/smb-build/libsmb2.a \
-        $(APP)/spotify_helper.o $(SPOT_LIB)
+OBJS := $(LVGL_SRCS:.c=.o) $(APP_SRCS:.c=.o) $(APP)/sqlite3.o $(BOOM_OBJS) $(SNAKE_OBJS) $(APP)/video_disc.o $(APP)/vendor/smb-build/libsmb2.a
+$(APP)/spotify_helper.o: $(APP)/spotify_helper.c
+	$(CC) $(CFLAGS) -DSPOT_STANDALONE -c $< -o $@
+spot-disc: $(APP)/spotify_helper.o $(SPOT_LIB)
+	$(CC) $(LDFLAGS) -o $@ $^ -lm -lunwind
+	$(CROSS)strip $@ || true
+	@ls -l $@
+.PHONY: spot-disc
 
 # Every on-screen colour is a theme role (theme.h); theme.c is the only place RGB becomes a colour. The link fails if
 # any other app source (.c, or any header in the tree) builds a colour itself: an LVGL colour constructor, palette,
@@ -86,7 +94,7 @@ check-theme:
 
 mq_ui: $(OBJS)
 	@$(MAKE) --no-print-directory check-theme
-	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS) -lunwind   # (-lunwind: the Spotify library's Rust standard library)
+	$(CC) $(LDFLAGS) -o $@ $(OBJS) $(LDLIBS)
 	cp -f $@ $@.debug                 # unstripped twin for crash symbolication (not shipped)
 	$(CROSS)strip $@ || true
 	@ls -l $@
@@ -177,7 +185,7 @@ $(HOST_DIR)/art.o: $(APP)/art.c $(HOST_DIR)/diskos-artdec | $(HOST_DIR)
 	$(CC) $(CFLAGS) -DARTDEC_PATH='"$(HOST_DIR)/diskos-artdec"' -c $< -o $@
 $(HOST_DIR)/host_render.o: $(APP)/tests/host_render.c | $(HOST_DIR)
 	$(CC) $(CFLAGS) $(HOST_CFG) -DDISKOS_HOST -c $< -o $@
-HOST_OBJS := $(filter-out $(APP)/main.o $(APP)/theme_kit.o $(APP)/config.o $(APP)/art.o $(APP)/queue.o $(APP)/spotify_helper.o $(SPOT_LIB),$(OBJS)) \
+HOST_OBJS := $(filter-out $(APP)/main.o $(APP)/theme_kit.o $(APP)/config.o $(APP)/art.o $(APP)/queue.o,$(OBJS)) \
              $(HOST_DIR)/main.o $(HOST_DIR)/theme_kit.o $(HOST_DIR)/config.o $(HOST_DIR)/art.o $(HOST_DIR)/queue.o $(HOST_DIR)/host_render.o
 host-render: $(HOST_OBJS)
 	$(CC) $(LDFLAGS) -o $(HOST_DIR)/host-render $(HOST_OBJS) $(LDLIBS) -lcrypt -Wl,--wrap=lv_obj_set_local_style_prop,--wrap=ssdb_open,--wrap=ui_play_list,--wrap=mdb_song_count,--wrap=ui_seek_to,--wrap=ui_set_volume,--wrap=ui_display_is_off,--wrap=ipc_get_state,--wrap=ui_is_playing,--wrap=ui_transport_command,--wrap=ipc_send_cmd,--wrap=fw_custom_peq_writable,--wrap=fw_custom_peq_curve_writable,--wrap=mdb_get_peq_ex,--wrap=mdb_get_peq_readonly,--wrap=mdb_song_accent,--wrap=art_make_all_ex_gen,--wrap=wifi_radio_live,--wrap=bt_state,--wrap=wifi_toggle,--wrap=bt_toggle,--wrap=artcache_get_thumb,--wrap=artcache_get_cover,--wrap=ui_local_playback_allowed,--wrap=mdb_song_rates

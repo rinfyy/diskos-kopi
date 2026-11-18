@@ -42,6 +42,7 @@
 
 **Latest: 3.0.1-kopi.35**: **Spotify** on the Disc. It's a Spotify Connect speaker (librespot), and it plays your Liked
 Songs, playlists and search from its own screen (Premium and Wi-Fi; the sound goes through the Disc's AirPlay receiver).
+The Spotify part is its own program, `spot-disc` (`make spot-disc`), copied to the SD card, so updates stay small.
 Building it needs Rust with rust-src (see `ui/Makefile`, `ui/spotify/`).
 
 - **Three themes, and only three.** NTDisk, iDisc and Null; Disco, Squash, Zune, Ring, Braun and Stone are

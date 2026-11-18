@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 /* Copyright (C) 2026 diskOS contributors */
-/* Spotify helper process (kopi.35): mq_ui run as "spot-disc --spotify <name> <device_id> <cache_dir> [client_id]".
+/* Spotify helper program (kopi.35): "spot-disc <name> <device_id> <cache_dir> [client_id]", its own static binary
+ * (make spot-disc; kept out of mq_ui so updates fit in /usr/data). mq_ui copies it from the SD card into /tmp/spot.
  * The Spotify side (Connect, sign-in, decoding, lists) is the Rust library in spotify/ (librespot); this file is its
  * audio out: librespot's player thread hands 16-bit stereo PCM to spot_c_pcm(), which paces it in real time into the
  * Disc's own AirPlay receiver on 127.0.0.1 (mq_player owns the audio hardware - the same road as Music Assistant). */
@@ -80,3 +81,6 @@ int spotify_main(int argc, char **argv){
     unlink("/tmp/spot/status");
     return rc;
 }
+#ifdef SPOT_STANDALONE
+int main(int argc, char **argv){ return spotify_main(argc, argv); }
+#endif

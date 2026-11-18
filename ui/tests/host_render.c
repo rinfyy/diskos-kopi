@@ -2423,6 +2423,8 @@ int main(int argc, char **argv){
                              for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();usleep(2000);}
                              if(getenv("FB_AZ")[0]>='A'){ void folderbrowser_test_jump(char); folderbrowser_test_jump(getenv("FB_AZ")[0]); }
                              for(int i=0;i<30;i++){lv_tick_inc(10);lv_timer_handler();} }
+        if(getenv("SPOT_ON")){ void spot_set_on(int); sd_io_init(media_local); sd_io_resume(); scr=SCR_SPOTIFY; screen_show(scr); spot_set_on(1);   /* kopi.35: the SD copy + start */
+            for(int i=0;i<300;i++){lv_tick_inc(10);lv_timer_handler();usleep(3000);} fprintf(stderr,"SPOT_ON done\n"); }
         if(getenv("SPOT_STATE")){ void spot_test_state(int); scr=SCR_SPOTIFY; screen_show(scr); spot_test_state(atoi(getenv("SPOT_STATE"))); for(int i=0;i<30;i++){lv_tick_inc(10);lv_timer_handler();} }   /* kopi.35 */
         if(getenv("SPOT_LIST")){ void spot_test_list(const char*,const char*); scr=SCR_SPOTIFY; screen_show(scr);   /* kopi.35: "playlists" | "tracks" */
             if(!strcmp(getenv("SPOT_LIST"),"playlists")) spot_test_list("P\tLiked Songs\tspotify:user:me:collection\tYour liked songs\nP\tLate Night Drive\tspotify:playlist:1\t42 songs \xc2\xb7 Tiara\nP\tCity Pop\tspotify:playlist:2\t118 songs \xc2\xb7 Spotify\nP\tFocus Flow\tspotify:playlist:3\t60 songs \xc2\xb7 Spotify\nP\tKopi Mornings\tspotify:playlist:4\t25 songs \xc2\xb7 Tiara\n","Playlists");

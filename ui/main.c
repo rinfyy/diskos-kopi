@@ -3205,9 +3205,6 @@ int main(int argc, char **argv){
     /* MA Sendspin: this same binary runs the Music Assistant player as a child (ma.c starts it as
      * "ma-sendspin --sendspin ...": a different argv[0], so fiio_init's `pgrep -x mq_ui` never mistakes it for the UI) */
     if(argc > 1 && !strcmp(argv[1], "--sendspin")){ int sendspin_main(int, char **); return sendspin_main(argc - 1, argv + 1); }
-    /* (kopi.35) "spot-disc --spotify <name> <device_id> <cache> [client_id]": the Spotify helper (spotify_helper.c) */
-    if(argc > 1 && !strcmp(argv[1], "--spotify")){ extern int spotify_main(int, char **) __attribute__((weak));
-        if(!spotify_main){ fprintf(stderr, "spotify: not in this build\n"); return 2; } return spotify_main(argc - 1, argv + 1); }
     crashlog_install();          /* /usr/data/diskos_crash.log: a line per start, player restart and crash */
     if(argc > 1 && (!strcmp(argv[1], "--echo") || !strcmp(argv[1], "--glide") || !strcmp(argv[1], "--racer"))){   /* Apps > Echo / Glide / Racer */
         int echo_main(int, char **), glide_main(int, char **), racer_main(int, char **);
