@@ -2423,6 +2423,12 @@ int main(int argc, char **argv){
                              for(int i=0;i<60;i++){lv_tick_inc(10);lv_timer_handler();usleep(2000);}
                              if(getenv("FB_AZ")[0]>='A'){ void folderbrowser_test_jump(char); folderbrowser_test_jump(getenv("FB_AZ")[0]); }
                              for(int i=0;i<30;i++){lv_tick_inc(10);lv_timer_handler();} }
+        if(getenv("SPOT_STATE")){ void spot_test_state(int); scr=SCR_SPOTIFY; screen_show(scr); spot_test_state(atoi(getenv("SPOT_STATE"))); for(int i=0;i<30;i++){lv_tick_inc(10);lv_timer_handler();} }   /* kopi.35 */
+        if(getenv("SPOT_LIST")){ void spot_test_list(const char*,const char*); scr=SCR_SPOTIFY; screen_show(scr);   /* kopi.35: "playlists" | "tracks" */
+            if(!strcmp(getenv("SPOT_LIST"),"playlists")) spot_test_list("P\tLiked Songs\tspotify:user:me:collection\tYour liked songs\nP\tLate Night Drive\tspotify:playlist:1\t42 songs \xc2\xb7 Tiara\nP\tCity Pop\tspotify:playlist:2\t118 songs \xc2\xb7 Spotify\nP\tFocus Flow\tspotify:playlist:3\t60 songs \xc2\xb7 Spotify\nP\tKopi Mornings\tspotify:playlist:4\t25 songs \xc2\xb7 Tiara\n","Playlists");
+            else spot_test_list("C\tspotify:playlist:1\nT\tNorthern Lights\tThe Midnight\tspotify:track:1\t240000\nT\tPlastic Love\tMariya Takeuchi\tspotify:track:2\t474000\nT\tRide or Die\tKnovawave\tspotify:track:3\t200000\nT\tSunset\tThe Midnight\tspotify:track:4\t300000\n","Late Night Drive");
+            for(int i=0;i<30;i++){lv_tick_inc(10);lv_timer_handler();} }
+        if(getenv("SPOT_SET")){ void settings_open_spotify(void); setlist_open("Network"); scr=SCR_SETLIST; screen_show(scr); settings_open_spotify(); for(int i=0;i<40;i++){lv_tick_inc(10);lv_timer_handler();} }
         if(getenv("MA_STATE")){ void ma_test_state(int); scr=SCR_MA; screen_show(scr); ma_test_state(atoi(getenv("MA_STATE"))); for(int i=0;i<30;i++){lv_tick_inc(10);lv_timer_handler();} }
         if(getenv("MA_DELAY")){ void settings_open_ma_delay(void); cfg_set_int("ma_delay_ms",atoi(getenv("MA_DELAY"))); setlist_open("Network"); settings_open_ma_delay(); scr=SCR_SETTING_DETAIL; for(int i=0;i<40;i++){lv_tick_inc(10);lv_timer_handler();} }
         if(getenv("VK_SET")){ void settings_open_volkeys(void); setlist_open("System"); scr=SCR_SETLIST; screen_show(scr); settings_open_volkeys(); for(int i=0;i<40;i++){lv_tick_inc(10);lv_timer_handler();} }

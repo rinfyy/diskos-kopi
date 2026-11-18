@@ -1,0 +1,35 @@
+[package]
+name = "spotdisc"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Spotify for diskOS on the Snowsky Disc: a Spotify Connect receiver and library browser on librespot, linked into mq_ui"
+
+[lib]
+crate-type = ["staticlib"]
+path = "src/lib.rs"
+
+[dependencies]
+librespot-core = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-connect = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-discovery = { version = "=0.8.0", default-features = false, features = ["with-libmdns", "rustls-tls-webpki-roots"] }
+librespot-playback = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+librespot-metadata = { version = "=0.8.0", default-features = false, features = ["rustls-tls-webpki-roots"] }
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
+futures-util = { version = "0.3", default-features = false }
+http = "1"
+bytes = "1"
+serde_json = "1"
+log = "0.4"
+libc = "0.2"
+
+# librespot-discovery with an IPv4 fallback for its Connect server (the Disc may have no IPv6); see patches/README
+[patch.crates-io]
+librespot-discovery = { path = "patches/librespot-discovery" }
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+debug = false

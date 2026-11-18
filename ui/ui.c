@@ -19,6 +19,7 @@
 #include "config.h"
 #include "screens.h"
 #include "ma.h"
+#include "spotify.h"
 #include "modes.h"
 #include <sys/stat.h>
 #include "theme_kit.h"
@@ -473,7 +474,7 @@ int ui_transport_command(const char *cmd)
 {
     if(!cmd) return -1;
     int skip = !strcmp(cmd, "0201000C0001") ? 1 : !strcmp(cmd, "0201000C0002") ? -1 : 0;
-    if(skip && !ma_controls() && (g_skip_pending != 0 || (g_skip_last && lv_tick_elaps(g_skip_last) < SKIP_GAP_MS))){
+    if(skip && !ma_controls() && !spot_controls() && (g_skip_pending != 0 || (g_skip_last && lv_tick_elaps(g_skip_last) < SKIP_GAP_MS))){
         g_skip_pending += skip;
         if(g_skip_pending > SKIP_PENDING_MAX) g_skip_pending = SKIP_PENDING_MAX;
         if(g_skip_pending < -SKIP_PENDING_MAX) g_skip_pending = -SKIP_PENDING_MAX;
@@ -498,6 +499,7 @@ static int transport_now(const char *cmd)
         ui_perf_note("transport-tap");
     }
     if(ma_controls()){ ma_send(is_toggle ? "toggle" : is_next ? "next" : "previous"); return 0; }   /* MA Sendspin */
+    if(spot_controls()){ spot_send(is_toggle ? "toggle" : is_next ? "next" : "previous"); return 0; }   /* (kopi.35) Spotify */
     if(modes_output_busy()){ ui_toast("Switching output - try again"); return -1; }
     if(!ui_local_playback_allowed()){
         ui_toast("Return to local playback first"); return -1;

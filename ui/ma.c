@@ -8,6 +8,7 @@
 #include "theme.h"
 #include "config.h"
 #include "ma.h"
+#include "spotify.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -171,6 +172,7 @@ static void status_read(void){
 void ma_set_on(int on){
     cfg_set_int("ma_on", on ? 1 : 0);
     if(on && !wifi_radio_live()) ui_toast("Wi-Fi is off - turn it on for Sendspin");   /* it waits, and connects once Wi-Fi is up */
+    if(on && spot_is_on()) spot_mode_leaving();                          /* (kopi.35) one AirPlay sender at a time */
     if(on){ helper_kill_stale(); if(ui_get_source_mode() != 5) ui_set_source_mode(5); if(g_dying > 0) g_restart_at = lv_tick_get() + 300; else helper_start(); }   /* AirPlay carries the audio into mq_player */
     else { helper_stop(); if(ui_get_source_mode() == 5){ g_leaving = 1; ui_set_source_mode(0); g_leaving = 0; } }
     status_read();

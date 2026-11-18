@@ -84,7 +84,7 @@ void tagfix_current_album(void);      /* NP menu: the same for every track of it
 void tagfix_auto_tick(const track_state_t *st, int playing);   /* Auto-tag (Settings > Playback) */
 void ui_np_tags_changed(void);        /* tags were rewritten: lyrics views reload */
 #include <stdbool.h>
-enum { SCR_HOME, SCR_LIBRARY, SCR_NOWPLAYING, SCR_SETTINGS, SCR_SETTING_DETAIL, SCR_SEARCH, SCR_SAVER, SCR_QUICK, SCR_SONGINFO, SCR_NPMENU, SCR_TUNE, SCR_EQ, SCR_APPS, SCR_NPHUB, SCR_PLPICK, SCR_PLVIEW, SCR_WIFI, SCR_WIFI_INFO, SCR_BT, SCR_BT_INFO, SCR_WEATHER, SCR_LYRICS, SCR_COLORPICK, SCR_LASTFM, SCR_WORKMODE, SCR_DEBUG, SCR_FOLDER, SCR_BOOKS, SCR_CHAPTERS, SCR_SETLIST, SCR_QSCONFIG, SCR_ALBUMWALL, SCR_USAGE, SCR_QUEUE, SCR_SCCONFIG, SCR_MODEINFO, SCR_UPNEXT, SCR_DATETIME, SCR_EQ_EDITOR, SCR_MA, SCR_ROULETTE, SCR_APPLAND, SCR_STATS, SCR_APPSHELF, SCR_APPPICK, SCR_SPHERE, SCR_ROULETTE_SPIN, SCR_SHELF, SCR_IMAGE, SCR_STOPWATCH, SCR_BROWSER, SCR_CHESS, SCR_JPCARDS, SCR_COUNT };
+enum { SCR_HOME, SCR_LIBRARY, SCR_NOWPLAYING, SCR_SETTINGS, SCR_SETTING_DETAIL, SCR_SEARCH, SCR_SAVER, SCR_QUICK, SCR_SONGINFO, SCR_NPMENU, SCR_TUNE, SCR_EQ, SCR_APPS, SCR_NPHUB, SCR_PLPICK, SCR_PLVIEW, SCR_WIFI, SCR_WIFI_INFO, SCR_BT, SCR_BT_INFO, SCR_WEATHER, SCR_LYRICS, SCR_COLORPICK, SCR_LASTFM, SCR_WORKMODE, SCR_DEBUG, SCR_FOLDER, SCR_BOOKS, SCR_CHAPTERS, SCR_SETLIST, SCR_QSCONFIG, SCR_ALBUMWALL, SCR_USAGE, SCR_QUEUE, SCR_SCCONFIG, SCR_MODEINFO, SCR_UPNEXT, SCR_DATETIME, SCR_EQ_EDITOR, SCR_MA, SCR_ROULETTE, SCR_APPLAND, SCR_STATS, SCR_APPSHELF, SCR_APPPICK, SCR_SPHERE, SCR_ROULETTE_SPIN, SCR_SHELF, SCR_IMAGE, SCR_STOPWATCH, SCR_BROWSER, SCR_CHESS, SCR_JPCARDS, SCR_SPOTIFY, SCR_COUNT };
 void screens_init(void);
 void screen_show(int which);
 void screen_back(void);
@@ -248,6 +248,7 @@ void echo_landing(void);
 void video_play(const char *path);
 void folderbrowser_open_videos(void);   /* Apps > Videos */
 #define APP_BUILTIN_VIDEOS "builtin:videos"         /* the Videos app: Files in the Videos folder */
+#define APP_BUILTIN_SPOTIFY "builtin:spotify"       /* Spotify (SCR_SPOTIFY, spotify.c; kopi.35): opens straight away */
 #define APP_BUILTIN_RACER "builtin:racer"           /* Racer, the top-down traffic racer (mq_ui --racer, games/racer.c; kopi.33) */
 void stopwatch_create(lv_obj_t *root);
 void stopwatch_open(void);

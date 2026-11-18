@@ -35,6 +35,7 @@
 #include "controls.h"
 #include "screens.h"
 #include "ma.h"
+#include "spotify.h"
 #include "modes.h"
 #include "anim.h"
 #include "ipc.h"
@@ -245,6 +246,7 @@ static void hwclock_save_tick(lv_timer_t *t);   /* defined below: starts the RTC
 int ui_local_playback_allowed(void);   /* defined with the launch verdict, below */
 int ui_seek_to(long ms){
     if(ma_controls()) return ma_seek(ms);               /* MA Sendspin: Music Assistant owns the track */
+    if(spot_controls()) return spot_seek(ms);           /* (kopi.35) Spotify owns it */
     /* A seek drives the player's current (card-backed) track, so it is card access like any other: never
      * before this boot's launch verdict qualified the player, and never while SD access is held. */
     if(!ui_local_playback_allowed()) return -1;
@@ -660,7 +662,7 @@ int ui_set_source_mode(int mode){
         if(mode==0)return modes_output_mode_switch(OUT_INTERNAL);
         ui_toast("Return to playback before changing USB mode");return -1;
     }
-    if(mode != 5) ma_mode_leaving();                    /* MA Sendspin rides on AirPlay: another mode turns it off */
+    if(mode != 5){ ma_mode_leaving(); spot_mode_leaving(); }   /* MA Sendspin and Spotify ride on AirPlay: another mode turns them off */
     if(ui_source_switch_pending()){ ui_toast("Storage is switching"); return -1; }
     if(g_sd_phase == SD_UNKNOWN || g_sd_hold || !sd_io_healthy()){ ui_toast("SD access is held this boot"); return -1; }
     /* Every source change drives the player (and USB/card ownership with it), so none may happen before this
@@ -1818,6 +1820,7 @@ void app_launch(const char *exec){
     if(!strcmp(exec, APP_BUILTIN_GLIDE)){ glide_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_RACER)){ racer_landing(); return; }
     if(!strcmp(exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }
+    if(!strcmp(exec, APP_BUILTIN_SPOTIFY)){ screen_show(SCR_SPOTIFY); return; }
     if(!strcmp(exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_JPCARDS)){ jpcards_open(); return; }
     if(!strcmp(exec, APP_BUILTIN_VIDEOS)){ folderbrowser_open_videos(); return; }
@@ -3202,6 +3205,9 @@ int main(int argc, char **argv){
     /* MA Sendspin: this same binary runs the Music Assistant player as a child (ma.c starts it as
      * "ma-sendspin --sendspin ...": a different argv[0], so fiio_init's `pgrep -x mq_ui` never mistakes it for the UI) */
     if(argc > 1 && !strcmp(argv[1], "--sendspin")){ int sendspin_main(int, char **); return sendspin_main(argc - 1, argv + 1); }
+    /* (kopi.35) "spot-disc --spotify <name> <device_id> <cache> [client_id]": the Spotify helper (spotify_helper.c) */
+    if(argc > 1 && !strcmp(argv[1], "--spotify")){ extern int spotify_main(int, char **) __attribute__((weak));
+        if(!spotify_main){ fprintf(stderr, "spotify: not in this build\n"); return 2; } return spotify_main(argc - 1, argv + 1); }
     crashlog_install();          /* /usr/data/diskos_crash.log: a line per start, player restart and crash */
     if(argc > 1 && (!strcmp(argv[1], "--echo") || !strcmp(argv[1], "--glide") || !strcmp(argv[1], "--racer"))){   /* Apps > Echo / Glide / Racer */
         int echo_main(int, char **), glide_main(int, char **), racer_main(int, char **);
@@ -3361,7 +3367,7 @@ int main(int argc, char **argv){
     swipe_thresh_load();
     settings_apply_startup();   /* restore saved brightness */
     wifi_init_intent();         /* seed wifi_on intent from stock WIFI_STATUS (first run only) */
-    fprintf(stderr,"step:screens_init\n");fflush(stderr); screens_init(); ma_boot();   /* MA Sendspin comes back if it was on */
+    fprintf(stderr,"step:screens_init\n");fflush(stderr); screens_init(); ma_boot(); spot_boot();   /* MA Sendspin comes back if it was on */
     home_set_settings_click_cb(go_settings);
     library_set_song_click_cb(on_song_play);   /* tap a song -> play it */
     search_set_song_click_cb(on_search_play);   /* search result -> play in all-songs scope (no stale drill ctx) */
@@ -4114,7 +4120,7 @@ int main(int argc, char **argv){
              * other than Playback (USB DAC, Bluetooth DAC, BT streaming, AirPlay, USB storage) is the Disc in use
              * without a song of its own moving, and a Disc on external power (plugged in, or charging) is on purpose:
              * neither powers off. */
-            int mode = ui_get_source_mode() != 0, ext = usage_charging() || usage_plugged_in() == 1, mus = playing || ma_playing() || discshelf_busy();
+            int mode = ui_get_source_mode() != 0, ext = usage_charging() || usage_plugged_in() == 1, mus = playing || ma_playing() || spot_playing() || discshelf_busy();
             int busy = mus || mode || ext;
             power_idle_why(ext ? 3 : mode ? 2 : mus ? 1 : 0);
             power_tick(last_activity, busy);

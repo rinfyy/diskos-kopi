@@ -1,0 +1,3 @@
+librespot-discovery 0.8.0 (MIT, the librespot contributors; from crates.io) with one change in src/server.rs:
+when the dual-stack IPv6 listener cannot be made (a kernel without IPv6), the Spotify Connect discovery server
+listens on IPv4 instead.

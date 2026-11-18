@@ -181,6 +181,7 @@ static const dsec_t SEC[] = {
     { "myqueue",   "Queue",     LV_SYMBOL_PASTE,     SCR_QUEUE,     open_queue,        0 },
     { "weather",   "Weather",   LV_SYMBOL_IMAGE,     SCR_WEATHER,   weather_app_open,  0 },
     { "ma",        "Sendspin",  "MA",               SCR_MA,       NULL,              0 },
+    { "spotify",   "Spotify",   LV_SYMBOL_AUDIO,    SCR_SPOTIFY,  NULL,              0 },
     { "roulette",  "Album Roulette", IC_ROULETTE,    SCR_ROULETTE, NULL,              0 },
     { "boomshine", "Boomshine", IC_BOOM,            SCR_APPLAND,   open_boomshine,    0 },
     { "stats",     "Stats",     IC_STATS,           SCR_APPLAND,   stats_landing,     0 },
@@ -460,7 +461,7 @@ static int picker_wanted(int which){
     switch(which){
         case SCR_HOME: case SCR_LIBRARY: case SCR_SETTINGS: case SCR_SETLIST: case SCR_WORKMODE: case SCR_APPS:
         case SCR_PLVIEW: case SCR_FOLDER: case SCR_BOOKS: case SCR_ALBUMWALL: case SCR_UPNEXT: case SCR_WIFI:
-        case SCR_ROULETTE: case SCR_BT: case SCR_WEATHER: case SCR_MODEINFO: case SCR_USAGE: case SCR_EQ: case SCR_MA: case SCR_APPLAND: case SCR_APPSHELF: return 1;
+        case SCR_ROULETTE: case SCR_BT: case SCR_WEATHER: case SCR_MODEINFO: case SCR_USAGE: case SCR_EQ: case SCR_MA: case SCR_SPOTIFY: case SCR_APPLAND: case SCR_APPSHELF: return 1;
         case SCR_SEARCH: return search_landing_active();             /* the landing page has the menu; the keyboard doesn't */
         default: return 0;
     }

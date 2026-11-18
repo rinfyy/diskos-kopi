@@ -7,6 +7,7 @@
 /* Copyright (C) 2026 diskOS contributors */
 #include "screens.h"
 #include "ma.h"
+#include "spotify.h"
 #include "fork_build.h"
 #include "braun.h"
 #include "theme.h"
@@ -490,6 +491,12 @@ static void apply_webfiles(int v){ (void)v; webfiles_open(); }   /* Settings > C
 static void apply_volkeys_group(int v);                   /* Settings > System > Volume Keys */
 static void apply_ma_group(int v);                        /* Settings > Network > Music Assistant */
 static void apply_ma_on(int v){ ma_set_on(v); }
+static void apply_spot_group(int v);                      /* Settings > Connectivity > Spotify (kopi.35) */
+static void apply_spot_on(int v){ spot_set_on(v); }
+static void apply_spot_name(int v){ (void)v; spot_edit_name(); }
+static void apply_spot_cid(int v){ (void)v; spot_edit_cid(); }
+static void apply_spot_out(int v){ (void)v; spot_sign_out(); }
+static void apply_spot_open(int v){ (void)v; screen_show(SCR_SPOTIFY); }
 static void apply_ma_server(int v){ (void)v; ma_edit_server(); }
 static void apply_ma_name(int v){ (void)v; ma_edit_name(); }
 
@@ -1266,6 +1273,18 @@ static const setting_t TABLE[] = {
       "How the Disc is called in Music Assistant.", NULL },
     { "MA Sendspin", "Sync Delay", ST_SLIDER, "ma_delay_ms", -2000,2000,10, NULL,0, NULL, NULL, 0,
       "Sync speakers: positive milliseconds delay the Disc; negative values play it earlier.", NULL },
+    { "Connectivity",  "Spotify", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_spot_group, 0,
+      "Play Spotify on the Disc: a Spotify Connect speaker, plus your playlists, liked songs and search. Needs Premium and Wi-Fi; uses AirPlay while on.", NULL },
+    { "Spotify", "Spotify", ST_TOGGLE, "spot_on", 0,1,1, NULL,0, NULL, apply_spot_on, 0,
+      "On: the Disc shows as a speaker in the Spotify app. The first time, pick it there to sign in. Off: back to Playback.", NULL },
+    { "Spotify", "Open Spotify", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_spot_open, 0,
+      "Liked songs, playlists and search, on the Disc.", NULL },
+    { "Spotify", "Device Name", ST_ACTION, NULL, 0,0,0, NULL,0, g_spot_name_lbl, apply_spot_name, 0,
+      "How the Disc is called in the Spotify app.", NULL },
+    { "Spotify", "Client ID", ST_ACTION, NULL, 0,0,0, NULL,0, g_spot_cid_lbl, apply_spot_cid, 0,
+      "Only if your lists won't load: the Client ID of your own free app from developer.spotify.com. Empty = built-in.", NULL },
+    { "Spotify", "Sign Out", ST_ACTION, NULL, 0,0,0, NULL,0, NULL, apply_spot_out, 0,
+      "Forget the Spotify account on this Disc. Pick the Disc in the Spotify app to sign in again.", NULL },
     { "Connectivity",  "Bluetooth", ST_ACTION, NULL, 0,0,0, NULL,0, LV_SYMBOL_RIGHT, apply_bluetooth_settings, 0,
       "Pair Bluetooth devices. Audio routes to connected headphones or speakers (SBC, beta).", NULL },
     { "Connectivity",  "Bluetooth Codec", ST_CHOICE, "bt_codec", 0,0,0, BT_CODEC_LABEL, BT_CODEC_N, NULL, NULL, 0,
@@ -1444,6 +1463,8 @@ static void apply_grp_about(int v){ (void)v; g_active_group = "About"; setlist_r
 static void apply_volkeys_group(int v){ (void)v; g_active_group = "Volume Keys"; setlist_refresh(); }
 static void apply_ma_group(int v){ (void)v; ma_settings_load(); g_active_group = "MA Sendspin"; setlist_refresh(); }
 void settings_open_ma(void){ apply_ma_group(0); }      /* host renders */
+static void apply_spot_group(int v){ (void)v; spot_settings_load(); g_active_group = "Spotify"; setlist_refresh(); }
+void settings_open_spotify(void){ apply_spot_group(0); }   /* host renders */
 void settings_open_volkeys(void){ apply_volkeys_group(0); }   /* host renders */
 void settings_open_ma_delay(void){ for(int i = 0; i < (int)(sizeof TABLE / sizeof TABLE[0]); i++) if(TABLE[i].cfg_key && !strcmp(TABLE[i].cfg_key, "ma_delay_ms")){ settings_open_detail(i); return; } }
 /* screen_back() on SCR_SETLIST: a sub-group (Disco Options, Music Assistant) steps back to its parent on the same screen */
@@ -1481,6 +1502,7 @@ static const struct { const char *child, *parent; } SUBGROUP[] = {
     { "About", "Help" },
     { "How to", "Help" },
     { "MA Sendspin", "Connectivity" },
+    { "Spotify", "Connectivity" },
     { "Volume Keys", "Controls" } };
 int settings_detail_back_consumed(void){                               /* screenmgr: leaving a setting's page */
     if(g_rs_dlg) return 1;                                                /* the question is up: answer it */

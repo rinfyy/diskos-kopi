@@ -9,6 +9,7 @@
 #include "lvgl/src/indev/lv_indev_private.h"   /* long_pr_sent: was the press that sent this click a long press? */
 #include "screens.h"
 #include "ma.h"
+#include "spotify.h"
 #include "theme_kit.h"
 #include "theme.h"
 #include "folderbrowser.h"
@@ -167,7 +168,8 @@ static void transition_core(int from, int to, int dir)
     else if (to == SCR_USAGE) usage_refresh();              /* battery & usage dial */
     else if (to == SCR_QUEUE) queue_refresh();              /* the up-next queue */
     else if (to == SCR_MODEINFO) modeinfo_refresh();         /* the active working mode */
-    else if (to == SCR_MA) ma_refresh();                     /* Music Assistant */
+    else if (to == SCR_MA) ma_refresh();
+    else if (to == SCR_SPOTIFY) spot_refresh();                     /* Music Assistant */
     else if (to == SCR_SCCONFIG) shortcuts_config_refresh();   /* Settings > Display > Shortcuts */
     else if (to == SCR_NPMENU) npmenu_refresh_art();        /* the cover in the menu's hub */
     else if (to == SCR_TUNE)  tune_refresh();
@@ -313,6 +315,7 @@ void screen_back(void)
     if (s_current == SCR_EQ_EDITOR && eqcustom_back_consumed()) return;               /* (kopi.28) Keep / Undo the edits */
     if (s_current == SCR_STATS && stats_back_consumed()) return;
     if (s_current == SCR_SHELF && discshelf_back_consumed()) return;
+    if (s_current == SCR_SPOTIFY && spot_back_consumed()) return;   /* Spotify: a playlist -> Playlists -> Spotify */
     if (s_current == SCR_SPHERE && sphere_ui_back_consumed()) return;   /* SongSphere: up one page */          /* Stats: Wrapped / top 15 -> the list */   /* Disco Options -> Display */
     if (s_current == SCR_BROWSER && browser_back_consumed()) return;   /* Browser: the previous page first */
     if (s_sp <= 0) return;
@@ -410,6 +413,7 @@ void screens_init(void)
     s_roots[SCR_SCCONFIG]  = screen_make_root(parent);
     s_roots[SCR_MODEINFO]  = screen_make_root(parent);
     s_roots[SCR_MA]        = screen_make_root(parent);
+    s_roots[SCR_SPOTIFY]   = screen_make_root(parent);
     s_roots[SCR_ROULETTE]  = screen_make_root(parent);
     s_roots[SCR_ROULETTE_SPIN] = screen_make_root(parent);
     s_roots[SCR_APPLAND]   = screen_make_root(parent);
@@ -454,6 +458,7 @@ void screens_init(void)
     shortcuts_config_create(s_roots[SCR_SCCONFIG]);
     modeinfo_create(s_roots[SCR_MODEINFO]);
     ma_create(s_roots[SCR_MA]);
+    spot_create(s_roots[SCR_SPOTIFY]);
     roulette_create(s_roots[SCR_ROULETTE]);
     roulette_spin_create(s_roots[SCR_ROULETTE_SPIN]);
     applanding_create(s_roots[SCR_APPLAND]);

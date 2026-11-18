@@ -1,0 +1,36 @@
+{
+ "arch": "mips",
+ "cpu": "mips32r2",
+ "crt-static-respected": true,
+ "data-layout": "e-m:m-p:32:32-i8:8:32-i16:16:32-i64:64-n32-S64",
+ "default-uwtable": true,
+ "dynamic-linking": true,
+ "env": "musl",
+ "features": "+mips32r2,+fp64,+nan2008",
+ "has-rpath": true,
+ "has-thread-local": true,
+ "linker-flavor": "gnu-cc",
+ "llvm-abiname": "o32",
+ "llvm-target": "mipsel-unknown-linux-musl",
+ "max-atomic-width": 32,
+ "metadata": {
+  "description": "Snowsky Disc: MIPS32r2 hard-float FP64 NaN2008, musl",
+  "tier": 3,
+  "std": true,
+  "host_tools": false
+ },
+ "os": "linux",
+ "position-independent-executables": true,
+ "relro-level": "full",
+ "supported-split-debuginfo": [
+  "packed",
+  "unpacked",
+  "off"
+ ],
+ "target-family": [
+  "unix"
+ ],
+ "target-mcount": "_mcount",
+ "target-pointer-width": 32,
+ "crt-static-default": true
+}

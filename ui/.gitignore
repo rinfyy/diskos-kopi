@@ -32,3 +32,4 @@ tests/host_build/
 
 # Native/UI intermediate executables stay available locally, never enter the source tree.
 /mq_ui
+spotify/target/

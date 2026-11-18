@@ -50,6 +50,7 @@ static void scan(void){
     g_nall = 0;
     add_builtin("boomshine", "Boomshine", "One tap. A chain reaction.", "Set off a single blast and\ncatch as many dots as you can.",
                 "Play", APP_BUILTIN_BOOMSHINE, "@boom");
+    add_builtin("builtin:spotify", "Spotify", "Your music, streamed.", "", "Open", APP_BUILTIN_SPOTIFY, NULL);   /* kopi.35 */
     add_builtin("builtin:browser", "Browser", "Read the web as text.", "", "Open", APP_BUILTIN_BROWSER, NULL);
     add_builtin("builtin:stopwatch", "Stopwatch", "Time anything, with laps.", "", "Open", APP_BUILTIN_STOPWATCH, NULL);
     add_builtin("builtin:chess", "Chess", "You against the Disc.", "", "Play", APP_BUILTIN_CHESS, NULL);
@@ -230,6 +231,7 @@ static void open_cb(lv_event_t *e){
     if(!strcmp(a->exec, APP_BUILTIN_SPHERE)){ sphere_ui_landing(); return; }   /* Static guard; initialize SongSphere only after Open. */
     if(!strcmp(a->exec, APP_BUILTIN_ROULETTE)){ screen_show(SCR_ROULETTE); return; }   /* its own vinyl landing page */
     if(!strcmp(a->exec, APP_BUILTIN_STOPWATCH)){ stopwatch_open(); return; }          /* tools open straight away */
+    if(!strcmp(a->exec, APP_BUILTIN_SPOTIFY)){ screen_show(SCR_SPOTIFY); return; }
     if(!strcmp(a->exec, APP_BUILTIN_CHESS)){ chess_open(); return; }
     if(!strcmp(a->exec, APP_BUILTIN_JPCARDS)){ jpcards_open(); return; }
     if(!strcmp(a->exec, APP_BUILTIN_VIDEOS)){ folderbrowser_open_videos(); return; }

@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img alt="kopi 3.0.1-kopi.34" src="https://img.shields.io/badge/kopi-3.0.1--kopi.34-C9A27E?style=flat-square">
+  <img alt="kopi 3.0.1-kopi.35" src="https://img.shields.io/badge/kopi-3.0.1--kopi.35-C9A27E?style=flat-square">
   <img alt="Firmware V2.57" src="https://img.shields.io/badge/firmware-V2.57-4AD8FF?style=flat-square">
   <img alt="Status: experimental / in testing" src="https://img.shields.io/badge/status-experimental%20%2F%20in%20testing-FFB45A?style=flat-square">
   <a href="ui/COPYING"><img alt="UI GPL-3.0-or-later" src="https://img.shields.io/badge/UI-GPL--3.0--or--later-62F28C?style=flat-square"></a>
@@ -40,10 +40,9 @@
 
 ## What's in kopi
 
-**Latest: 3.0.1-kopi.34**: the Play / Pause icon is right at once and steady through a song change,
-**drag the record down** for Immersive, tap the record again to hide its button, **Shuffle a folder**, Vinyl
-applies without a restart, the Immersive ring in your accent colour, Quick Settings slides over Immersive
-without the flash, and faster song changes.
+**Latest: 3.0.1-kopi.35**: **Spotify** on the Disc. It's a Spotify Connect speaker (librespot), and it plays your Liked
+Songs, playlists and search from its own screen (Premium and Wi-Fi; the sound goes through the Disc's AirPlay receiver).
+Building it needs Rust with rust-src (see `ui/Makefile`, `ui/spotify/`).
 
 - **Three themes, and only three.** NTDisk, iDisc and Null; Disco, Squash, Zune, Ring, Braun and Stone are
   gone, which made the interface 1.3 MB smaller. A Disc on a removed theme starts in NTDisk.
@@ -176,7 +175,7 @@ Power the Disc off, hold **Volume Down** and plug in USB (the screen stays black
 **An mq_ui file on this PC** and pick the kopi `mq_ui`. **On Linux:**
 
 ```sh
-sh ui/tools/owner-keys/diskos-sign.sh path/to/mq_ui 3.0.1-kopi.34   # -> ./diskos-update/
+sh ui/tools/owner-keys/diskos-sign.sh path/to/mq_ui 3.0.1-kopi.35   # -> ./diskos-update/
 ```
 
 Copy the whole `diskos-update` **folder** to the SD card root (kopi's Wi-Fi file transfer works too), then on the
