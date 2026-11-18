@@ -69,7 +69,9 @@ impl log::Log for Log {
         let line = format!("{} {}: {}", r.level(), r.target(), msg);
         eprintln!("{line}");
         if let Ok(mut g) = RING.lock() { g.push(line); let n = g.len(); if n > 60 { g.drain(0..n - 60); } }
-        if r.level() <= log::Level::Error || dispatch || (r.level() == log::Level::Warn && r.target().starts_with("librespot")) {
+        // (warnings librespot gives on every load, before the playlist arrives, are not the reason)
+        let routine = msg.starts_with("couldn't load context info") || msg.starts_with("Failed to resolve index");
+        if !routine && (r.level() <= log::Level::Error || dispatch || (r.level() == log::Level::Warn && r.target().starts_with("librespot"))) {
             if let Ok(mut e) = LAST_ERR.lock() { e.0 = e.0.wrapping_add(1); e.1 = msg; }
         }
     }
@@ -555,10 +557,15 @@ async fn run(name: String, device_id: String, cache_dir: String, client_id: Stri
                         status_write(&st);
                     }
                     PlayerEvent::Stopped { .. } => {
+                        log::info!("spotdisc: stopped");
                         { let mut s = st.lock().unwrap(); s.playing = false; s.title.clear(); s.state = "ready"; }
                         status_write(&st);
                     }
                     PlayerEvent::SessionClientChanged { client_name, .. } => { log::info!("spotdisc: controlled from {client_name}"); }
+                    PlayerEvent::Loading { track_id, .. } => { log::info!("spotdisc: loading {track_id}"); }
+                    PlayerEvent::Unavailable { track_id, .. } => {
+                        log::warn!("spotdisc: Spotify says {track_id} isn't available to play");
+                    }
                     _ => {}
                 }
             },
